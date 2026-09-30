@@ -1,0 +1,8 @@
+{
+  "name": "Notre Dame Alumni",
+  "description": "Notre Dame College (NDC Dhaka) Alumni Network portal with global directory, batch explorer, feeds, photo galleries, interactive map, and customizable themes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

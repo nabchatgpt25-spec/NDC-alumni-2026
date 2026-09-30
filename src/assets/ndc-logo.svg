@@ -1,0 +1,271 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 260 285" width="100%" height="100%">
+  <defs>
+    <!-- Paths for curved banner text -->
+    <path id="topRibbonArc" d="M 30,56 C 54,23 206,23 230,56" fill="none" />
+    <path id="leftBannerArc" d="M 44,156 C 44,116 66,88 106,78" fill="none" />
+    <path id="centerLumenArc" d="M 104,74 C 116,64 144,64 156,74" fill="none" />
+    <path id="rightBannerArc" d="M 154,78 C 194,88 216,116 216,156" fill="none" />
+
+    <!-- Fleur-de-lis symbol -->
+    <g id="ndcFleur">
+      <path d="M 0,-6.5 C -1.2,-4 -1.8,-2 0,0 C 1.8,-2 1.2,-4 0,-6.5 Z" fill="#901442" />
+      <path d="M 0,-6 C -0.7,-4 -1.2,-2 0,-0.3 C 1.2,-2 0.7,-4 0,-6 Z" fill="#9E1B4C" />
+      <path d="M -0.4,-0.8 C -2.2,-2.2 -4.4,-1.8 -4,0.4 C -3.6,2 -1.6,1.8 -0.4,0.9 Z" fill="#901442" />
+      <path d="M 0.4,-0.8 C 2.2,-2.2 4.4,-1.8 4,0.4 C 3.6,2 1.6,1.8 0.4,0.9 Z" fill="#901442" />
+      <rect x="-2.4" y="0.5" width="4.8" height="1.1" rx="0.3" fill="#6A082E" />
+      <polygon points="-1.4,1.6 1.4,1.6 0,3.8" fill="#901442" />
+    </g>
+
+    <!-- Paddy tuft symbol -->
+    <g id="ndcPaddyTuft">
+      <path d="M 0,0 C -1.5,-3 -3.5,-5 -6,-6 M 0,0 C -0.8,-4 -1.5,-7 -1.5,-8.5 M 0,0 C 0.8,-4 1.5,-7 1.5,-8.5 M 0,0 C 1.5,-3 3.5,-5 6,-6"
+            stroke="#177A38" stroke-width="0.9" stroke-linecap="round" fill="none" />
+    </g>
+
+    <!-- Shield Clipping Mask -->
+    <clipPath id="ndcShieldClip">
+      <path d="M 52,100 L 208,100 L 208,170 C 208,214 170,238 130,248 C 90,238 52,214 52,170 Z" />
+    </clipPath>
+  </defs>
+
+  <!-- ============================================== -->
+  <!-- 1. TOP CURVED BANNER: NOTRE DAME COLLEGE       -->
+  <!-- ============================================== -->
+  <g id="topRibbon">
+    <!-- Left ribbon tail (blue underside fold & gold tassels) -->
+    <path d="M 32,54 C 22,60 14,70 12,82 C 18,80 26,76 32,74 Z" fill="#5A80B5" stroke="#000000" stroke-width="1.2" />
+    <path d="M 12,82 C 15,86 23,83 29,80 L 32,74 L 23,71 Z" fill="#FFDC00" stroke="#000000" stroke-width="1" />
+    <line x1="15" y1="83" x2="19" y2="76" stroke="#9C7A00" stroke-width="1.1" />
+    <line x1="19" y1="83" x2="23" y2="76" stroke="#9C7A00" stroke-width="1.1" />
+    <line x1="23" y1="82" x2="27" y2="75" stroke="#9C7A00" stroke-width="1.1" />
+    <line x1="27" y1="80" x2="30" y2="74" stroke="#9C7A00" stroke-width="1.1" />
+
+    <!-- Right ribbon tail (blue underside fold & gold tassels) -->
+    <path d="M 228,54 C 238,60 246,70 248,82 C 242,80 234,76 228,74 Z" fill="#5A80B5" stroke="#000000" stroke-width="1.2" />
+    <path d="M 248,82 C 245,86 237,83 231,80 L 228,74 L 237,71 Z" fill="#FFDC00" stroke="#000000" stroke-width="1" />
+    <line x1="245" y1="83" x2="241" y2="76" stroke="#9C7A00" stroke-width="1.1" />
+    <line x1="241" y1="83" x2="237" y2="76" stroke="#9C7A00" stroke-width="1.1" />
+    <line x1="237" y1="82" x2="233" y2="75" stroke="#9C7A00" stroke-width="1.1" />
+    <line x1="233" y1="80" x2="230" y2="74" stroke="#9C7A00" stroke-width="1.1" />
+
+    <!-- Main Yellow Arch -->
+    <path d="M 26,48 C 58,15 202,15 234,48 L 226,67 C 196,35 64,35 34,67 Z"
+          fill="#FFE000" stroke="#000000" stroke-width="1.6" stroke-linejoin="round" />
+
+    <!-- Arch Text: NOTRE DAME COLLEGE -->
+    <text font-family="'Times New Roman', Georgia, 'Liberation Serif', serif" font-weight="900" font-size="16.5" fill="#FF0000" letter-spacing="1.2">
+      <textPath href="#topRibbonArc" xlink:href="#topRibbonArc" startOffset="50%" text-anchor="middle">
+        NOTRE DAME COLLEGE
+      </textPath>
+    </text>
+  </g>
+
+  <!-- ============================================== -->
+  <!-- 2. OPEN BIBLE: ALPHA (A) & OMEGA (Ω)           -->
+  <!-- ============================================== -->
+  <g id="openBook" transform="translate(130, 93)">
+    <!-- Book cover backing -->
+    <path d="M -26,-10 C -15,-14 -3,-10 0,-8 C 3,-10 15,-14 26,-10 L 26,11 C 15,7 3,10 0,13 C -3,10 -15,7 -26,11 Z"
+          fill="#1C212B" stroke="#000000" stroke-width="1.3" />
+    <!-- Left white page -->
+    <path d="M -24,-8.5 C -13,-12 -2,-9 0,-6.5 L 0,10.5 C -2,8 -13,5.5 -24,9 Z"
+          fill="#FFFFFF" stroke="#8E99A8" stroke-width="0.7" />
+    <!-- Right white page -->
+    <path d="M 0,-6.5 C 2,-9 13,-12 24,-8.5 L 24,9 C 13,5.5 2,8 0,10.5 Z"
+          fill="#FFFFFF" stroke="#8E99A8" stroke-width="0.7" />
+    <!-- Center spine -->
+    <line x1="0" y1="-6.5" x2="0" y2="11.5" stroke="#4B5563" stroke-width="1" />
+
+    <!-- Alpha and Omega -->
+    <text x="-12" y="3.5" font-family="'Times New Roman', Georgia, serif" font-weight="bold" font-size="11" fill="#000000" text-anchor="middle">A</text>
+    <text x="12" y="3.5" font-family="'Times New Roman', Georgia, serif" font-weight="bold" font-size="11" fill="#000000" text-anchor="middle">Ω</text>
+  </g>
+
+  <!-- ============================================== -->
+  <!-- 3. CENTRAL SHIELD                              -->
+  <!-- ============================================== -->
+  <!-- Base Shield Fill & Contour -->
+  <path d="M 52,100 L 208,100 L 208,170 C 208,214 170,238 130,248 C 90,238 52,214 52,170 Z"
+        fill="#FFFFFF" stroke="#000000" stroke-width="2.5" stroke-linejoin="round" />
+
+  <g clip-path="url(#ndcShieldClip)">
+    <!-- 3A. TOP LEFT: PINK WITH 7 FLEURS-DE-LIS -->
+    <rect x="52" y="100" width="78" height="70" fill="#F2A4B5" />
+
+    <!-- 7 Fleurs-de-lis (Rows: 2, 3, 2) -->
+    <g id="fleursGroup">
+      <!-- Row 1: 2 fleurs -->
+      <use href="#ndcFleur" xlink:href="#ndcFleur" x="78" y="117" />
+      <use href="#ndcFleur" xlink:href="#ndcFleur" x="104" y="117" />
+
+      <!-- Row 2: 3 fleurs -->
+      <use href="#ndcFleur" xlink:href="#ndcFleur" x="66" y="135" />
+      <use href="#ndcFleur" xlink:href="#ndcFleur" x="91" y="135" />
+      <use href="#ndcFleur" xlink:href="#ndcFleur" x="116" y="135" />
+
+      <!-- Row 3: 2 fleurs -->
+      <use href="#ndcFleur" xlink:href="#ndcFleur" x="78" y="153" />
+      <use href="#ndcFleur" xlink:href="#ndcFleur" x="104" y="153" />
+    </g>
+
+    <!-- 3B. TOP RIGHT: SKY, RISING SUN, BOAT & PALMS -->
+    <rect x="130" y="100" width="78" height="70" fill="#52C5ED" />
+
+    <!-- Rising Sun Rays -->
+    <g id="sunRays" stroke="#FFD200" stroke-width="2.2" opacity="0.95">
+      <line x1="184" y1="140" x2="184" y2="112" />
+      <line x1="184" y1="140" x2="170" y2="114" />
+      <line x1="184" y1="140" x2="158" y2="120" />
+      <line x1="184" y1="140" x2="148" y2="130" />
+      <line x1="184" y1="140" x2="198" y2="114" />
+      <line x1="184" y1="140" x2="206" y2="122" />
+    </g>
+
+    <!-- Rising Sun Semi-Disc -->
+    <path d="M 172,140 A 12,12 0 0,1 196,140 Z" fill="#EE3B24" stroke="#000000" stroke-width="0.8" />
+
+    <!-- Right Bank & Green Fields -->
+    <path d="M 160,140 L 208,140 L 208,170 L 150,170 Z" fill="#90D864" />
+
+    <!-- Paddy plants -->
+    <use href="#ndcPaddyTuft" xlink:href="#ndcPaddyTuft" x="172" y="150" />
+    <use href="#ndcPaddyTuft" xlink:href="#ndcPaddyTuft" x="190" y="152" />
+    <use href="#ndcPaddyTuft" xlink:href="#ndcPaddyTuft" x="178" y="163" />
+    <use href="#ndcPaddyTuft" xlink:href="#ndcPaddyTuft" x="196" y="164" />
+
+    <!-- Left Bank Ground (under palm trees) -->
+    <path d="M 130,140 L 158,140 L 152,170 L 130,170 Z" fill="#78C654" />
+
+    <!-- Blue Meandering River -->
+    <path d="M 158,140 C 150,154 138,158 130,165 L 130,170 C 142,166 156,158 166,140 Z"
+          fill="#BCE8F8" stroke="#52C5ED" stroke-width="0.7" />
+
+    <!-- Traditional Bengali Boat (Nouka) -->
+    <g id="noukaBoat" transform="translate(150, 156)">
+      <!-- Black Hull -->
+      <path d="M -11,2.5 Q 0,6 11,2.5 Q 0,4 -11,2.5 Z" fill="#1A1A1A" stroke="#000000" stroke-width="0.6" />
+      <line x1="-10" y1="1" x2="-14" y2="4.5" stroke="#1A1A1A" stroke-width="0.8" stroke-linecap="round" />
+      <!-- Purple/Violet Sail -->
+      <path d="M -3,1.5 Q 0,-4.5 4,1.5 Z" fill="#561E78" stroke="#000000" stroke-width="0.6" />
+    </g>
+
+    <!-- Two Coconut Palm Trees (Left Bank) -->
+    <g id="palmTrees">
+      <!-- Tree 1 (Left) -->
+      <path d="M 139,170 Q 137,152 140,135" stroke="#643E1C" stroke-width="2.2" stroke-linecap="round" fill="none" />
+      <path d="M 140,135 Q 134,127 126,131" stroke="#15803D" stroke-width="1.8" stroke-linecap="round" fill="none" />
+      <path d="M 140,135 Q 132,133 127,141" stroke="#166534" stroke-width="1.8" stroke-linecap="round" fill="none" />
+      <path d="M 140,135 Q 138,125 137,120" stroke="#15803D" stroke-width="1.8" stroke-linecap="round" fill="none" />
+      <path d="M 140,135 Q 146,125 151,130" stroke="#166534" stroke-width="1.8" stroke-linecap="round" fill="none" />
+      <path d="M 140,135 Q 148,133 152,140" stroke="#15803D" stroke-width="1.8" stroke-linecap="round" fill="none" />
+
+      <!-- Tree 2 (Right) -->
+      <path d="M 147,170 Q 146,155 149,141" stroke="#643E1C" stroke-width="1.9" stroke-linecap="round" fill="none" />
+      <path d="M 149,141 Q 143,134 138,137" stroke="#15803D" stroke-width="1.6" stroke-linecap="round" fill="none" />
+      <path d="M 149,141 Q 147,131 146,126" stroke="#166534" stroke-width="1.6" stroke-linecap="round" fill="none" />
+      <path d="M 149,141 Q 155,131 159,136" stroke="#15803D" stroke-width="1.6" stroke-linecap="round" fill="none" />
+      <path d="M 149,141 Q 156,139 160,145" stroke="#166534" stroke-width="1.6" stroke-linecap="round" fill="none" />
+    </g>
+
+    <!-- 3C. BOTTOM COMPARTMENT: DEEP SKY BLUE WITH CONGREGATION OF HOLY CROSS EMBLEM -->
+    <path d="M 52,170 L 208,170 L 208,170 C 208,214 170,238 130,248 C 90,238 52,214 52,170 Z" fill="#36A4DF" />
+
+    <!-- Golden Rays behind the Cross -->
+    <g id="crossRays" stroke="#FFDE00" stroke-width="3" stroke-linecap="round">
+      <line x1="130" y1="206" x2="130" y2="182" />
+      <line x1="130" y1="206" x2="150" y2="186" />
+      <line x1="130" y1="206" x2="158" y2="206" />
+      <line x1="130" y1="206" x2="150" y2="226" />
+      <line x1="130" y1="206" x2="130" y2="232" />
+      <line x1="130" y1="206" x2="110" y2="226" />
+      <line x1="130" y1="206" x2="102" y2="206" />
+      <line x1="130" y1="206" x2="110" y2="186" />
+    </g>
+
+    <!-- Two Crossed Black Naval Anchors (Holy Cross symbol of hope) -->
+    <g id="crossedAnchors" stroke="#000000" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <!-- Anchor 1 (Diagonal Top-Left to Bottom-Right) -->
+      <line x1="106" y1="182" x2="154" y2="230" />
+      <circle cx="103" cy="179" r="3.4" stroke="#000000" stroke-width="3" fill="none" />
+      <line x1="114" y1="179" x2="102" y2="191" stroke-width="3" />
+      <path d="M 141,238 Q 157,236 159,221" stroke-width="3.6" />
+      <polygon points="159,221 162,225 156,227" fill="#000000" />
+      <polygon points="141,238 144,241 139,244" fill="#000000" />
+
+      <!-- Anchor 2 (Diagonal Top-Right to Bottom-Left) -->
+      <line x1="154" y1="182" x2="106" y2="230" />
+      <circle cx="157" cy="179" r="3.4" stroke="#000000" stroke-width="3" fill="none" />
+      <line x1="146" y1="179" x2="158" y2="191" stroke-width="3" />
+      <path d="M 119,238 Q 103,236 101,221" stroke-width="3.6" />
+      <polygon points="101,221 98,225 104,227" fill="#000000" />
+      <polygon points="119,238 116,241 121,244" fill="#000000" />
+    </g>
+
+    <!-- Bright Red Latin Cross (Crux Spes Unica) -->
+    <g id="latinCross">
+      <rect x="125" y="176" width="10" height="58" rx="1.2" fill="#FF0000" stroke="#000000" stroke-width="1.4" />
+      <rect x="109" y="188" width="42" height="10" rx="1.2" fill="#FF0000" stroke="#000000" stroke-width="1.4" />
+    </g>
+
+    <!-- Black Division Lines inside shield -->
+    <line x1="130" y1="100" x2="130" y2="170" stroke="#000000" stroke-width="2.2" />
+    <line x1="52" y1="170" x2="208" y2="170" stroke="#000000" stroke-width="2.2" />
+  </g>
+
+  <!-- Re-stroke Shield Outline -->
+  <path d="M 52,100 L 208,100 L 208,170 C 208,214 170,238 130,248 C 90,238 52,214 52,170 Z"
+        fill="none" stroke="#000000" stroke-width="2.5" stroke-linejoin="round" />
+
+  <!-- ============================================== -->
+  <!-- 4. INNER BANNER: DILIGITE LUMEN SAPIENTIAE     -->
+  <!-- ============================================== -->
+  <g id="innerMottoBanner">
+    <!-- Left Ribbon Fold & Tail -->
+    <path d="M 32,176 L 32,150 C 32,138 42,106 74,82 L 84,98 C 60,118 50,140 50,150 L 50,176 Z"
+          fill="#FF9E00" stroke="#000000" stroke-width="1.4" />
+    <polygon points="32,176 41,165 50,176 50,150 32,150" fill="#FF9E00" stroke="#000000" stroke-width="1.4" />
+
+    <!-- Right Ribbon Fold & Tail -->
+    <path d="M 228,176 L 228,150 C 228,138 218,106 186,82 L 176,98 C 200,118 210,140 210,150 L 210,176 Z"
+          fill="#FF9E00" stroke="#000000" stroke-width="1.4" />
+    <polygon points="228,176 219,165 210,176 210,150 228,150" fill="#FF9E00" stroke="#000000" stroke-width="1.4" />
+
+    <!-- Center Top Arch: LUMEN banner -->
+    <path d="M 100,64 C 116,54 144,54 160,64 L 162,84 C 144,74 116,74 98,84 Z"
+          fill="#FF9E00" stroke="#000000" stroke-width="1.4" />
+
+    <!-- Left Arch: DILIGITE bridge -->
+    <path d="M 74,82 C 84,74 92,69 100,64 L 98,84 C 92,89 85,93 84,98 Z"
+          fill="#FF9E00" stroke="#000000" stroke-width="1.4" />
+
+    <!-- Right Arch: SAPIENTIAE bridge -->
+    <path d="M 160,64 C 168,69 176,74 186,82 L 176,98 C 173,93 166,89 162,84 Z"
+          fill="#FF9E00" stroke="#000000" stroke-width="1.4" />
+
+    <!-- Banner Texts: DILIGITE, LUMEN, SAPIENTIAE -->
+    <text font-family="'Times New Roman', Georgia, serif" font-weight="900" font-size="12" fill="#000000" letter-spacing="1">
+      <textPath href="#centerLumenArc" xlink:href="#centerLumenArc" startOffset="50%" text-anchor="middle">
+        LUMEN
+      </textPath>
+    </text>
+
+    <text font-family="'Times New Roman', Georgia, serif" font-weight="900" font-size="13.5" fill="#000000" letter-spacing="0.8">
+      <textPath href="#leftBannerArc" xlink:href="#leftBannerArc" startOffset="52%" text-anchor="middle">
+        DILIGITE
+      </textPath>
+    </text>
+
+    <text font-family="'Times New Roman', Georgia, serif" font-weight="900" font-size="12" fill="#000000" letter-spacing="0.6">
+      <textPath href="#rightBannerArc" xlink:href="#rightBannerArc" startOffset="48%" text-anchor="middle">
+        SAPIENTIAE
+      </textPath>
+    </text>
+  </g>
+
+  <!-- ============================================== -->
+  <!-- 5. BOTTOM TEXT: DHAKA                          -->
+  <!-- ============================================== -->
+  <text x="130" y="270" font-family="'Arial Black', Arial, sans-serif" font-weight="900" font-size="13.5" fill="#000000" text-anchor="middle" letter-spacing="3">
+    DHAKA
+  </text>
+</svg>

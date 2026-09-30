@@ -1,0 +1,192 @@
+export type ThemeId = 'light' | 'dark' | 'ndc-blue' | 'midnight';
+
+export type ThemeMode = 'light' | 'dark';
+
+export interface ThemeOption {
+  id: ThemeId;
+  name: string;
+  tagline: string;
+  isDark: boolean;
+  category: 'light' | 'dark';
+  colors: {
+    primary: string;
+    accent: string;
+    background: string;
+    surface: string;
+    border: string;
+    textPreview: string;
+  };
+  palette: string[];
+}
+
+export type VerificationStatus = 'verified' | 'pending_vouch' | 'unverified';
+export type VerificationMethod = 'two_vouches' | 'id_card_upload' | 'souvenir_photo' | 'admin_verified';
+
+export interface VouchItem {
+  id: string;
+  voucherId: number;
+  voucherName: string;
+  voucherAvatar: string;
+  voucherBatch: number;
+  date: string;
+  comment?: string;
+}
+
+export interface VouchRequest {
+  id: string;
+  requesterId: number;
+  requesterName: string;
+  requesterAvatar: string;
+  batchYear: number;
+  collegeRoll: string;
+  group: 'Science' | 'Business Studies' | 'Humanities';
+  section?: string;
+  profession?: string;
+  city?: string;
+  createdAt: string;
+  status: 'pending' | 'verified' | 'declined';
+  vouches: VouchItem[];
+  targetVouches: number;
+  idProofUrl?: string;
+  message?: string;
+}
+
+export interface AlumniProfile {
+  id: number;
+  userId: number;
+  fullName: string;
+  avatarUrl: string;
+  coverUrl: string;
+  batchYear: number;
+  session?: string;
+  collegeRoll?: string;
+  group?: 'Science' | 'Business Studies' | 'Humanities';
+  section?: string;
+  verificationStatus?: VerificationStatus;
+  verificationMethod?: VerificationMethod;
+  verifiedBy?: string[];
+  vouchesCount?: number;
+  vouchTargetCount?: number;
+  idProofUrl?: string;
+  verificationDate?: string;
+  profession: string;
+  position: string;
+  institution: string;
+  cadre?: string;
+  specialty: string[];
+  specialtyOther?: string;
+  degree: string[];
+  city: string;
+  country: string;
+  lat?: number;
+  lng?: number;
+  latitude?: number;
+  longitude?: number;
+  whatsapp?: string;
+  fbLink?: string;
+  phone?: string;
+  email?: string;
+  bio?: string;
+  careerHistory?: string[];
+  isPublic: boolean;
+  online: boolean;
+  lastSeen?: string;
+  postsCount: number;
+  badges?: string[];
+}
+
+export interface PostComment {
+  id: number;
+  postId: number;
+  userId: number;
+  fullName: string;
+  avatarUrl: string;
+  content: string;
+  likesCount: number;
+  likedByMe: boolean;
+  createdAt: string;
+  replies?: PostComment[];
+}
+
+export interface PostItem {
+  id: number;
+  userId: number;
+  fullName: string;
+  avatarUrl: string;
+  batchYear: number;
+  content: string;
+  images: string[];
+  videos?: string[];
+  likesCount: number;
+  commentsCount: number;
+  createdAt: string;
+  likedByMe: boolean;
+  comments: PostComment[];
+  category?: 'General Update' | 'Tech & Innovation' | 'Professional Insights' | 'Reunion' | 'Achievement';
+  isEdited?: boolean;
+  isSaved?: boolean;
+}
+
+export interface NotificationItem {
+  id: number;
+  title: string;
+  message: string;
+  timeAgo: string;
+  unread: boolean;
+  type: 'like' | 'comment' | 'post' | 'system';
+  targetRoute?: string;
+}
+
+export interface BatchSummary {
+  batchYear: number;
+  session: string;
+  total: number;
+  representative?: string;
+}
+
+export interface GalleryPhoto {
+  id: string;
+  url: string;
+  caption?: string;
+  uploaderName?: string;
+  uploaderAvatar?: string;
+  batchYear?: number;
+  uploadedAt?: string;
+  likesCount?: number;
+  likedByMe?: boolean;
+  tags?: string[];
+  mediaType?: 'image' | 'video';
+  fileSize?: string;
+}
+
+export interface GalleryAlbum {
+  id: number;
+  title: string;
+  description?: string;
+  category: 'reunion' | 'academic' | 'campus' | 'convocation' | 'sports' | 'cultural' | 'all';
+  date: string;
+  location?: string;
+  batchYear?: number;
+  photosCount: number;
+  coverUrl: string;
+  photos: GalleryPhoto[];
+  createdBy?: string;
+  createdDate?: string;
+}
+
+export const SPECIALTIES_LIST = [
+  'Computer Science & Software', 'Artificial Intelligence & Data', 'Electrical & Electronic Engineering',
+  'Civil & Structural Engineering', 'Mechanical & Robotics', 'Industrial & Production Engineering',
+  'Telecommunications & Networks', 'Cybersecurity & Cloud', 'Energy & Sustainable Systems',
+  'Business Administration & Management', 'Finance, Banking & Investment', 'Chartered Accountancy & Audit',
+  'Entrepreneurship & Startups', 'Physics & Physical Sciences', 'Mathematics & Statistics',
+  'Civil Service & Administration (BCS)', 'Foreign Affairs & Diplomacy', 'Constitutional & Corporate Law',
+  'Architecture & Urban Planning', 'Higher Education & Research', 'Journalism & Media Communications',
+  'Defense & Strategic Leadership', 'Literature & Creative Arts'
+];
+
+export const DEGREES_LIST = [
+  'HSC', 'BSc Engineering', 'BBA', 'MBA', 'MSc', 'PhD', 'PostDoc',
+  'B.Arch', 'LLB', 'LLM', 'CA / ACA',
+  'CFA', 'BCS', 'BA', 'MA', 'BSS', 'MSS', 'Diploma', 'MPhil', 'BSc', 'M.Arch'
+];

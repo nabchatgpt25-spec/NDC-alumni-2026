@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Defensive fix for environments/extensions/sandboxes where window.fetch has only a getter
+      (function() {
+        try {
+          var globalObj = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : null);
+          if (globalObj) {
+            var _fetch = globalObj.fetch ? globalObj.fetch.bind(globalObj) : null;
+            try {
+              Object.defineProperty(globalObj, 'fetch', {
+                get: function() {
+                  return _fetch;
+                },
+                set: function(val) {
+                  _fetch = val;
+                },
+                configurable: true,
+                enumerable: true,
+              });
+            } catch (e1) {
+              if (typeof Window !== 'undefined' && Window.prototype) {
+                try {
+                  Object.defineProperty(Window.prototype, 'fetch', {
+                    get: function() {
+                      return _fetch;
+                    },
+                    set: function(val) {
+                      _fetch = val;
+                    },
+                    configurable: true,
+                    enumerable: true,
+                  });
+                } catch (e2) {}
+              }
+            }
+          }
+          if (typeof window !== 'undefined') {
+            window.addEventListener('error', function(event) {
+              if (event && event.message && event.message.indexOf('fetch') !== -1 && event.message.indexOf('getter') !== -1) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return true;
+              }
+            });
+          }
+        } catch (err) {}
+      })();
+    </script>
+    <title>Notre Dame College Alumni Connect | NDC Dhaka</title>
+    <meta name="description" content="Official Notre Dame College (NDC) Dhaka Alumni Network portal. Diligite Lumen Sapientiae. Connect with Notredamians worldwide with global directory, batch explorer, photo archive, and community feed." />
+    <meta property="og:title" content="Notre Dame College Alumni Connect | NDC Dhaka" />
+    <meta property="og:description" content="Official Notre Dame College (NDC) Dhaka Alumni Network portal. Diligite Lumen Sapientiae. Connect with Notredamians worldwide with global directory, batch explorer, photo archive, and community feed." />
+    <meta property="og:image" content="/ndc-logo.png" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/ndc-logo.png" />
+    <meta name="theme-color" content="#1e3a8a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="NDC Alumni" />
+    <link rel="icon" type="image/svg+xml" href="/ndc-logo.svg" />
+    <link rel="icon" type="image/png" href="/ndc-logo.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
