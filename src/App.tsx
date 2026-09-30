@@ -108,9 +108,9 @@ function AlumniAppContent() {
           <AuthModal
             initialMode={authModalMode}
             onClose={() => setAuthModalMode(null)}
-            onSuccess={() => {
+            onSuccess={(completedMode) => {
               setAuthModalMode(null);
-              navigateTo('feed');
+              navigateTo(completedMode === 'register' ? 'profile' : 'feed');
             }}
           />
         )}
@@ -220,6 +220,25 @@ function AlumniAppContent() {
             />
           )}
         </main>
+
+        {/* Portal Footer */}
+        <footer className="border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8 text-[11px] text-slate-500 dark:text-slate-400 bg-white/50 dark:bg-slate-900/50">
+          <div className="max-w-[1500px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div>
+              © {new Date().getFullYear()} Notre Dame College Alumni Network. All rights reserved.
+            </div>
+            <div>
+              <a
+                href="http://nurulanambashir.gt.tc/?i=1"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-blue-600 dark:text-blue-400 hover:underline transition-colors"
+              >
+                Designed &amp; Developed by Bashir
+              </a>
+            </div>
+          </div>
+        </footer>
       </div>
 
       {/* Global Offline Mode Status Indicator */}

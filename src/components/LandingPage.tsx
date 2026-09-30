@@ -27,6 +27,7 @@ import { BATCH_LIST, ALUMNI_PROFILES } from '../data/mockData';
 import { AlumniProfile, BatchSummary } from '../types';
 
 import { HeroSection } from './landing/HeroSection';
+import { StatsBar } from './landing/StatsBar';
 import { QuadFeedPreview } from './landing/QuadFeedPreview';
 import { BatchLoungesGrid } from './landing/BatchLoungesGrid';
 import { FeaturedAlumniSection } from './landing/FeaturedAlumniSection';
@@ -265,6 +266,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           onOpenVerificationModal={() => setIsVerificationModalOpen(true)}
         />
 
+        {/* 3.5. Our Network at a Glance (Scroll-Triggered Animated Statistics Cards) */}
+        <StatsBar />
+
         {/* 4. Live Social Feed Preview: "The Quad Buzz" */}
         <div id="feed-preview-section">
           <QuadFeedPreview
@@ -471,8 +475,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div>
                 © {new Date().getFullYear()} Notre Dame College Alumni Network. All rights reserved.
               </div>
-              <div className="font-medium text-slate-400 dark:text-slate-400">
-                Diligite Lumen Sapientiae • Motijheel, Dhaka
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <a
+                  href="http://nurulanambashir.gt.tc/?i=1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-blue-600 dark:text-blue-400 hover:underline transition-colors cursor-pointer"
+                >
+                  Designed &amp; Developed by Bashir
+                </a>
+                <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+                <span className="font-medium text-slate-400 dark:text-slate-400">
+                  Diligite Lumen Sapientiae • Motijheel, Dhaka
+                </span>
               </div>
             </div>
           </div>

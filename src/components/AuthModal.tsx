@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import {
   X,
   Lock,
@@ -31,7 +32,7 @@ import { NDCLogo } from './NDCLogo';
 interface AuthModalProps {
   initialMode: 'login' | 'register' | 'forgot';
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (mode?: 'login' | 'register') => void;
 }
 
 const AVATAR_PRESETS = [
@@ -82,6 +83,36 @@ const COMMON_DEGREES = [
   'BCS',
 ];
 
+const REGISTRATION_DRAFT_STORAGE_KEY = 'ndc_registration_form_draft_v1';
+
+interface RegistrationFormDraft {
+  fullName?: string;
+  batchYear?: string;
+  bmdcNumber?: string;
+  position?: string;
+  institution?: string;
+  specialtyInput?: string;
+  degreeInput?: string;
+  city?: string;
+  country?: string;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+}
+
+const loadRegistrationDraft = (): RegistrationFormDraft => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(REGISTRATION_DRAFT_STORAGE_KEY);
+    if (raw) {
+      return JSON.parse(raw) as RegistrationFormDraft;
+    }
+  } catch (e) {
+    console.warn('Failed to load registration draft from localStorage', e);
+  }
+  return {};
+};
+
 export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode,
   onClose,
@@ -96,25 +127,122 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [rememberMe, setRememberMe] = useState(true);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
 
-  // Register Form State
-  const [fullName, setFullName] = useState('');
-  const [batchYear, setBatchYear] = useState<number>(68);
-  const [bmdcNumber, setBmdcNumber] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_PRESETS[0]);
-  const [position, setPosition] = useState('Software Engineer / Professional');
-  const [institution, setInstitution] = useState('Tech & AI Industry / Institution');
-  const [specialtyInput, setSpecialtyInput] = useState('Computer Science & Software');
-  const [degreeInput, setDegreeInput] = useState('HSC, BSc Engineering');
-  const [cadre, setCadre] = useState('');
-  const [city, setCity] = useState('Dhaka');
-  const [country, setCountry] = useState('Bangladesh');
-  const [phone, setPhone] = useState('');
-  const [whatsapp, setWhatsapp] = useState('');
-  const [email, setEmail] = useState('');
+  // Register Form State (14 fields) initialized from localStorage draft
+  const [initialDraft] = useState<RegistrationFormDraft>(() => loadRegistrationDraft());
+  const [fullName, setFullName] = useState(initialDraft.fullName || '');
+  const [batchYear, setBatchYear] = useState<string>(initialDraft.batchYear || '');
+  const [bmdcNumber, setBmdcNumber] = useState(initialDraft.bmdcNumber || '');
+  const [selectedAvatar] = useState(AVATAR_PRESETS[0]);
+  const [position, setPosition] = useState(initialDraft.position || '');
+  const [institution, setInstitution] = useState(initialDraft.institution || '');
+  const [specialtyInput, setSpecialtyInput] = useState(initialDraft.specialtyInput || '');
+  const [degreeInput, setDegreeInput] = useState(initialDraft.degreeInput || '');
+  const [city, setCity] = useState(initialDraft.city || '');
+  const [country, setCountry] = useState(initialDraft.country || '');
+  const [phone, setPhone] = useState(initialDraft.phone || '');
+  const [whatsapp, setWhatsapp] = useState(initialDraft.whatsapp || '');
+  const [email, setEmail] = useState(initialDraft.email || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [agreeTerms, setAgreeTerms] = useState(true);
+
+  // Auto-save registration form progress to localStorage
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const draft: RegistrationFormDraft = {
+        fullName,
+        batchYear,
+        bmdcNumber,
+        position,
+        institution,
+        specialtyInput,
+        degreeInput,
+        city,
+        country,
+        phone,
+        whatsapp,
+        email,
+      };
+      localStorage.setItem(REGISTRATION_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch (e) {
+      console.warn('Failed to auto-save registration draft to localStorage', e);
+    }
+  }, [
+    fullName,
+    batchYear,
+    bmdcNumber,
+    position,
+    institution,
+    specialtyInput,
+    degreeInput,
+    city,
+    country,
+    phone,
+    whatsapp,
+    email,
+  ]);
+
+  // Password Strength Calculation
+  const getPasswordStrength = (pass: string) => {
+    if (!pass) {
+      return {
+        score: 0,
+        percent: 0,
+        label: 'Enter password',
+        barColor: 'bg-slate-300 dark:bg-slate-700',
+        textColor: 'text-slate-500 dark:text-slate-400',
+        hint: 'Use 6+ chars with letters, numbers & symbols',
+      };
+    }
+    let score = 0;
+    if (pass.length >= 6) score += 1;
+    if (pass.length >= 10) score += 1;
+    if (/[a-z]/.test(pass) && /[A-Z]/.test(pass)) score += 1;
+    if (/\d/.test(pass)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+
+    if (pass.length < 6 || score <= 1) {
+      return {
+        score: 1,
+        percent: 25,
+        label: 'Weak',
+        barColor: 'bg-rose-500',
+        textColor: 'text-rose-600 dark:text-rose-400',
+        hint: pass.length < 6 ? 'At least 6 characters required' : 'Add numbers, uppercase or symbols',
+      };
+    }
+    if (score === 2) {
+      return {
+        score: 2,
+        percent: 50,
+        label: 'Fair',
+        barColor: 'bg-amber-500',
+        textColor: 'text-amber-600 dark:text-amber-400',
+        hint: 'Add uppercase letters or special symbols',
+      };
+    }
+    if (score === 3) {
+      return {
+        score: 3,
+        percent: 75,
+        label: 'Good',
+        barColor: 'bg-blue-500',
+        textColor: 'text-blue-600 dark:text-blue-400',
+        hint: 'Strong password — add a symbol for max security',
+      };
+    }
+    return {
+      score: 4,
+      percent: 100,
+      label: 'Strong',
+      barColor: 'bg-emerald-500',
+      textColor: 'text-emerald-600 dark:text-emerald-400',
+      hint: 'Excellent password security',
+    };
+  };
+
+  const passwordStrength = getPasswordStrength(password);
 
   // Forgot Password State
   const [forgotPhone, setForgotPhone] = useState('');
@@ -143,7 +271,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       await login(loginIdentifier.trim(), loginPassword);
       onClose();
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess('login');
     } catch (err: unknown) {
       const error = err as Error;
       setErrorMessage(error.message || 'Invalid credentials. Please try again.');
@@ -162,8 +290,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMessage('Please provide your Full Name.');
       return;
     }
+    if (!batchYear.trim() || !/^\d{4}$/.test(batchYear.trim())) {
+      setErrorMessage('Please enter a valid 4-digit Notre Dame HSC Year (e.g., 2016).');
+      return;
+    }
+    const parsedYear = Number(batchYear.trim());
+    const maxAllowedYear = new Date().getFullYear() + 2;
+    if (parsedYear < 1949 || parsedYear > maxAllowedYear) {
+      setErrorMessage(`Please enter a valid 4-digit Notre Dame HSC Year between 1949 and ${maxAllowedYear} (e.g., 2016).`);
+      return;
+    }
     if (!phone.trim()) {
       setErrorMessage('Please provide your Mobile Number.');
+      return;
+    }
+    if (!email.trim()) {
+      setErrorMessage('Please provide your Email Address.');
       return;
     }
     if (!password || password.length < 6) {
@@ -172,10 +314,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
     if (password !== confirmPassword) {
       setErrorMessage('Passwords do not match. Please recheck.');
-      return;
-    }
-    if (!agreeTerms) {
-      setErrorMessage('Please confirm that you are a genuine graduate or student of Notre Dame College.');
       return;
     }
 
@@ -189,38 +327,50 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         .split(',')
         .map((d) => d.trim())
         .filter(Boolean);
-      if (degreeArray.length === 0) degreeArray.push('HSC');
 
       const specialtyArray = specialtyInput
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
-      if (specialtyArray.length === 0) specialtyArray.push('Computer Science & Software');
+
+      const cleanWhatsapp = whatsapp.trim()
+        ? whatsapp.trim().startsWith('+880')
+          ? whatsapp.trim()
+          : `+880${whatsapp.trim().replace(/^0+/, '')}`
+        : '';
 
       await register({
         fullName: fullName.trim(),
         avatarUrl: selectedAvatar,
-        batchYear: Number(batchYear),
-        profession: 'Engineer / Tech',
-        position: position.trim() || 'Professional',
-        institution: institution.trim() || 'Notre Dame College Alumni Network',
-        cadre: cadre.trim() || undefined,
+        batchYear: parsedYear,
+        collegeRoll: bmdcNumber.trim(),
+        profession: '',
+        position: position.trim(),
+        institution: institution.trim(),
         specialty: specialtyArray,
         degree: degreeArray,
-        city: city.trim() || 'Dhaka',
-        country: country.trim() || 'Bangladesh',
+        city: city.trim(),
+        country: country.trim(),
         phone: formattedPhone,
-        whatsapp: whatsapp ? (whatsapp.startsWith('+880') ? whatsapp : `+880${whatsapp.replace(/^0+/, '')}`) : formattedPhone,
-        email: email.trim() || undefined,
-        bio: `${position} at ${institution}. NDC Batch ${batchYear}. Diligite Lumen Sapientiae.`,
+        whatsapp: cleanWhatsapp,
+        email: email.trim(),
+        bio: '',
         password,
       });
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem(REGISTRATION_DRAFT_STORAGE_KEY);
+        } catch (e) {
+          console.warn('Failed to clear registration draft', e);
+        }
+      }
 
       setSuccessMessage('Registration successful! Welcome to the Notre Dame Alumni Network.');
       setTimeout(() => {
         onClose();
-        if (onSuccess) onSuccess();
-      }, 500);
+        if (onSuccess) onSuccess('register');
+      }, 600);
     } catch (err: unknown) {
       const error = err as Error;
       setErrorMessage(error.message || 'Registration failed. Please check your details and try again.');
@@ -284,15 +434,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto bg-slate-900/70 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto bg-slate-900/30 dark:bg-slate-950/45 backdrop-blur-md animate-in fade-in duration-200"
+    >
       <div
-        className="relative w-full max-w-2xl my-auto bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]"
+        className="relative w-full max-w-2xl my-auto bg-white/35 dark:bg-slate-900/40 backdrop-blur-2xl backdrop-saturate-180 rounded-3xl shadow-[0_24px_64px_-12px_rgba(15,23,42,0.35),inset_0_1px_1px_rgba(255,255,255,0.75)] dark:shadow-[0_24px_64px_-12px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.2)] border border-white/60 dark:border-white/15 ring-1 ring-white/35 dark:ring-white/10 overflow-hidden flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Subtle Liquid Glass Refractive Highlights */}
+        <div className="pointer-events-none absolute -top-24 -left-24 w-72 h-72 rounded-full bg-blue-400/20 dark:bg-blue-500/15 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 w-72 h-72 rounded-full bg-indigo-400/20 dark:bg-amber-500/10 blur-3xl" />
+
         {/* Modal Header */}
-        <div className="relative px-6 py-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-blue-50/60 via-indigo-50/40 to-slate-50 dark:from-slate-900 dark:via-blue-950/20 dark:to-slate-900 flex items-center justify-between flex-shrink-0">
+        <div className="relative px-6 py-5 border-b border-white/40 dark:border-white/10 bg-white/25 dark:bg-white/[0.04] backdrop-blur-xl flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-800 p-1 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center shadow-md shadow-blue-600/10 overflow-hidden shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-md p-1 border border-white/70 dark:border-white/15 flex items-center justify-center shadow-md shadow-blue-600/10 overflow-hidden shrink-0">
               <NDCLogo className="w-full h-full" />
             </div>
             <div>
@@ -302,12 +459,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   {mode === 'register' && 'Notre Dame Alumni Registration'}
                   {mode === 'forgot' && 'Reset Portal Password'}
                 </h2>
-                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300">
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 dark:bg-blue-400/15 border border-blue-400/30 text-blue-700 dark:text-blue-300 backdrop-blur-sm">
                   <ShieldCheck className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                   <span>Verified Notredamian</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
                 {mode === 'login' && 'Notre Dame College (NDC Dhaka) Alumni Network'}
                 {mode === 'register' && 'Join your fellow batchmates and seniors across 75+ batches worldwide'}
                 {mode === 'forgot' && 'Verify your mobile number to restore access to your account'}
@@ -318,7 +475,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-full bg-white/50 hover:bg-white/80 dark:bg-white/10 dark:hover:bg-white/20 border border-white/50 dark:border-white/15 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-colors cursor-pointer backdrop-blur-md"
             aria-label="Close modal"
           >
             <X className="w-4 h-4" />
@@ -327,8 +484,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Tab Switcher (Login vs Sign Up) */}
         {mode !== 'forgot' && (
-          <div className="px-6 pt-4 pb-2 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800/80 flex-shrink-0">
-            <div className="flex p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/80 max-w-md mx-auto">
+          <div className="relative px-6 pt-4 pb-2 bg-white/15 dark:bg-white/[0.02] border-b border-white/35 dark:border-white/10 flex-shrink-0">
+            <div className="flex p-1 rounded-2xl bg-white/35 dark:bg-slate-950/35 border border-white/50 dark:border-white/10 backdrop-blur-md max-w-md mx-auto">
               <button
                 type="button"
                 onClick={() => {
@@ -338,12 +495,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 }}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   mode === 'login'
-                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-white/80 dark:bg-white/15 text-blue-600 dark:text-blue-300 shadow-xs border border-white/60 dark:border-white/15 backdrop-blur-md'
+                    : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <User className="w-3.5 h-3.5" />
-                <span>Sign In (লগইন)</span>
+                <span>Sign In</span>
               </button>
 
               <button
@@ -355,19 +512,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 }}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   mode === 'register'
-                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-white/80 dark:bg-white/15 text-blue-600 dark:text-blue-300 shadow-xs border border-white/60 dark:border-white/15 backdrop-blur-md'
+                    : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <GraduationCap className="w-3.5 h-3.5" />
-                <span>Sign Up / Register (রেজিস্ট্রেশন)</span>
+                <span>Sign Up / Register</span>
               </button>
             </div>
           </div>
         )}
 
         {/* Scrollable Form Body */}
-        <div className="p-6 overflow-y-auto space-y-4">
+        <div className="relative p-6 overflow-y-auto space-y-4">
           {/* Status Alerts */}
           {errorMessage && (
             <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-semibold animate-in fade-in">
@@ -386,12 +543,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
              ========================================================================= */}
           {mode === 'login' && (
             <form onSubmit={handleLogin} className="space-y-4 max-w-md mx-auto py-2">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.05 }}
+              >
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
                   Mobile Number or Email
                 </label>
-                <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                  <div className="pl-3.5 text-slate-400">
+                <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                  <div className="pl-3.5 text-slate-500 dark:text-slate-400">
                     <Phone className="w-4 h-4" />
                   </div>
                   <input
@@ -399,16 +560,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     placeholder="e.g. 01711223344 or alumnus@ndc.edu.bd"
                     value={loginIdentifier}
                     onChange={(e) => setLoginIdentifier(e.target.value)}
-                    className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
+                    className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                     autoFocus
                   />
                 </div>
-              </div>
+              </motion.div>
 
-              <div>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.12 }}
+              >
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Password (পাসওয়ার্ড)
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Password
                   </label>
                   <button
                     type="button"
@@ -421,8 +586,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     Forgot Password?
                   </button>
                 </div>
-                <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                  <div className="pl-3.5 text-slate-400">
+                <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                  <div className="pl-3.5 text-slate-500 dark:text-slate-400">
                     <Lock className="w-4 h-4" />
                   </div>
                   <input
@@ -430,21 +595,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     placeholder="Enter your password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
+                    className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={() => setShowLoginPassword(!showLoginPassword)}
-                    className="pr-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    className="pr-3.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
                     aria-label="Toggle password visibility"
                   >
                     {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-              </div>
+              </motion.div>
 
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-400">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.18 }}
+                className="flex items-center justify-between pt-1"
+              >
+                <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700 dark:text-slate-300">
                   <input
                     type="checkbox"
                     checked={rememberMe}
@@ -453,20 +623,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   />
                   <span>Remember me on this browser</span>
                 </label>
-              </div>
+              </motion.div>
 
-              <button
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.24 }}
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm shadow-md shadow-blue-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                <span>{loading ? 'Signing in...' : 'Sign In to Portal (লগইন করুন)'}</span>
+                <span>{loading ? 'Signing in...' : 'Sign In to Portal'}</span>
                 <ArrowRight className="w-4 h-4" />
-              </button>
+              </motion.button>
 
               {/* Helper for new users */}
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-center">
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.3 }}
+                className="pt-4 border-t border-white/35 dark:border-white/10 text-center"
+              >
+                <p className="text-xs text-slate-700 dark:text-slate-300 mb-2">
                   Don't have a registered alumni account yet?
                 </p>
                 <button
@@ -475,12 +653,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     setMode('register');
                     setErrorMessage('');
                   }}
-                  className="px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-200/80 dark:border-blue-800 cursor-pointer transition-all inline-flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-white/45 dark:bg-white/10 hover:bg-white/70 dark:hover:bg-white/20 text-blue-700 dark:text-blue-300 text-xs font-bold border border-white/60 dark:border-white/15 backdrop-blur-md cursor-pointer transition-all inline-flex items-center gap-1.5"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
-                  <span>Register Verified Alumni Profile (নতুন একাউন্ট খুলুন)</span>
+                  <span>Register Verified Alumni Profile</span>
                 </button>
-              </div>
+              </motion.div>
             </form>
           )}
 
@@ -489,94 +667,80 @@ export const AuthModal: React.FC<AuthModalProps> = ({
              ========================================================================= */}
           {mode === 'register' && (
             <form onSubmit={handleRegister} className="space-y-4">
-              {/* Profile Photo Avatar Selection */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
-                <div className="flex items-center justify-between mb-2.5">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                    <Camera className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    <span>Choose Profile Avatar</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400">Click to select photo</span>
-                </div>
-
-                <div className="flex items-center gap-3 overflow-x-auto pb-1">
-                  {AVATAR_PRESETS.map((avatar, idx) => {
-                    const isSelected = selectedAvatar === avatar;
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setSelectedAvatar(avatar)}
-                        className={`relative w-12 h-12 rounded-2xl overflow-hidden border-2 transition-all cursor-pointer flex-shrink-0 ${
-                          isSelected
-                            ? 'border-blue-600 ring-2 ring-blue-500/30 scale-105 shadow-md'
-                            : 'border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100'
-                        }`}
-                      >
-                        <img src={avatar} alt={`Avatar option ${idx + 1}`} className="w-full h-full object-cover" />
-                        {isSelected && (
-                          <div className="absolute inset-0 bg-blue-600/30 flex items-center justify-center text-white">
-                            <Check className="w-4 h-4 stroke-[3]" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* SECTION 1: Personal & Batch Credentials */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Full Name */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Full Name (with title) <span className="text-rose-500">*</span>
+              {/* SECTION 1: Identity, Batch & Contact */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.04 }}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5"
+              >
+                {/* 1. Full Name * */}
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.06 }}
+                  className="sm:col-span-2"
+                >
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Full Name <span className="text-rose-500">*</span>
                   </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                    <div className="pl-3.5 text-slate-400">
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                    <div className="pl-3.5 text-slate-500 dark:text-slate-400">
                       <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     </div>
                     <input
                       type="text"
-                      placeholder="e.g. Dr. Md. Tanvir Ahmed Chowdhury"
+                      placeholder="e.g. Md. Tanvir Ahmed Chowdhury"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      className="w-full px-3 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
+                      className="w-full px-3 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                       required
                     />
                   </div>
-                </div>
+                </motion.div>
 
-                {/* NDC Batch */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Notre Dame HSC Batch <span className="text-rose-500">*</span>
+                {/* 2. Notre Dame HSC Year * */}
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                >
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Notre Dame HSC Year <span className="text-rose-500">*</span>
                   </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
                       <GraduationCap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     </div>
-                    <select
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1949}
+                      max={new Date().getFullYear() + 2}
+                      step={1}
+                      placeholder="e.g. 2016"
                       value={batchYear}
-                      onChange={(e) => setBatchYear(Number(e.target.value))}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white bg-transparent focus:outline-none cursor-pointer"
-                    >
-                      {BATCH_LIST.map((b) => (
-                        <option key={b.batchYear} value={b.batchYear} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                          Batch {b.batchYear < 10 ? `0${b.batchYear}` : b.batchYear} ({b.session})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(e) => {
+                        const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 4);
+                        setBatchYear(digitsOnly);
+                      }}
+                      required
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
                   </div>
-                </div>
+                </motion.div>
 
-                {/* College Roll / Student ID */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    College Roll / Registration ID (Optional)
+                {/* 3. College Roll / Registration ID */}
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.14 }}
+                >
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    College Roll / Registration ID
                   </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
                       <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <input
@@ -584,148 +748,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       placeholder="e.g. 118042 or 214015"
                       value={bmdcNumber}
                       onChange={(e) => setBmdcNumber(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                     />
                   </div>
-                </div>
-              </div>
+                </motion.div>
 
-              {/* SECTION 2: Professional & Career Work */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                {/* Current Designation */}
+                {/* 4. Mobile Number * */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Current Designation / Role
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
-                      <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. Senior Software Engineer / Lead / CEO"
-                      value={position}
-                      onChange={(e) => setPosition(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Institution / Company */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Company / Institution / Workplace
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
-                      <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. Google / BUET / DMC / Apex / Govt"
-                      value={institution}
-                      onChange={(e) => setInstitution(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Specialty */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Primary Specialty
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
-                      <Briefcase className="w-4 h-4 text-blue-500" />
-                    </div>
-                    <input
-                      type="text"
-                      list="specialty-suggestions"
-                      placeholder="e.g. Software Engineering, AI & Robotics"
-                      value={specialtyInput}
-                      onChange={(e) => setSpecialtyInput(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                    <datalist id="specialty-suggestions">
-                      {SPECIALTY_OPTIONS.map((s) => (
-                        <option key={s} value={s} />
-                      ))}
-                    </datalist>
-                  </div>
-                </div>
-
-                {/* Degrees & Qualifications */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Degrees & Qualifications
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
-                      <Award className="w-4 h-4 text-amber-500" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. BSc, MSc, MBA, PhD"
-                      value={degreeInput}
-                      onChange={(e) => setDegreeInput(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* BCS Cadre (Optional) */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    BCS Cadre (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 38th BCS (Administration) or 41st BCS"
-                    value={cadre}
-                    onChange={(e) => setCadre(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                {/* Location: City & Country */}
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      City
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Bogura / Dhaka"
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Country
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Bangladesh"
-                      value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 3: Contact Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                {/* Mobile Number */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Mobile Number <span className="text-rose-500">*</span>
                   </label>
-                  <div className="flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all overflow-hidden">
-                    <div className="px-3 py-2.5 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold flex-shrink-0 select-none">
+                  <div className="flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all overflow-hidden">
+                    <div className="px-3 py-2.5 bg-white/40 dark:bg-white/10 border-r border-white/50 dark:border-white/15 text-slate-700 dark:text-slate-200 text-xs font-bold flex-shrink-0 select-none">
                       +880
                     </div>
                     <input
@@ -733,18 +767,160 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       placeholder="1XX-XXXXXXX"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                       required
                     />
                   </div>
                 </div>
 
-                {/* WhatsApp */}
+                {/* 5. Email Address * */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    WhatsApp (For Batch Groups)
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Email Address <span className="text-rose-500">*</span>
                   </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-emerald-500 transition-all">
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <input
+                      type="email"
+                      placeholder="alumnus@gmail.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* SECTION 2: Professional, Location & WhatsApp */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.18 }}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-white/35 dark:border-white/10"
+              >
+                {/* 6. Current Profession / Role */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Current Profession / Role
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Senior Software Engineer / Lead / CEO"
+                      value={position}
+                      onChange={(e) => setPosition(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 7. Organization / Workplace */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Organization / Workplace
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Google / BUET / DMC / Apex"
+                      value={institution}
+                      onChange={(e) => setInstitution(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 8. Field / Specialty */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Field / Specialty
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <Briefcase className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Computer Science & Software"
+                      value={specialtyInput}
+                      onChange={(e) => setSpecialtyInput(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 9. Degrees & Qualifications */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Degrees & Qualifications
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <Award className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. HSC, BSc, MSc, MBA, PhD"
+                      value={degreeInput}
+                      onChange={(e) => setDegreeInput(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 10. City */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    City
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <MapPin className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Dhaka"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 11. Country */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Country
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <Globe className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Bangladesh"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 12. WhatsApp Number */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    WhatsApp Number
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-emerald-500 transition-all">
                     <div className="pl-3 text-emerald-600 dark:text-emerald-400">
                       <WhatsAppIcon className="w-4 h-4" />
                     </div>
@@ -753,39 +929,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       placeholder="e.g. 01711223344"
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                     />
                   </div>
                 </div>
+              </motion.div>
 
-                {/* Email Address */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Email Address
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
-                      <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <input
-                      type="email"
-                      placeholder="alumnus@gmail.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 4: Security & Password */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {/* SECTION 3: Security & Password */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.28 }}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-white/35 dark:border-white/10"
+              >
+                {/* 13. Password * */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Choose Password (পাসওয়ার্ড) <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Password <span className="text-rose-500">*</span>
+                    </label>
+                    {password.length > 0 && (
+                      <span className={`text-[10px] font-extrabold uppercase tracking-wider ${passwordStrength.textColor}`}>
+                        {passwordStrength.label}
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
                       <Lock className="w-4 h-4" />
                     </div>
                     <input
@@ -793,25 +963,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       placeholder="Min. 6 characters"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                      className="pr-3 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+
+                  {/* Visual Password Strength Progress Bar */}
+                  <div className="mt-2 space-y-1">
+                    <div className="w-full h-1.5 rounded-full bg-slate-200/80 dark:bg-slate-800/80 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ease-out ${passwordStrength.barColor}`}
+                        style={{ width: `${passwordStrength.percent}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-slate-500 dark:text-slate-400 truncate">
+                        {passwordStrength.hint}
+                      </span>
+                      {password.length > 0 && (
+                        <span className={`font-bold shrink-0 ml-2 ${passwordStrength.textColor}`}>
+                          {passwordStrength.percent}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
+                {/* 14. Confirm Password * */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Confirm Password <span className="text-rose-500">*</span>
                   </label>
-                  <div className="relative flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-400">
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
                       <Lock className="w-4 h-4" />
                     </div>
                     <input
@@ -819,40 +1010,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       placeholder="Re-type password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                       required
                     />
                   </div>
                 </div>
-              </div>
-
-              {/* Terms Checkbox */}
-              <div className="pt-2">
-                <label className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-600 dark:text-slate-400 select-none">
-                  <input
-                    type="checkbox"
-                    checked={agreeTerms}
-                    onChange={(e) => setAgreeTerms(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
-                  />
-                  <span>
-                    I confirm that I am an alumnus or student of{' '}
-                    <strong className="text-slate-900 dark:text-white">Notre Dame College, Dhaka</strong> and agree to uphold the values of Diligite Lumen Sapientiae.
-                  </span>
-                </label>
-              </div>
+              </motion.div>
 
               {/* Submit Button */}
-              <div className="pt-2">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.35 }}
+                className="pt-2"
+              >
                 <button
                   type="submit"
                   disabled={loading}
                   className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm sm:text-base shadow-lg shadow-blue-600/30 transition-all cursor-pointer flex items-center justify-center gap-2 group disabled:opacity-60"
                 >
-                  <span>{loading ? 'Creating your Notredamian profile...' : 'Complete Alumni Registration (রেজিস্ট্রেশন করুন)'}</span>
+                  <span>
+                    {loading
+                      ? 'Creating your Notredamian profile...'
+                      : 'Complete Alumni Registration'}
+                  </span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
-              </div>
+              </motion.div>
             </form>
           )}
 
@@ -900,7 +1084,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     disabled={loading}
                     className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
-                    <span>{loading ? 'Sending OTP...' : 'Send Verification OTP (ওটিপি পাঠান)'}</span>
+                    <span>{loading ? 'Sending OTP...' : 'Send Verification OTP'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </form>

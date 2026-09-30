@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
 import {
   GraduationCap,
   ShieldCheck,
@@ -353,7 +354,8 @@ export const StatsBar: React.FC = () => {
   const displayAlumni = Math.floor(animProgress * 3250).toLocaleString();
   const displayCountries = Math.floor(animProgress * 18);
   const displaySpecialists = Math.floor(animProgress * 450);
-  const show247 = animProgress > 0.45;
+  const displayEmergencyHours = Math.floor(animProgress * 24);
+  const displayEmergencyDays = Math.floor(animProgress * 7);
 
   return (
     <section
@@ -456,9 +458,12 @@ export const StatsBar: React.FC = () => {
         {/* Row 1: 3 statistics on desktop */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3 mb-2.5 sm:mb-3">
           {/* 1. Batches */}
-          <div
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.96 }}
+            transition={{ duration: 0.55, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => toggleStat('batches')}
-            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-all duration-200 cursor-pointer ${
+            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-colors duration-200 cursor-pointer ${
               activeStat === 'batches'
                 ? 'bg-slate-900/90 border-2 border-amber-400/80 ring-2 ring-amber-400/20'
                 : 'bg-slate-900/60 hover:bg-slate-900/80 border border-blue-400/20 hover:border-amber-400/40 hover:-translate-y-0.5'
@@ -482,12 +487,15 @@ export const StatsBar: React.FC = () => {
             <div className="text-[10px] font-medium text-blue-300/80">
               1949 — 2026
             </div>
-          </div>
+          </motion.div>
 
           {/* 2. Verified Alumni */}
-          <div
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.96 }}
+            transition={{ duration: 0.55, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => toggleStat('alumni')}
-            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-all duration-200 cursor-pointer ${
+            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-colors duration-200 cursor-pointer ${
               activeStat === 'alumni'
                 ? 'bg-slate-900/90 border-2 border-emerald-400/80 ring-2 ring-emerald-400/20'
                 : 'bg-slate-900/60 hover:bg-slate-900/80 border border-blue-400/20 hover:border-amber-400/40 hover:-translate-y-0.5'
@@ -511,12 +519,15 @@ export const StatsBar: React.FC = () => {
             <div className="text-[10px] font-medium text-emerald-300/80">
               Verified Profiles
             </div>
-          </div>
+          </motion.div>
 
           {/* 3. Countries Worldwide */}
-          <div
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.96 }}
+            transition={{ duration: 0.55, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => toggleStat('countries')}
-            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-all duration-200 cursor-pointer sm:col-span-2 lg:col-span-1 ${
+            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-colors duration-200 cursor-pointer sm:col-span-2 lg:col-span-1 ${
               activeStat === 'countries'
                 ? 'bg-slate-900/90 border-2 border-indigo-400/80 ring-2 ring-indigo-400/20'
                 : 'bg-slate-900/60 hover:bg-slate-900/80 border border-blue-400/20 hover:border-amber-400/40 hover:-translate-y-0.5'
@@ -540,15 +551,18 @@ export const StatsBar: React.FC = () => {
             <div className="text-[10px] font-medium text-indigo-300/80">
               Global Chapters
             </div>
-          </div>
+          </motion.div>
         </div>
 
         {/* Row 2: 2 statistics centered on desktop */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 max-w-xl mx-auto">
           {/* 4. Specialists & Fellows */}
-          <div
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.96 }}
+            transition={{ duration: 0.55, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => toggleStat('specialists')}
-            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-all duration-200 cursor-pointer ${
+            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-colors duration-200 cursor-pointer ${
               activeStat === 'specialists'
                 ? 'bg-slate-900/90 border-2 border-amber-400/80 ring-2 ring-amber-400/20'
                 : 'bg-slate-900/60 hover:bg-slate-900/80 border border-blue-400/20 hover:border-amber-400/40 hover:-translate-y-0.5'
@@ -572,12 +586,15 @@ export const StatsBar: React.FC = () => {
             <div className="text-[10px] font-medium text-amber-300/80">
               FCPS, MD, MRCP, FRCS
             </div>
-          </div>
+          </motion.div>
 
           {/* 5. Emergency & Brotherhood */}
-          <div
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.96 }}
+            transition={{ duration: 0.55, delay: 0.45, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => toggleStat('brotherhood')}
-            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-all duration-200 cursor-pointer ${
+            className={`group relative backdrop-blur-md rounded-xl p-3 sm:p-3.5 shadow-md shadow-black/25 transition-colors duration-200 cursor-pointer ${
               activeStat === 'brotherhood'
                 ? 'bg-slate-900/90 border-2 border-rose-400/80 ring-2 ring-rose-400/20'
                 : 'bg-slate-900/60 hover:bg-slate-900/80 border border-blue-400/20 hover:border-amber-400/40 hover:-translate-y-0.5'
@@ -593,14 +610,12 @@ export const StatsBar: React.FC = () => {
             </div>
 
             <div className="text-2xl sm:text-3xl font-black text-white tracking-tight tabular-nums group-hover:text-rose-200 transition-colors">
-              {show247 ? (
-                <span className="inline-flex items-center gap-1">
-                  <span>24/7</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+              <span className="inline-flex items-center gap-1">
+                <span>
+                  {displayEmergencyHours}/{displayEmergencyDays}
                 </span>
-              ) : (
-                <span className="text-slate-500">—/—</span>
-              )}
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+              </span>
             </div>
             <div className="text-[11px] font-bold text-slate-200 tracking-wide uppercase mt-0.5">
               Emergency & Brotherhood
@@ -608,7 +623,7 @@ export const StatsBar: React.FC = () => {
             <div className="text-[10px] font-medium text-rose-300/80">
               Lifelong Bond
             </div>
-          </div>
+          </motion.div>
         </div>
 
         {/* ========================================================= */}

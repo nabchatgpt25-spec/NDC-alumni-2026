@@ -177,16 +177,24 @@ export interface GalleryAlbum {
 export const SPECIALTIES_LIST = [
   'Computer Science & Software', 'Artificial Intelligence & Data', 'Electrical & Electronic Engineering',
   'Civil & Structural Engineering', 'Mechanical & Robotics', 'Industrial & Production Engineering',
+  'Chemical & Materials Engineering', 'Biomedical & Biotechnology', 'Aeronautical & Marine Engineering',
   'Telecommunications & Networks', 'Cybersecurity & Cloud', 'Energy & Sustainable Systems',
+  'Medicine, Surgery & Healthcare', 'Public Health & Epidemiology', 'Pharmaceutical Sciences',
   'Business Administration & Management', 'Finance, Banking & Investment', 'Chartered Accountancy & Audit',
+  'Supply Chain & Operations', 'Marketing & Brand Strategy', 'Economics & Development Policy',
   'Entrepreneurship & Startups', 'Physics & Physical Sciences', 'Mathematics & Statistics',
-  'Civil Service & Administration (BCS)', 'Foreign Affairs & Diplomacy', 'Constitutional & Corporate Law',
-  'Architecture & Urban Planning', 'Higher Education & Research', 'Journalism & Media Communications',
-  'Defense & Strategic Leadership', 'Literature & Creative Arts'
+  'Chemistry & Environmental Science', 'Civil Service & Administration (BCS)', 'Foreign Affairs & Diplomacy',
+  'Constitutional & Corporate Law', 'Architecture & Urban Planning', 'Higher Education & Research',
+  'Journalism & Media Communications', 'Defense & Strategic Leadership', 'Literature & Creative Arts',
+  'Others'
 ];
 
 export const DEGREES_LIST = [
-  'HSC', 'BSc Engineering', 'BBA', 'MBA', 'MSc', 'PhD', 'PostDoc',
-  'B.Arch', 'LLB', 'LLM', 'CA / ACA',
-  'CFA', 'BCS', 'BA', 'MA', 'BSS', 'MSS', 'Diploma', 'MPhil', 'BSc', 'M.Arch'
+  'HSC', 'BSc Engineering', 'BSc', 'MSc', 'BBA', 'MBA', 'EMBA',
+  'MBBS', 'BDS', 'MD', 'MS', 'FCPS', 'MRCP', 'MRCS', 'MPH',
+  'PhD', 'PostDoc', 'MPhil', 'B.Arch', 'M.Arch',
+  'LLB', 'LLM', 'Barrister-at-Law', 'B.Pharm', 'M.Pharm',
+  'BA', 'MA', 'BSS', 'MSS', 'BCom', 'MCom',
+  'CA / ACA', 'FCA', 'ACCA', 'CFA', 'CMA', 'CS',
+  'BCS', 'PGD', 'Diploma', 'Others'
 ];

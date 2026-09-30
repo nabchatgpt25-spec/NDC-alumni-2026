@@ -17,7 +17,9 @@ import {
   Eye,
   CheckCircle2,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Sparkles,
+  Check
 } from 'lucide-react';
 import { AlumniProfile, SPECIALTIES_LIST, DEGREES_LIST } from '../types';
 import { ALUMNI_PROFILES } from '../data/mockData';
@@ -25,6 +27,7 @@ import { useAuth } from '../context/AuthContext';
 import { AchievementBadgeChip, BADGE_CONFIGS } from './AchievementBadge';
 import { PhotoChangeModal, PhotoType } from './PhotoChangeModal';
 import { WhatsAppIcon, FacebookIcon } from './SocialIcons';
+import { calculateProfileCompletion } from '../utils/profileCompletion';
 
 interface ProfileViewProps {
   profileId: number;
@@ -63,51 +66,99 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const coverFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Edit form state
-  const [editName, setEditName] = useState(profile.fullName);
-  const [editBatch, setEditBatch] = useState(profile.batchYear);
-  const [editBio, setEditBio] = useState(profile.bio || '');
-  const [editPosition, setEditPosition] = useState(profile.position || '');
-  const [editInstitution, setEditInstitution] = useState(profile.institution || '');
-  const [editProfession, setEditProfession] = useState(profile.profession);
-  const [editCadre, setEditCadre] = useState(profile.cadre || '');
-  const [editCity, setEditCity] = useState(profile.city || '');
-  const [editCountry, setEditCountry] = useState(profile.country || '');
-  const [editWhatsapp, setEditWhatsapp] = useState(profile.whatsapp || '');
-  const [editFb, setEditFb] = useState(profile.fbLink || '');
-  const [editPhone, setEditPhone] = useState(profile.phone || '');
-  const [editEmail, setEditEmail] = useState(profile.email || '');
-  const [editCareer, setEditCareer] = useState((profile.careerHistory || []).join('\n'));
-  const [editDegrees, setEditDegrees] = useState<string[]>(profile.degree || []);
-  const [editSpecialties, setEditSpecialties] = useState<string[]>(profile.specialty || []);
-  const [editSpecialtyOther, setEditSpecialtyOther] = useState(profile.specialtyOther || '');
-  const [editBadges, setEditBadges] = useState<string[]>(profile.badges || []);
+  const editDraftStorageKey = `ndc_profile_edit_draft_v1_${currentUser.id}`;
+
+  const loadEditDraft = () => {
+    if (typeof window === 'undefined' || !isMine) return null;
+    try {
+      const raw = localStorage.getItem(editDraftStorageKey);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('Failed to load profile edit draft', e);
+    }
+    return null;
+  };
+
+  const [initialEditDraft] = useState<Record<string, any> | null>(() => loadEditDraft());
+
+  // Edit form state (restored from localStorage draft if available)
+  const [editName, setEditName] = useState<string>(initialEditDraft?.editName ?? profile.fullName);
+  const [editBatch, setEditBatch] = useState<number>(initialEditDraft?.editBatch ?? profile.batchYear);
+  const [editCollegeRoll, setEditCollegeRoll] = useState<string>(initialEditDraft?.editCollegeRoll ?? (profile.collegeRoll || ''));
+  const [editBio, setEditBio] = useState<string>(initialEditDraft?.editBio ?? (profile.bio || ''));
+  const [editPosition, setEditPosition] = useState<string>(initialEditDraft?.editPosition ?? (profile.position || ''));
+  const [editInstitution, setEditInstitution] = useState<string>(initialEditDraft?.editInstitution ?? (profile.institution || ''));
+  const [editProfession, setEditProfession] = useState<string>(initialEditDraft?.editProfession ?? (profile.profession || ''));
+  const [editCadre, setEditCadre] = useState<string>(initialEditDraft?.editCadre ?? (profile.cadre || ''));
+  const [editCity, setEditCity] = useState<string>(initialEditDraft?.editCity ?? (profile.city || ''));
+  const [editCountry, setEditCountry] = useState<string>(initialEditDraft?.editCountry ?? (profile.country || ''));
+  const [editWhatsapp, setEditWhatsapp] = useState<string>(initialEditDraft?.editWhatsapp ?? (profile.whatsapp || ''));
+  const [editFb, setEditFb] = useState<string>(initialEditDraft?.editFb ?? (profile.fbLink || ''));
+  const [editPhone, setEditPhone] = useState<string>(initialEditDraft?.editPhone ?? (profile.phone || ''));
+  const [editEmail, setEditEmail] = useState<string>(initialEditDraft?.editEmail ?? (profile.email || ''));
+  const [editCareer, setEditCareer] = useState<string>(initialEditDraft?.editCareer ?? (profile.careerHistory || []).join('\n'));
+  const [editDegrees, setEditDegrees] = useState<string[]>(initialEditDraft?.editDegrees ?? (profile.degree || []));
+  const [editDegreeOther, setEditDegreeOther] = useState<string>(initialEditDraft?.editDegreeOther ?? '');
+  const [editSpecialties, setEditSpecialties] = useState<string[]>(initialEditDraft?.editSpecialties ?? (profile.specialty || []));
+  const [editSpecialtyOther, setEditSpecialtyOther] = useState<string>(initialEditDraft?.editSpecialtyOther ?? (profile.specialtyOther || ''));
+  const [editProfessionOther, setEditProfessionOther] = useState<string>(initialEditDraft?.editProfessionOther ?? '');
+  const [editBadges, setEditBadges] = useState<string[]>(initialEditDraft?.editBadges ?? (profile.badges || []));
   const [currentPass, setCurrentPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Keep profile synchronized when profileId or currentUser changes
+  // Keep profile synchronized when profileId or currentUser changes, respecting any saved localStorage draft for current user
   useEffect(() => {
     if (isMine) {
       setProfile(currentUser);
-      setEditName(currentUser.fullName);
-      setEditBatch(currentUser.batchYear);
-      setEditBio(currentUser.bio || '');
-      setEditPosition(currentUser.position || '');
-      setEditInstitution(currentUser.institution || '');
-      setEditProfession(currentUser.profession);
-      setEditCadre(currentUser.cadre || '');
-      setEditCity(currentUser.city || '');
-      setEditCountry(currentUser.country || '');
-      setEditWhatsapp(currentUser.whatsapp || '');
-      setEditFb(currentUser.fbLink || '');
-      setEditPhone(currentUser.phone || '');
-      setEditEmail(currentUser.email || '');
-      setEditCareer((currentUser.careerHistory || []).join('\n'));
-      setEditDegrees(currentUser.degree || []);
-      setEditSpecialties(currentUser.specialty || []);
-      setEditSpecialtyOther(currentUser.specialtyOther || '');
-      setEditBadges(currentUser.badges || []);
+      const savedDraft = loadEditDraft();
+      if (savedDraft) {
+        setEditName(savedDraft.editName ?? currentUser.fullName);
+        setEditBatch(savedDraft.editBatch ?? currentUser.batchYear);
+        setEditCollegeRoll(savedDraft.editCollegeRoll ?? (currentUser.collegeRoll || ''));
+        setEditBio(savedDraft.editBio ?? (currentUser.bio || ''));
+        setEditPosition(savedDraft.editPosition ?? (currentUser.position || ''));
+        setEditInstitution(savedDraft.editInstitution ?? (currentUser.institution || ''));
+        setEditProfession(savedDraft.editProfession ?? (currentUser.profession || ''));
+        setEditProfessionOther(savedDraft.editProfessionOther ?? '');
+        setEditCadre(savedDraft.editCadre ?? (currentUser.cadre || ''));
+        setEditCity(savedDraft.editCity ?? (currentUser.city || ''));
+        setEditCountry(savedDraft.editCountry ?? (currentUser.country || ''));
+        setEditWhatsapp(savedDraft.editWhatsapp ?? (currentUser.whatsapp || ''));
+        setEditFb(savedDraft.editFb ?? (currentUser.fbLink || ''));
+        setEditPhone(savedDraft.editPhone ?? (currentUser.phone || ''));
+        setEditEmail(savedDraft.editEmail ?? (currentUser.email || ''));
+        setEditCareer(savedDraft.editCareer ?? (currentUser.careerHistory || []).join('\n'));
+        setEditDegrees(savedDraft.editDegrees ?? (currentUser.degree || []));
+        setEditDegreeOther(savedDraft.editDegreeOther ?? '');
+        setEditSpecialties(savedDraft.editSpecialties ?? (currentUser.specialty || []));
+        setEditSpecialtyOther(savedDraft.editSpecialtyOther ?? (currentUser.specialtyOther || ''));
+        setEditBadges(savedDraft.editBadges ?? (currentUser.badges || []));
+      } else {
+        setEditName(currentUser.fullName);
+        setEditBatch(currentUser.batchYear);
+        setEditCollegeRoll(currentUser.collegeRoll || '');
+        setEditBio(currentUser.bio || '');
+        setEditPosition(currentUser.position || '');
+        setEditInstitution(currentUser.institution || '');
+        setEditProfession(currentUser.profession || '');
+        setEditProfessionOther('');
+        setEditCadre(currentUser.cadre || '');
+        setEditCity(currentUser.city || '');
+        setEditCountry(currentUser.country || '');
+        setEditWhatsapp(currentUser.whatsapp || '');
+        setEditFb(currentUser.fbLink || '');
+        setEditPhone(currentUser.phone || '');
+        setEditEmail(currentUser.email || '');
+        setEditCareer((currentUser.careerHistory || []).join('\n'));
+        setEditDegrees(currentUser.degree || []);
+        setEditDegreeOther('');
+        setEditSpecialties(currentUser.specialty || []);
+        setEditSpecialtyOther(currentUser.specialtyOther || '');
+        setEditBadges(currentUser.badges || []);
+      }
     } else {
       const found = ALUMNI_PROFILES.find((p) => p.id === profileId);
       if (found) {
@@ -115,6 +166,127 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
       }
     }
   }, [profileId, currentUser, isMine]);
+
+  // Auto-save Edit Profile form progress (including 'Others' custom inputs) to localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isMine) return;
+    try {
+      const draftPayload = {
+        editName,
+        editBatch,
+        editCollegeRoll,
+        editBio,
+        editPosition,
+        editInstitution,
+        editProfession,
+        editProfessionOther,
+        editCadre,
+        editCity,
+        editCountry,
+        editWhatsapp,
+        editFb,
+        editPhone,
+        editEmail,
+        editCareer,
+        editDegrees,
+        editDegreeOther,
+        editSpecialties,
+        editSpecialtyOther,
+        editBadges,
+      };
+      localStorage.setItem(editDraftStorageKey, JSON.stringify(draftPayload));
+    } catch (e) {
+      console.warn('Failed to auto-save profile edit draft', e);
+    }
+  }, [
+    isMine,
+    editDraftStorageKey,
+    editName,
+    editBatch,
+    editCollegeRoll,
+    editBio,
+    editPosition,
+    editInstitution,
+    editProfession,
+    editProfessionOther,
+    editCadre,
+    editCity,
+    editCountry,
+    editWhatsapp,
+    editFb,
+    editPhone,
+    editEmail,
+    editCareer,
+    editDegrees,
+    editDegreeOther,
+    editSpecialties,
+    editSpecialtyOther,
+    editBadges,
+  ]);
+
+  const savedCompletion = calculateProfileCompletion(profile);
+  const liveEditCompletion = calculateProfileCompletion({
+    ...profile,
+    fullName: editName,
+    batchYear: Number(editBatch),
+    collegeRoll: editCollegeRoll,
+    bio: editBio,
+    position: editPosition,
+    institution: editInstitution,
+    profession: editProfession,
+    cadre: editCadre,
+    city: editCity,
+    country: editCountry,
+    whatsapp: editWhatsapp,
+    fbLink: editFb,
+    phone: editPhone,
+    email: editEmail,
+    careerHistory: editCareer
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean),
+    degree: [
+      ...editDegrees.filter((d) => d !== 'Others'),
+      ...editDegreeOther.split(',').map((d) => d.trim()).filter(Boolean),
+    ],
+    specialty: [
+      ...editSpecialties.filter((s) => s !== 'Others'),
+      ...editSpecialtyOther.split(',').map((s) => s.trim()).filter(Boolean),
+    ],
+    badges: editBadges,
+  });
+
+  const addCustomDegree = () => {
+    const customItems = editDegreeOther
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+    if (customItems.length === 0) return;
+    setEditDegrees((prev) => {
+      const next = [...prev];
+      customItems.forEach((item) => {
+        if (!next.includes(item)) next.push(item);
+      });
+      return next;
+    });
+    setEditDegreeOther('');
+  };
+
+  const addCustomSpecialty = () => {
+    const customItems = editSpecialtyOther
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (customItems.length === 0) return;
+    setEditSpecialties((prev) => {
+      const next = [...prev];
+      customItems.forEach((item) => {
+        if (!next.includes(item)) next.push(item);
+      });
+      return next;
+    });
+    setEditSpecialtyOther('');
+  };
 
   const toggleBadge = (badgeName: string) => {
     setEditBadges((prev) =>
@@ -184,13 +356,39 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
       .map((l) => l.trim())
       .filter(Boolean);
 
+    const finalDegrees = Array.from(
+      new Set([
+        ...editDegrees.filter((d) => d !== 'Others'),
+        ...editDegreeOther
+          .split(',')
+          .map((d) => d.trim())
+          .filter(Boolean),
+      ])
+    );
+
+    const finalSpecialties = Array.from(
+      new Set([
+        ...editSpecialties.filter((s) => s !== 'Others'),
+        ...editSpecialtyOther
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ])
+    );
+
+    const finalProfession =
+      editProfession === 'Others' && editProfessionOther.trim()
+        ? editProfessionOther.trim()
+        : editProfession;
+
     const updatedData: Partial<AlumniProfile> = {
       fullName: editName,
       batchYear: Number(editBatch),
+      collegeRoll: editCollegeRoll,
       bio: editBio,
       position: editPosition,
       institution: editInstitution,
-      profession: editProfession,
+      profession: finalProfession,
       cadre: editCadre,
       city: editCity,
       country: editCountry,
@@ -199,11 +397,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
       phone: editPhone,
       email: editEmail,
       careerHistory: updatedCareerList,
-      degree: editDegrees,
-      specialty: editSpecialties,
+      degree: finalDegrees,
+      specialty: finalSpecialties,
       specialtyOther: editSpecialtyOther,
       badges: editBadges,
     };
+
+    setEditDegrees(finalDegrees);
+    setEditSpecialties(finalSpecialties);
+    setEditDegreeOther('');
+    setEditSpecialtyOther('');
+    setEditProfessionOther('');
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(editDraftStorageKey);
+      } catch (e) {
+        console.warn('Failed to clear profile edit draft', e);
+      }
+    }
 
     updateProfile(updatedData);
     setProfile((prev) => ({ ...prev, ...updatedData }));
@@ -384,16 +596,74 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
           <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-semibold">
               <Briefcase className="w-4 h-4 text-blue-600" />
-              <span>{profile.position}</span>
+              <span>{profile.position || 'Position not set'}</span>
               <span className="text-slate-400">at</span>
-              <span className="text-slate-900 dark:text-slate-100">{profile.institution}</span>
+              <span className="text-slate-900 dark:text-slate-100">{profile.institution || 'Organization not set'}</span>
             </div>
 
             <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
               <MapPin className="w-3.5 h-3.5 text-slate-400" />
-              <span>{profile.city}, {profile.country}</span>
+              <span>
+                {profile.city || profile.country
+                  ? [profile.city, profile.country].filter(Boolean).join(', ')
+                  : 'Location not set'}
+              </span>
             </div>
           </div>
+
+          {/* Profile Completion Level Card (Visible on own profile) */}
+          {isMine && (
+            <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-emerald-50/60 dark:from-slate-800/90 dark:via-slate-800/70 dark:to-slate-800/90 border border-blue-200/70 dark:border-slate-700">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">
+                    {savedCompletion.percentage}%
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
+                        Profile Completion Level
+                      </span>
+                      <span
+                        className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                          savedCompletion.percentage === 100
+                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                            : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30'
+                        }`}
+                      >
+                        {savedCompletion.completedCount}/{savedCompletion.totalCount} Total Fields
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                      Registration Form: <strong>{savedCompletion.registrationCompletedCount}/{savedCompletion.registrationTotalCount}</strong> · Edit Profile Full Form: <strong>{savedCompletion.editProfileCompletedCount}/{savedCompletion.editProfileTotalCount}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                {activeTab !== 'edit' && savedCompletion.percentage < 100 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('edit')}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    <span>Complete Full Profile</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="w-full h-2.5 rounded-full bg-slate-200/80 dark:bg-slate-950/70 overflow-hidden p-0.5">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    savedCompletion.percentage === 100
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                      : 'bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500'
+                  }`}
+                  style={{ width: `${savedCompletion.percentage}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Tab Selector */}
           <div className="flex gap-4 mt-6 border-b border-slate-100 dark:border-slate-800 text-xs font-bold">
@@ -539,6 +809,59 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
           )}
 
           <form onSubmit={handleSaveProfile} className="space-y-6">
+            {/* Live Full Profile Completion Level Tracker (Registration Form + Edit Profile Full Form) */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
+                    Live Profile Completion Level (Registration + Full Edit Profile)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    Reg: {liveEditCompletion.registrationCompletedCount}/{liveEditCompletion.registrationTotalCount} · Extended: {liveEditCompletion.editProfileCompletedCount}/{liveEditCompletion.editProfileTotalCount}
+                  </span>
+                  <span
+                    className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
+                      liveEditCompletion.percentage === 100
+                        ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                        : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30'
+                    }`}
+                  >
+                    {liveEditCompletion.percentage}% ({liveEditCompletion.completedCount}/{liveEditCompletion.totalCount})
+                  </span>
+                </div>
+              </div>
+
+              <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-900 overflow-hidden p-0.5">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    liveEditCompletion.percentage === 100
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                      : 'bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500'
+                  }`}
+                  style={{ width: `${liveEditCompletion.percentage}%` }}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {liveEditCompletion.fields.map((item) => (
+                  <span
+                    key={item.key}
+                    className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border transition-colors ${
+                      item.filled
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                        : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    {item.filled && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                    <span>{item.label}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+
             {/* Section 0: Profile Photos & Visual Identity */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80">
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-2">
@@ -645,13 +968,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Batch Year
+                    Notre Dame HSC Year
                   </label>
                   <input
                     type="number"
-                    value={editBatch}
-                    onChange={(e) => setEditBatch(Number(e.target.value))}
+                    inputMode="numeric"
+                    min={1949}
+                    max={new Date().getFullYear() + 2}
+                    placeholder="e.g. 2016"
+                    value={editBatch || ''}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setEditBatch(digits ? Number(digits) : 0);
+                    }}
                     required
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    College Roll / Registration ID
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 118042 or 214015"
+                    value={editCollegeRoll}
+                    onChange={(e) => setEditCollegeRoll(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -711,16 +1054,35 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
                     onChange={(e) => setEditProfession(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
+                    <option value="">Select Profession Type</option>
                     <option value="Engineer / Tech Executive">Engineer / Tech Executive</option>
+                    <option value="Doctor / Medical Specialist">Doctor / Medical Specialist</option>
                     <option value="Academic & Researcher">Academic & Researcher</option>
                     <option value="Corporate Executive & Leader">Corporate Executive & Leader</option>
                     <option value="Entrepreneur & Founder">Entrepreneur & Founder</option>
                     <option value="Civil Servant / Administration">Civil Servant / Administration</option>
+                    <option value="Diplomat & Foreign Service">Diplomat & Foreign Service</option>
+                    <option value="Defense & Armed Forces Officer">Defense & Armed Forces Officer</option>
                     <option value="Lawyer & Legal Counsel">Lawyer & Legal Counsel</option>
                     <option value="Banker & Financial Analyst">Banker & Financial Analyst</option>
+                    <option value="Chartered Accountant & Auditor">Chartered Accountant & Auditor</option>
+                    <option value="Architect & Urban Planner">Architect & Urban Planner</option>
+                    <option value="Pharmacist & Biotech Specialist">Pharmacist & Biotech Specialist</option>
+                    <option value="Journalist & Media Professional">Journalist & Media Professional</option>
+                    <option value="Development & NGO Specialist">Development & NGO Specialist</option>
                     <option value="University Student">University Student</option>
                     <option value="Professional Consultant">Professional Consultant</option>
+                    <option value="Others">Others</option>
                   </select>
+                  {editProfession === 'Others' && (
+                    <input
+                      type="text"
+                      placeholder="Write your custom profession..."
+                      value={editProfessionOther}
+                      onChange={(e) => setEditProfessionOther(e.target.value)}
+                      className="mt-2 w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800 border border-blue-400 dark:border-blue-500 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
                 </div>
 
                 <div>
@@ -741,12 +1103,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
                     Degrees (Click to toggle)
                   </label>
                   <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
-                    {DEGREES_LIST.slice(0, 16).map((deg) => (
+                    {Array.from(
+                      new Set([
+                        ...DEGREES_LIST.filter((d) => d !== 'Others'),
+                        ...editDegrees.filter((d) => d !== 'Others' && !DEGREES_LIST.includes(d)),
+                        'Others',
+                      ])
+                    ).map((deg) => (
                       <button
                         key={deg}
                         type="button"
                         onClick={() => toggleDegree(deg)}
-                        className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors ${
+                        className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
                           editDegrees.includes(deg)
                             ? 'bg-blue-600 text-white shadow-xs'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
@@ -756,19 +1124,49 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
                       </button>
                     ))}
                   </div>
+                  {editDegrees.includes('Others') && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Write your custom degree(s) (e.g. FRCS, DPhil, PGDip)..."
+                        value={editDegreeOther}
+                        onChange={(e) => setEditDegreeOther(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addCustomDegree();
+                          }
+                        }}
+                        className="flex-1 px-3.5 py-2 text-xs bg-white dark:bg-slate-800 border border-blue-400 dark:border-blue-500 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={addCustomDegree}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shrink-0"
+                      >
+                        + Add Degree
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Specialties
                   </label>
-                  <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 max-h-32 overflow-y-auto">
-                    {SPECIALTIES_LIST.slice(0, 20).map((spec) => (
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 max-h-40 overflow-y-auto">
+                    {Array.from(
+                      new Set([
+                        ...SPECIALTIES_LIST.filter((s) => s !== 'Others'),
+                        ...editSpecialties.filter((s) => s !== 'Others' && !SPECIALTIES_LIST.includes(s)),
+                        'Others',
+                      ])
+                    ).map((spec) => (
                       <button
                         key={spec}
                         type="button"
                         onClick={() => toggleSpecialty(spec)}
-                        className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors ${
+                        className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
                           editSpecialties.includes(spec)
                             ? 'bg-emerald-600 text-white shadow-xs'
                             : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
@@ -778,32 +1176,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
                       </button>
                     ))}
                   </div>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Achievement Badges (Select applicable honours)
-                  </label>
-                  <div className="flex flex-wrap gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
-                    {Object.keys(BADGE_CONFIGS).map((badgeKey) => {
-                      const isSelected = editBadges.includes(badgeKey);
-                      return (
-                        <button
-                          key={badgeKey}
-                          type="button"
-                          onClick={() => toggleBadge(badgeKey)}
-                          className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 ${
-                            isSelected
-                              ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                              : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-amber-400'
-                          }`}
-                        >
-                          <span>{isSelected ? '✓' : '+'}</span>
-                          <span>{badgeKey}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {editSpecialties.includes('Others') && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Write your custom specialty/specialties (e.g. Interventional Cardiology, Robotics)..."
+                        value={editSpecialtyOther}
+                        onChange={(e) => setEditSpecialtyOther(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addCustomSpecialty();
+                          }
+                        }}
+                        className="flex-1 px-3.5 py-2 text-xs bg-white dark:bg-slate-800 border border-emerald-400 dark:border-emerald-500 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={addCustomSpecialty}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shrink-0"
+                      >
+                        + Add Specialty
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">
@@ -827,6 +1223,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
                 3. Location & Direct Contacts
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Mobile Number
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="+8801XXXXXXXXX"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="alumnus@gmail.com"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     City

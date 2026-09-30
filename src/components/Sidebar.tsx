@@ -236,14 +236,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
           <div className="mt-2.5 text-center text-[10px] text-slate-400 dark:text-slate-500">
-            Designed & Developed by{' '}
             <a
-              href="http://nurulanambashir.gt.tc/"
+              href="http://nurulanambashir.gt.tc/?i=1"
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 dark:text-blue-400 hover:underline font-semibold"
             >
-              Only Bashir-34
+              Designed &amp; Developed by Bashir
             </a>
           </div>
         </div>

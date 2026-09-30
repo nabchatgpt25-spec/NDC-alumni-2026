@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import {
   LogIn,
   ArrowRight,
@@ -98,53 +99,82 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </div>
 
             {/* Scroll-Triggered Animated Statistics Hub */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 py-3 border-t border-slate-200/60 dark:border-slate-800/60">
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40">
-                <div className="text-base sm:text-xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
-                  <AnimatedCounter end={76} />
-                </div>
-                <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  Batches
-                </div>
-                <div className="text-[9px] text-slate-400 hidden sm:block">
-                  1949 — 2026
-                </div>
+            <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/60">
+              <div className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">
+                Our Network at a Glance
               </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 pb-3">
+                <motion.div
+                  initial={{ opacity: 0, y: 18, scale: 0.95 }}
+                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                  viewport={{ once: true, amount: 0.25 }}
+                  transition={{ duration: 0.45, delay: 0.05 }}
+                  className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40"
+                >
+                  <div className="text-base sm:text-xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
+                    <AnimatedCounter end={76} />
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Batches
+                  </div>
+                  <div className="text-[9px] text-slate-400 hidden sm:block">
+                    1949 — 2026
+                  </div>
+                </motion.div>
 
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40">
-                <div className="text-base sm:text-xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
-                  <AnimatedCounter end={3250} suffix="+" />
-                </div>
-                <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  Verified Alumni
-                </div>
-                <div className="text-[9px] text-slate-400 hidden sm:block">
-                  Campus Quad
-                </div>
-              </div>
+                <motion.div
+                  initial={{ opacity: 0, y: 18, scale: 0.95 }}
+                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                  viewport={{ once: true, amount: 0.25 }}
+                  transition={{ duration: 0.45, delay: 0.12 }}
+                  className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40"
+                >
+                  <div className="text-base sm:text-xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
+                    <AnimatedCounter end={3250} suffix="+" />
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Verified Alumni
+                  </div>
+                  <div className="text-[9px] text-slate-400 hidden sm:block">
+                    Campus Quad
+                  </div>
+                </motion.div>
 
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40">
-                <div className="text-base sm:text-xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
-                  <AnimatedCounter end={18} suffix="+" />
-                </div>
-                <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  Countries
-                </div>
-                <div className="text-[9px] text-slate-400 hidden sm:block">
-                  Global Chapters
-                </div>
-              </div>
+                <motion.div
+                  initial={{ opacity: 0, y: 18, scale: 0.95 }}
+                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                  viewport={{ once: true, amount: 0.25 }}
+                  transition={{ duration: 0.45, delay: 0.19 }}
+                  className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40"
+                >
+                  <div className="text-base sm:text-xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+                    <AnimatedCounter end={18} suffix="+" />
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Countries
+                  </div>
+                  <div className="text-[9px] text-slate-400 hidden sm:block">
+                    Global Chapters
+                  </div>
+                </motion.div>
 
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40">
-                <div className="text-base sm:text-xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
-                  <AnimatedCounter end={450} suffix="+" />
-                </div>
-                <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  Specialists
-                </div>
-                <div className="text-[9px] text-slate-400 hidden sm:block">
-                  Fellows & Leads
-                </div>
+                <motion.div
+                  initial={{ opacity: 0, y: 18, scale: 0.95 }}
+                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                  viewport={{ once: true, amount: 0.25 }}
+                  transition={{ duration: 0.45, delay: 0.26 }}
+                  className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40"
+                >
+                  <div className="text-base sm:text-xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+                    <AnimatedCounter end={450} suffix="+" />
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Specialists
+                  </div>
+                  <div className="text-[9px] text-slate-400 hidden sm:block">
+                    Fellows & Leads
+                  </div>
+                </motion.div>
               </div>
             </div>
 
