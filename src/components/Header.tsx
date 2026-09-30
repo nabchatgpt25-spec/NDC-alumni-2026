@@ -1,16 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, Search, Bell, Mail, ChevronDown, CheckCheck, User, LogOut, ShieldCheck } from 'lucide-react';
+import { Menu, Search, Bell, Mail, ChevronDown, CheckCheck, User, LogOut, ShieldCheck, Clock } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { NDCLogo } from './NDCLogo';
 import { NOTIFICATIONS_LIST } from '../data/mockData';
 import { NotificationItem } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { loadVouchRequests } from '../utils/verificationService';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
   onNavigate: (route: string) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  onOpenVerificationCenter?: (tab?: 'status' | 'vouch_classmates' | 'upload_id' | 'policy') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,11 +20,28 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   searchQuery,
   onSearchChange,
+  onOpenVerificationCenter,
 }) => {
   const { currentUser, logout } = useAuth();
   const [notifications, setNotifications] = useState<NotificationItem[]>(NOTIFICATIONS_LIST);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [pendingVouchRequestsCount, setPendingVouchRequestsCount] = useState<number>(() =>
+    loadVouchRequests().filter((r) => r.status === 'pending').length
+  );
+
+  const isUserVerified = (currentUser.verificationStatus || 'verified') === 'verified';
+  const userVouchesCount = currentUser.vouchesCount ?? (currentUser.verifiedBy?.length ?? (isUserVerified ? 2 : 0));
+
+  useEffect(() => {
+    const syncVouches = () => {
+      setPendingVouchRequestsCount(
+        loadVouchRequests().filter((r) => r.status === 'pending').length
+      );
+    };
+    window.addEventListener('ndc_vouch_requests_updated', syncVouches);
+    return () => window.removeEventListener('ndc_vouch_requests_updated', syncVouches);
+  }, []);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -89,8 +108,35 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Actions: Theme Toggle, Notifications, Messages, Profile */}
+        {/* Right Actions: Verification Center, Theme Toggle, Notifications, Messages, Profile */}
         <div className="flex items-center gap-2 sm:gap-2.5">
+          {onOpenVerificationCenter && (
+            <button
+              type="button"
+              onClick={() => onOpenVerificationCenter(isUserVerified ? 'vouch_classmates' : 'status')}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                isUserVerified
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100 animate-pulse'
+              }`}
+              title="Open Notredamian Verification Center"
+            >
+              {isUserVerified ? (
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              ) : (
+                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              )}
+              <span className="hidden sm:inline">
+                {isUserVerified ? 'Verified' : `Verify (${userVouchesCount}/2)`}
+              </span>
+              {pendingVouchRequestsCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-black leading-none">
+                  {pendingVouchRequestsCount}
+                </span>
+              )}
+            </button>
+          )}
+
           <div className="flex items-center">
             <ThemeToggle />
           </div>
@@ -232,6 +278,31 @@ export const Header: React.FC<HeaderProps> = ({
                     <User className="w-4 h-4 text-slate-400" />
                     My Profile
                   </button>
+
+                  {onOpenVerificationCenter && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        onOpenVerificationCenter('status');
+                      }}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-left"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                        <span>Verification Center</span>
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                          isUserVerified
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                        }`}
+                      >
+                        {isUserVerified ? 'Verified' : `${userVouchesCount}/2`}
+                      </span>
+                    </button>
+                  )}
 
                   <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 

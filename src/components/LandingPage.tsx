@@ -444,7 +444,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {/* Social & Contact Links */}
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-4 text-xs">
               <a
-                href="https://facebook.com"
+                href="https://www.facebook.com/nurulanambashir"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
@@ -453,7 +453,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </a>
               <span className="text-slate-300 dark:text-slate-700">·</span>
               <a
-                href="https://chat.whatsapp.com"
+                href="https://wa.me/8801764436846"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"

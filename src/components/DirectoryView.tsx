@@ -13,26 +13,287 @@ import {
   WifiOff,
   RefreshCw
 } from 'lucide-react';
-import { AlumniProfile } from '../types';
-import { BATCH_LIST } from '../data/mockData';
-import { AchievementBadgeChip } from './AchievementBadge';
+import { AlumniProfile, SPECIALTIES_LIST } from '../types';
+import { BATCH_LIST, loadStoredAlumniProfiles } from '../data/mockData';
+import { AchievementBadgeChip, BADGE_CONFIGS } from './AchievementBadge';
 import { WhatsAppIcon, FacebookIcon } from './SocialIcons';
 import { getCachedDirectory, cacheDirectory, getDirectoryCacheTimestamp } from '../utils/offlineStorage';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { useAuth } from '../context/AuthContext';
+import { VerificationStatusBadge } from './verification/VerificationStatusBadge';
+import { vouchForAlumniProfile } from '../utils/verificationService';
+
+export const UNIVERSAL_DIRECTORY_PROFILES: AlumniProfile[] = [
+  {
+    id: 900001,
+    userId: 900001,
+    fullName: 'Prof. Dr. Zubair Al-Mahmud',
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
+    batchYear: 58,
+    session: '(2006-07), HSC 08',
+    group: 'Science 03',
+    collegeRoll: '1080304',
+    profession: 'Doctor / Consultant Cardiologist',
+    position: 'Professor & Head of Interventional Cardiology',
+    institution: 'Dhaka Medical College Hospital (DMC)',
+    specialty: ['Medicine, Surgery & Healthcare', 'Cardiology', 'Interventional Cardiology'],
+    degree: ['HSC', 'MBBS (DMC)', 'FCPS (Medicine)', 'MD (Cardiology)'],
+    city: 'Dhaka',
+    country: 'Bangladesh',
+    whatsapp: '+8801715001122',
+    email: 'zubair.dmc@ndcalumni.org',
+    isPublic: true,
+    online: true,
+    badges: ['Distinguished Medical Specialist'],
+    bio: 'Doctor and Interventional Cardiologist at Dhaka Medical College (DMC). Former NDC Science Club President.',
+  },
+  {
+    id: 900002,
+    userId: 900002,
+    fullName: 'Dr. Ashraful Alam Chowdhury',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+    batchYear: 60,
+    session: '(2008-09), HSC 10',
+    group: 'Science 01',
+    collegeRoll: '1100112',
+    profession: 'Doctor / Consultant Nephrologist',
+    position: 'Associate Professor of Nephrology & Renal Transplant',
+    institution: 'Dhaka Medical College (DMC) & NIKDU',
+    specialty: ['Medicine, Surgery & Healthcare', 'Nephrology', 'Kidney & Renal Medicine'],
+    degree: ['HSC', 'MBBS (DMC)', 'MD (Nephrology)', 'FRCP'],
+    city: 'Dhaka',
+    country: 'Bangladesh',
+    whatsapp: '+8801711334455',
+    email: 'ashraful.nephrology@ndcalumni.org',
+    isPublic: true,
+    online: true,
+    badges: ['Healthcare Leader'],
+    bio: 'Specialist Doctor in Nephrology (Kidney & Renal Sciences) and alumnus of Dhaka Medical College (DMC).',
+  },
+  {
+    id: 900003,
+    userId: 900003,
+    fullName: 'Engr. Tanvir Ahmed Siddiqui',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
+    batchYear: 66,
+    session: '(2014-15), HSC 16',
+    group: 'Science 05',
+    collegeRoll: '1160512',
+    profession: 'Software Engineer & Cloud Architect',
+    position: 'Staff Software Engineer (AI & Distributed Systems)',
+    institution: 'BUET / Google',
+    specialty: ['Computer Science & Software', 'Artificial Intelligence & Data', 'Software Engineering'],
+    degree: ['HSC', 'BSc in CSE (BUET)', 'MSc Computer Science'],
+    city: 'Mountain View',
+    country: 'United States',
+    whatsapp: '+16502530000',
+    email: 'tanvir.buet@ndcalumni.org',
+    isPublic: true,
+    online: true,
+    badges: ['Tech Innovator'],
+    bio: 'BUET Computer Science graduate and Senior Software Engineer building cloud & AI systems.',
+  },
+  {
+    id: 900004,
+    userId: 900004,
+    fullName: 'Md. Shahriar Kabir, BPM',
+    avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&auto=format&fit=crop&q=80',
+    batchYear: 56,
+    session: '(2004-05), HSC 06',
+    group: 'Arts A',
+    collegeRoll: '2060105',
+    profession: 'BCS Police Cadre / Law Enforcement',
+    position: 'Additional Deputy Inspector General (Addl. DIG)',
+    institution: 'Bangladesh Police Headquarters',
+    cadre: 'BCS Police',
+    specialty: ['Civil Service & Administration (BCS)', 'Police & National Security', 'Criminology'],
+    degree: ['HSC', 'BSS', 'MSS', 'BCS Police'],
+    city: 'Dhaka',
+    country: 'Bangladesh',
+    whatsapp: '+8801713009988',
+    email: 'shahriar.police@ndcalumni.org',
+    isPublic: true,
+    online: true,
+    badges: ['Public Service Excellence'],
+    bio: 'Senior officer in Bangladesh Police (BCS Police Cadre), dedicated to public safety and cyber crime prevention.',
+  },
+  {
+    id: 900005,
+    userId: 900005,
+    fullName: 'Barrister Shafayat Karim',
+    avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
+    batchYear: 55,
+    session: '(2003-04), HSC 05',
+    group: 'Arts B',
+    collegeRoll: '2050209',
+    profession: 'Lawyer / Barrister-at-Law & Senior Advocate',
+    position: 'Senior Advocate, Supreme Court of Bangladesh',
+    institution: 'Supreme Court Bar & Lincoln’s Inn',
+    specialty: ['Constitutional & Corporate Law', 'Legal Practice & Judiciary'],
+    degree: ['HSC', 'LLB (Hons)', 'LLM', 'Barrister-at-Law'],
+    city: 'London',
+    country: 'United Kingdom',
+    whatsapp: '+442079460192',
+    email: 'shafayat.lawyer@ndcalumni.org',
+    isPublic: true,
+    online: false,
+    badges: ['Legal Luminary'],
+    bio: 'Senior Lawyer, Advocate of the Supreme Court, and International Arbitration Counsel.',
+  },
+  {
+    id: 900006,
+    userId: 900006,
+    fullName: 'Ahnaf Tahmid',
+    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80',
+    batchYear: 76,
+    session: '(2024-25), HSC 26',
+    group: 'Science 02',
+    collegeRoll: '1260201',
+    profession: 'Engineering Undergraduate & Researcher',
+    position: 'Batch 76 Representative (HSC 2026) & Robotics Lead',
+    institution: 'BUET / Notre Dame College Batch 2026',
+    specialty: ['Computer Science & Software', 'Electrical & Electronic Engineering', 'Robotics'],
+    degree: ['HSC 2026', 'BSc Engineering (BUET)'],
+    city: 'Dhaka',
+    country: 'Bangladesh',
+    whatsapp: '+8801819002026',
+    email: 'ahnaf.batch2026@ndcalumni.org',
+    isPublic: true,
+    online: true,
+    badges: ['Young Achiever'],
+    bio: 'Notre Dame College Batch 76 (HSC 2026) representative and software/robotics researcher at BUET.',
+  },
+];
+
+// Synonym & common-typo expansion table for universal search
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  doctor: ['doctor', 'doctors', 'dr', 'physician', 'surgeon', 'mbbs', 'fcps', 'md', 'medical', 'medicine', 'healthcare', 'hospital', 'dmc', 'cardiology', 'nephrology'],
+  doctors: ['doctor', 'doctors', 'dr', 'physician', 'surgeon', 'mbbs', 'fcps', 'md', 'medical', 'medicine', 'healthcare', 'hospital', 'dmc', 'cardiology', 'nephrology'],
+  cardiology: ['cardiology', 'cardiologist', 'heart', 'cardiac', 'interventional cardiology', 'nicvd'],
+  cardiologist: ['cardiology', 'cardiologist', 'heart', 'cardiac'],
+  nephrology: ['nephrology', 'neprology', 'nephrologist', 'kidney', 'renal', 'nikdu'],
+  neprology: ['nephrology', 'neprology', 'nephrologist', 'kidney', 'renal', 'nikdu'],
+  'software engineer': ['software', 'softwear', 'engineer', 'swe', 'developer', 'programmer', 'cse', 'computer science', 'it', 'cloud', 'ai'],
+  'softwear engineer': ['software', 'softwear', 'engineer', 'swe', 'developer', 'programmer', 'cse', 'computer science', 'it', 'cloud', 'ai'],
+  softwear: ['software', 'softwear', 'engineer', 'cse', 'computer science', 'developer'],
+  software: ['software', 'softwear', 'engineer', 'cse', 'computer science', 'developer'],
+  buet: ['buet', 'bangladesh university of engineering', 'bsc engineering', 'cse', 'eee'],
+  dmc: ['dmc', 'dhaka medical college', 'mbbs', 'doctor'],
+  police: ['police', 'bcs police', 'law enforcement', 'asp', 'sp', 'dig', 'igp', 'security', 'rab', 'dmp'],
+  lawyer: ['lawyer', 'lawer', 'advocate', 'barrister', 'attorney', 'legal', 'law', 'llb', 'llm', 'judge', 'court', 'supreme court', 'judiciary'],
+  lawer: ['lawyer', 'lawer', 'advocate', 'barrister', 'attorney', 'legal', 'law', 'llb', 'llm', 'judge', 'court', 'supreme court', 'judiciary'],
+  usa: ['united states', 'usa', 'us', 'america'],
+  uk: ['united kingdom', 'uk', 'britain', 'england', 'london'],
+  bd: ['bangladesh', 'bd', 'dhaka'],
+};
+
+export function matchesUniversalSearch(profile: AlumniProfile, rawQuery: string): boolean {
+  const q = rawQuery.toLowerCase().trim();
+  if (!q) return true;
+
+  const hscYear = 1950 + profile.batchYear; // e.g., Batch 76 -> HSC 2026
+  const admissionStartYear = 1948 + profile.batchYear;
+  const admissionEndYear = 1949 + profile.batchYear;
+  const batchSummary = BATCH_LIST.find((b) => b.batchYear === profile.batchYear);
+
+  // Build a comprehensive searchable corpus for the profile
+  const searchableCorpus = [
+    profile.fullName,
+    profile.profession,
+    profile.position,
+    profile.institution,
+    profile.cadre || '',
+    profile.city,
+    profile.country,
+    profile.collegeRoll || '',
+    profile.group || '',
+    profile.session || batchSummary?.session || '',
+    profile.bio || '',
+    profile.specialtyOther || '',
+    ...(profile.specialty || []),
+    ...(profile.degree || []),
+    ...(profile.badges || []),
+    ...(profile.careerHistory || []),
+    `batch ${profile.batchYear}`,
+    `batch 0${profile.batchYear}`,
+    `batch ${hscYear}`,
+    `hsc ${hscYear}`,
+    `hsc ${String(hscYear).slice(-2)}`,
+    String(hscYear),
+    `${admissionStartYear}-${String(admissionEndYear).slice(-2)}`,
+  ]
+    .join(' | ')
+    .toLowerCase();
+
+  // Direct phrase or synonym match for the full query
+  if (searchableCorpus.includes(q)) return true;
+  if (SEARCH_SYNONYMS[q]) {
+    if (SEARCH_SYNONYMS[q].some((syn) => searchableCorpus.includes(syn))) {
+      return true;
+    }
+  }
+
+  // Handle "batch 2026" / "hsc 2026" / "batch 76" patterns explicitly
+  const batchYearMatch = q.match(/^(?:batch|hsc)\s*(\d{1,4})$/i);
+  if (batchYearMatch) {
+    const num = parseInt(batchYearMatch[1], 10);
+    if (
+      profile.batchYear === num ||
+      hscYear === num ||
+      Number(String(hscYear).slice(-2)) === num
+    ) {
+      return true;
+    }
+  }
+
+  // Multi-token universal matching (every token or its synonym/typo-match must match)
+  const tokens = q.split(/[\s,]+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+
+  return tokens.every((token) => {
+    if (token === 'batch' || token === 'hsc') return true;
+    if (searchableCorpus.includes(token)) return true;
+
+    // Check token synonyms / common typos (e.g., neprology, softwear, lawer, doctors)
+    const syns = SEARCH_SYNONYMS[token];
+    if (syns && syns.some((syn) => searchableCorpus.includes(syn))) {
+      return true;
+    }
+
+    // Prefix / stem match for words >= 4 chars (e.g., "cardio" -> "cardiology", "nephro" -> "nephrology")
+    if (token.length >= 4) {
+      const stem = token.replace(/(?:s|es|er|or|ist|ian)$/i, '');
+      if (stem.length >= 3 && searchableCorpus.includes(stem)) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+}
 
 interface DirectoryViewProps {
   onViewProfile: (profileId: number) => void;
   initialSearch?: string;
   initialBatch?: number | null;
+  onOpenVerificationCenter?: (initialTab?: 'status' | 'vouch_others') => void;
 }
 
 export const DirectoryView: React.FC<DirectoryViewProps> = ({
   onViewProfile,
   initialSearch = '',
   initialBatch = null,
+  onOpenVerificationCenter,
 }) => {
   const isOnline = useOnlineStatus();
-  const [profiles, setProfiles] = useState<AlumniProfile[]>(() => getCachedDirectory());
+  const { currentUser, updateProfile } = useAuth();
+  const [profiles, setProfiles] = useState<AlumniProfile[]>(() => {
+    const cached = getCachedDirectory();
+    const stored = loadStoredAlumniProfiles();
+    return [...stored, ...cached, ...UNIVERSAL_DIRECTORY_PROFILES].filter(
+      (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+    );
+  });
   const [cacheTimestamp, setCacheTimestamp] = useState<string | null>(() => getDirectoryCacheTimestamp());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -58,11 +319,20 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
   // Update cached directory if updated
   useEffect(() => {
     const cached = getCachedDirectory();
-    setProfiles(cached);
+    const stored = loadStoredAlumniProfiles();
+    setProfiles(
+      [...stored, ...cached, ...UNIVERSAL_DIRECTORY_PROFILES].filter(
+        (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+      )
+    );
   }, []);
 
   const handleRefreshCache = () => {
-    const updated = getCachedDirectory();
+    const cached = getCachedDirectory();
+    const stored = loadStoredAlumniProfiles();
+    const updated = [...stored, ...cached, ...UNIVERSAL_DIRECTORY_PROFILES].filter(
+      (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+    );
     cacheDirectory(updated);
     setProfiles(updated);
     setCacheTimestamp(new Date().toISOString());
@@ -76,48 +346,38 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
   }, []);
 
   const specialties = useMemo(() => {
-    const list: string[] = [];
+    const set = new Set<string>(SPECIALTIES_LIST.filter((s) => s !== 'Others'));
     profiles.forEach((p) => {
-      p.specialty.forEach((s) => {
-        if (!list.includes(s)) list.push(s);
-      });
+      p.specialty.forEach((s) => set.add(s));
     });
-    return list.sort();
+    return Array.from(set).sort();
   }, [profiles]);
 
   const countries = useMemo(() => {
-    const set = new Set(profiles.map((p) => p.country));
+    const set = new Set<string>(['Bangladesh', 'United States', 'United Kingdom', 'Canada', 'Australia', 'Germany', 'Singapore']);
+    profiles.forEach((p) => {
+      if (p.country) set.add(p.country);
+    });
     return Array.from(set).sort();
   }, [profiles]);
 
   const availableBadges = useMemo(() => {
-    const list: string[] = [];
+    const set = new Set<string>(Object.keys(BADGE_CONFIGS));
     profiles.forEach((p) => {
-      p.badges?.forEach((b) => {
-        if (!list.includes(b)) list.push(b);
-      });
+      p.badges?.forEach((b) => set.add(b));
     });
-    return list.sort();
+    return Array.from(set).sort();
   }, [profiles]);
 
-  // Filtered profiles
+  // Filtered profiles using Universal Search
   const filtered = useMemo(() => {
     return profiles.filter((p) => {
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        const matchesName = p.fullName.toLowerCase().includes(q);
-        const matchesInst = p.institution.toLowerCase().includes(q);
-        const matchesSpec = p.specialty.some((s) => s.toLowerCase().includes(q));
-        const matchesCity = p.city.toLowerCase().includes(q);
-        const matchesBatch = p.batchYear.toString().includes(q);
-        const matchesBadge = p.badges?.some((b) => b.toLowerCase().includes(q));
-        if (!matchesName && !matchesInst && !matchesSpec && !matchesCity && !matchesBatch && !matchesBadge) {
-          return false;
-        }
+      if (search.trim() && !matchesUniversalSearch(p, search)) {
+        return false;
       }
       if (batchFilter && p.batchYear !== parseInt(batchFilter, 10)) return false;
       if (countryFilter && p.country !== countryFilter) return false;
-      if (specialtyFilter && !p.specialty.includes(specialtyFilter)) return false;
+      if (specialtyFilter && !p.specialty.some((s) => s.toLowerCase().includes(specialtyFilter.toLowerCase()))) return false;
       if (badgeFilter && !p.badges?.includes(badgeFilter)) return false;
       if (onlineOnly && !p.online) return false;
       return true;
@@ -203,40 +463,76 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
             <RefreshCw className="w-3.5 h-3.5 text-blue-500" />
             <span className="hidden sm:inline">Sync Cache</span>
           </button>
-
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
-          >
-            <Download className="w-4 h-4" />
-            <span>Export CSV</span>
-          </button>
         </div>
       </div>
 
-      {/* Filter Card */}
+      {/* Filter Card (Universal Search System) */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Search box */}
+        {/* Universal Search Bar */}
+        <div className="space-y-2.5">
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-600 dark:text-blue-400" />
             <input
               type="text"
-              placeholder="Search name, badge, organization, city..."
+              placeholder="Universal Search: Doctors, Cardiology, Nephrology, Software Engineer, BUET, DMC, Police, Lawyer, Batch 2026, Name, Country..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              className="w-full pl-11 pr-9 py-3 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-500 font-medium transition-all"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
+          {/* Quick Universal Search Tags */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 mr-1">
+              Quick Search:
+            </span>
+            {[
+              'Doctors',
+              'Cardiology',
+              'Nephrology',
+              'Software Engineer',
+              'BUET',
+              'DMC',
+              'Police',
+              'Lawyer',
+              'Batch 2026',
+            ].map((tag) => {
+              const active = search.toLowerCase() === tag.toLowerCase();
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setSearch(active ? '' : tag)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                    active
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                      : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                  }`}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Batch Filter */}
           <select
             value={batchFilter}
             onChange={(e) => setBatchFilter(e.target.value)}
             className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           >
-            <option value="">All Batches (1 - 35)</option>
+            <option value="">All Batches (1 - 78)</option>
             {batches.map((b) => {
               const summary = BATCH_LIST.find((x) => x.batchYear === b);
               return (
@@ -374,14 +670,20 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <h3
                         onClick={() => onViewProfile(profile.id)}
                         className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                       >
                         {profile.fullName}
                       </h3>
-                      <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <VerificationStatusBadge
+                        status={profile.verificationStatus || 'verified'}
+                        vouchesCount={profile.vouchesCount ?? 2}
+                        size="sm"
+                        showLabel={false}
+                        onClick={() => onViewProfile(profile.id)}
+                      />
                     </div>
 
                     <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
@@ -457,10 +759,37 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
                   </a>
                 )}
 
+                {(profile.verificationStatus || 'verified') !== 'verified' &&
+                  profile.id !== currentUser.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const res = vouchForAlumniProfile(profile, currentUser);
+                        if (res.success && res.updatedTarget) {
+                          setProfiles((prev) =>
+                            prev.map((p) => (p.id === profile.id ? res.updatedTarget! : p))
+                          );
+                          updateProfile({
+                            vouchedForIds: [
+                              ...(currentUser.vouchedForIds || []),
+                              profile.id,
+                            ],
+                          });
+                        }
+                        setToastMessage(res.message);
+                        setTimeout(() => setToastMessage(null), 4000);
+                      }}
+                      className="inline-flex items-center justify-center gap-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Vouch</span>
+                    </button>
+                  )}
+
                 <button
                   type="button"
                   onClick={() => onViewProfile(profile.id)}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl transition-all"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   <span>View Profile</span>

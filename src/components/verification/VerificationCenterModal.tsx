@@ -26,7 +26,10 @@ import {
   submitPeerVouch,
   simulateDemoVouchForUser,
   getVouchShareLink,
-  getWhatsAppVouchShareUrl
+  getWhatsAppVouchShareUrl,
+  registerUserVouchRequest,
+  isSameBatch,
+  normalizeToBatchNumber
 } from '../../utils/verificationService';
 import { saveMediaFile, isVideoUrl, formatFileSize } from '../../utils/mediaStorage';
 import { NDCLogo } from '../NDCLogo';
@@ -48,7 +51,8 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
   const [vouchRequests, setVouchRequests] = useState<VouchRequest[]>(loadVouchRequests());
   const [copiedLink, setCopiedLink] = useState(false);
   const [vouchSuccessMsg, setVouchSuccessMsg] = useState('');
-  const [selectedBatchFilter, setSelectedBatchFilter] = useState<'all' | 'my_batch'>('my_batch');
+  const [vouchErrorMsg, setVouchErrorMsg] = useState('');
+  const [selectedBatchFilter, setSelectedBatchFilter] = useState<'all' | 'my_batch'>('all');
   const [confirmingVouchFor, setConfirmingVouchFor] = useState<VouchRequest | null>(null);
   const [vouchComment, setVouchComment] = useState('');
 
@@ -57,6 +61,13 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
   const [docType, setDocType] = useState<'id_card' | 'hsc_slip' | 'souvenir'>('id_card');
   const [isVerifyingDoc, setIsVerifyingDoc] = useState(false);
   const [docVerifiedSuccess, setDocVerifiedSuccess] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+      setVouchRequests(loadVouchRequests());
+    }
+  }, [isOpen, initialTab]);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -68,8 +79,8 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
 
   if (!isOpen) return null;
 
-  const isVerified = currentUser.verificationStatus === 'verified';
-  const vouchesCount = currentUser.vouchesCount ?? (currentUser.verifiedBy?.length || 2);
+  const isVerified = (currentUser.verificationStatus || 'verified') === 'verified';
+  const vouchesCount = currentUser.vouchesCount ?? (currentUser.verifiedBy?.length ?? (isVerified ? 2 : 0));
   const targetVouches = currentUser.vouchTargetCount || 2;
   const progressPercent = isVerified ? 100 : Math.min(100, Math.round((vouchesCount / targetVouches) * 100));
 
@@ -83,11 +94,34 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
   const handleSimulateClassmateVouch = () => {
     simulateDemoVouchForUser(currentUser, (updated) => {
       updateProfile(updated);
+      setVouchSuccessMsg(
+        updated.verificationStatus === 'verified'
+          ? '2/2 Vouches Complete! Your profile is now officially Verified Notredamian.'
+          : `1 Classmate Vouch received (${updated.vouchesCount}/2)! Need 1 more vouch to complete verification.`
+      );
+      setTimeout(() => setVouchSuccessMsg(''), 4000);
     });
+  };
+
+  const handleResetToPendingForDemo = () => {
+    const resetProfile: Partial<AlumniProfile> = {
+      verificationStatus: 'pending_vouch',
+      verificationMethod: 'two_vouches',
+      vouchesCount: 0,
+      vouchTargetCount: 2,
+      verifiedBy: [],
+      badges: (currentUser.badges || []).filter((b) => b !== 'Verified Notredamian'),
+    };
+    updateProfile(resetProfile);
+    registerUserVouchRequest({ ...currentUser, ...resetProfile });
+    setDocVerifiedSuccess(false);
+    setVouchSuccessMsg('Verification status set to Pending (0/2 Vouches) so you can test the Peer Vouch or ID Upload flow.');
+    setTimeout(() => setVouchSuccessMsg(''), 4000);
   };
 
   const handleConfirmVouch = (request: VouchRequest) => {
     try {
+      setVouchErrorMsg('');
       const res = submitPeerVouch(request.id, currentUser, vouchComment);
       setVouchRequests(loadVouchRequests());
       setConfirmingVouchFor(null);
@@ -96,7 +130,9 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
       setTimeout(() => setVouchSuccessMsg(''), 4000);
     } catch (err: unknown) {
       const error = err as Error;
-      alert(error.message);
+      setConfirmingVouchFor(null);
+      setVouchErrorMsg(error.message || 'Could not submit vouch.');
+      setTimeout(() => setVouchErrorMsg(''), 4000);
     }
   };
 
@@ -143,10 +179,12 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
 
   const filteredRequests = vouchRequests.filter((req) => {
     if (selectedBatchFilter === 'my_batch') {
-      return req.batchYear === currentUser.batchYear && req.status === 'pending';
+      return isSameBatch(req.batchYear, currentUser.batchYear) && req.status === 'pending';
     }
     return req.status === 'pending';
   });
+
+  const allPendingCount = vouchRequests.filter((r) => r.status === 'pending').length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/70 backdrop-blur-sm animate-fade-in">
@@ -239,11 +277,17 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
           </button>
         </div>
 
-        {/* Success toast if any */}
+        {/* Success or Error toast if any */}
         {vouchSuccessMsg && (
           <div className="bg-emerald-600 text-white px-5 py-2.5 text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{vouchSuccessMsg}</span>
+          </div>
+        )}
+        {vouchErrorMsg && (
+          <div className="bg-rose-600 text-white px-5 py-2.5 text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{vouchErrorMsg}</span>
           </div>
         )}
 
@@ -437,28 +481,51 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
 
               {/* If already verified, show privilege checklist */}
               {isVerified && (
-                <div className="p-5 rounded-3xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-500/20">
-                  <h4 className="font-black text-xs uppercase tracking-wider text-emerald-800 dark:text-emerald-400 mb-3 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Unlocked Verified Notredamian Privileges</span>
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-700 dark:text-slate-300">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span>Full posting & commenting in Quad Feed</span>
+                <div className="p-5 rounded-3xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-500/20 space-y-4">
+                  <div>
+                    <h4 className="font-black text-xs uppercase tracking-wider text-emerald-800 dark:text-emerald-400 mb-3 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Unlocked Verified Notredamian Privileges</span>
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-700 dark:text-slate-300">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>Full posting & commenting in Quad Feed</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>Access to Batch {normalizeToBatchNumber(currentUser.batchYear)} Private Lounge</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>Right to vouch for incoming classmates</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>Official Verified Badge on directory card</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span>Access to Batch {currentUser.batchYear} Private Lounge</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span>Right to vouch for incoming classmates</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span>Official Verified Badge on directory card</span>
-                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-emerald-500/20 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('vouch_classmates')}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Vouch for Classmates ({allPendingCount} Pending)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleResetToPendingForDemo}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                      title="Switch status to Pending (0/2 Vouches) to test peer vouching or ID upload"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Test Pending Verification Flow</span>
+                    </button>
                   </div>
                 </div>
               )}

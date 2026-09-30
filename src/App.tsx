@@ -25,11 +25,18 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 function AlumniAppContent() {
   const { isLoggedIn, currentUser, logout } = useAuth();
 
-  // Route state: 'landing' | 'feed' | 'alumni' | 'directory' | 'find' | 'batches' | 'map' | 'gallery' | 'profile' | `batch:${number}`
+  // Route state: 'landing' | 'feed' | 'alumni' | 'directory' | 'find' | 'batches' | 'map' | 'gallery' | 'profile' | `batch:${number}` | `post-${number}`
   const [route, setRoute] = useState<string>(() => {
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const h = window.location.hash.replace('#', '');
-      if (h) return h;
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('post')) {
+        return 'feed';
+      }
+      if (window.location.hash) {
+        const h = window.location.hash.replace('#', '');
+        if (h.startsWith('post-')) return 'feed';
+        if (h) return h;
+      }
     }
     return isLoggedIn ? 'feed' : 'landing';
   });
@@ -47,7 +54,9 @@ function AlumniAppContent() {
   useEffect(() => {
     const handleHashChange = () => {
       const h = window.location.hash.replace('#', '');
-      if (h) {
+      if (h.startsWith('post-')) {
+        setRoute('feed');
+      } else if (h) {
         setRoute(h);
       }
     };
@@ -55,8 +64,8 @@ function AlumniAppContent() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const navigateTo = (newRoute: string) => {
-    if (newRoute === 'profile') {
+  const navigateTo = (newRoute: string, keepSelectedProfile = false) => {
+    if (newRoute === 'profile' && !keepSelectedProfile) {
       setSelectedProfileId(currentUser.id);
     }
     setRoute(newRoute);
@@ -67,7 +76,7 @@ function AlumniAppContent() {
   const handleViewProfile = (profileId: number) => {
     setPreviousRoute(route === 'profile' ? previousRoute : route);
     setSelectedProfileId(profileId);
-    navigateTo('profile');
+    navigateTo('profile', true);
   };
 
   const getBackLabel = () => {
@@ -169,6 +178,7 @@ function AlumniAppContent() {
                 setGlobalSearch('');
                 navigateTo('find');
               }}
+              onViewProfile={handleViewProfile}
             />
           )}
 

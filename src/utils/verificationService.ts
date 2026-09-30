@@ -3,6 +3,29 @@ import { ALUMNI_PROFILES, saveStoredAlumniProfiles } from '../data/mockData';
 
 export const VOUCH_STORAGE_KEY = 'ndc_vouch_requests';
 
+/**
+ * Helper to compare batch years whether stored as 2-digit Batch Number (e.g., 68)
+ * or 4-digit HSC Year (e.g., 2018, where 1950 + 68 = 2018).
+ */
+export const normalizeToBatchNumber = (batchOrYear: number): number => {
+  if (!batchOrYear) return 68;
+  return batchOrYear > 1900 ? batchOrYear - 1950 : batchOrYear;
+};
+
+export const formatBatchDisplay = (batchOrYear: number): string => {
+  if (!batchOrYear) return 'Batch 68';
+  if (batchOrYear > 1900) {
+    const batchNum = batchOrYear - 1950;
+    return `Batch ${batchNum} (HSC ${batchOrYear})`;
+  }
+  return `Batch ${batchOrYear} (HSC ${1950 + batchOrYear})`;
+};
+
+export const isSameBatch = (batchA?: number, batchB?: number): boolean => {
+  if (!batchA || !batchB) return false;
+  return normalizeToBatchNumber(batchA) === normalizeToBatchNumber(batchB);
+};
+
 // Initial seed requests from real batch cohorts needing peer vouches
 const INITIAL_VOUCH_REQUESTS: VouchRequest[] = [
   {
@@ -280,3 +303,92 @@ export const getWhatsAppVouchShareUrl = (user: AlumniProfile): string => {
   const text = `Assalamu Alaikum / Brother! I have registered my Notre Dame College Alumni profile (${user.fullName}, Roll: ${user.collegeRoll || 'NDC'}, Batch ${user.batchYear}). Please vouch for me as your classmate to complete my verification: ${link}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 };
+
+/**
+ * Ensure an incoming shared vouch link (#vouch?roll=...&batch=...&name=...) creates or matches a pending vouch request
+ */
+export const ensureVouchRequestFromUrlParams = (params: {
+  name?: string;
+  roll?: string;
+  batch?: number;
+}): VouchRequest | null => {
+  if (!params.name?.trim()) return null;
+  const requests = loadVouchRequests();
+  const cleanName = params.name.trim().toLowerCase();
+  const cleanRoll = (params.roll || '').trim();
+  const existing = requests.find(
+    (r) =>
+      r.requesterName.toLowerCase() === cleanName ||
+      (cleanRoll && r.collegeRoll === cleanRoll)
+  );
+  if (existing) return existing;
+
+  const batchNum = normalizeToBatchNumber(params.batch || 68);
+  const created: VouchRequest = {
+    id: `vouch-req-link-${Date.now()}`,
+    requesterId: Date.now(),
+    requesterName: params.name.trim(),
+    requesterAvatar:
+      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+    batchYear: batchNum,
+    collegeRoll: cleanRoll || '118042',
+    group: 'Science',
+    section: 'Shared Vouch Link',
+    profession: 'Notredamian Alumnus',
+    city: 'Dhaka',
+    createdAt: 'Just now',
+    status: 'pending',
+    targetVouches: 2,
+    vouches: [],
+    message: `Shared verification link from ${params.name.trim()} (Roll: ${cleanRoll || 'NDC'}, Batch ${batchNum}). Please vouch if you recognize this classmate!`,
+  };
+  requests.unshift(created);
+  saveVouchRequests(requests);
+  return created;
+};
+
+/**
+ * Directly vouch for an AlumniProfile from their ProfileView or Directory card
+ */
+export const vouchForAlumniProfile = (
+  targetProfile: AlumniProfile,
+  voucher: AlumniProfile,
+  comment?: string
+): { updatedProfile: AlumniProfile; isNowVerified: boolean } => {
+  const requests = loadVouchRequests();
+  let req = requests.find(
+    (r) =>
+      r.requesterId === targetProfile.id ||
+      r.requesterName.toLowerCase() === targetProfile.fullName.toLowerCase()
+  );
+
+  if (!req) {
+    req = registerUserVouchRequest(targetProfile);
+  }
+
+  const res = submitPeerVouch(
+    req.id,
+    voucher,
+    comment || `Confirmed classmate from Batch ${normalizeToBatchNumber(targetProfile.batchYear)}.`
+  );
+
+  const vouchesList = res.request.vouches.map(
+    (v) => `${v.voucherName} (Batch ${normalizeToBatchNumber(v.voucherBatch)})`
+  );
+  const updatedProfile: AlumniProfile = {
+    ...targetProfile,
+    vouchesCount: res.request.vouches.length,
+    vouchTargetCount: res.request.targetVouches,
+    verifiedBy: vouchesList,
+    verificationStatus: res.isNowVerified ? 'verified' : 'pending_vouch',
+    verificationMethod: 'two_vouches',
+    verificationDate: res.isNowVerified ? 'Today' : targetProfile.verificationDate,
+    badges:
+      res.isNowVerified && !targetProfile.badges?.includes('Verified Notredamian')
+        ? [...(targetProfile.badges || []), 'Verified Notredamian']
+        : targetProfile.badges,
+  };
+
+  return { updatedProfile, isNowVerified: res.isNowVerified };
+};
+

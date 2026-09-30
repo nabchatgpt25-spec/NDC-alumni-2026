@@ -16,6 +16,11 @@ import { PostItem } from '../types';
 import { getSavedPosts, toggleSavePost, setSavedPosts } from '../utils/offlineStorage';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { PostLightboxModal } from './PostLightboxModal';
+import {
+  extractUrlsFromText,
+  renderTextWithClickableLinks,
+  SharedEmbedCard
+} from './SmartPostMediaAndEmbeds';
 
 interface SavedPostsViewProps {
   onViewProfile?: (userId: number) => void;
@@ -29,6 +34,7 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
   const isOnline = useOnlineStatus();
   const [savedPosts, setSavedPostsState] = useState<PostItem[]>(() => getSavedPosts());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [copiedSavedPostId, setCopiedSavedPostId] = useState<number | null>(null);
 
   // Lightbox modal state
   const [lightboxState, setLightboxState] = useState<{
@@ -51,6 +57,46 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleShareSavedPost = async (postId: number) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('post', String(postId));
+    url.hash = `post-${postId}`;
+    const directUrl = url.toString();
+
+    let copied = false;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(directUrl);
+        copied = true;
+      } catch {
+        copied = false;
+      }
+    }
+    if (!copied && typeof document !== 'undefined') {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = directUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch {
+        // ignore
+      }
+    }
+
+    setCopiedSavedPostId(postId);
+    setTimeout(() => {
+      setCopiedSavedPostId((prev) => (prev === postId ? null : prev));
+    }, 2500);
+    showToast('Direct post link copied to clipboard!');
   };
 
   const handleRemoveSaved = (post: PostItem) => {
@@ -214,8 +260,8 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
               </div>
 
               {/* Post Content */}
-              <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed">
-                {post.content}
+              <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed break-words">
+                {renderTextWithClickableLinks(post.content)}
               </p>
 
               {/* Attached Images */}
@@ -255,7 +301,29 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
                 </div>
               )}
 
-              {/* Post Footer Counts */}
+              {/* Attached Videos & Shared Links (YouTube, Facebook, Instagram, LinkedIn, etc.) */}
+              {(() => {
+                const allMediaAndLinks = Array.from(
+                  new Set([
+                    ...(post.videos || []),
+                    ...extractUrlsFromText(post.content),
+                  ])
+                );
+                if (allMediaAndLinks.length === 0) return null;
+                return (
+                  <div className="space-y-3">
+                    {allMediaAndLinks.map((mediaUrl, idx) => (
+                      <SharedEmbedCard
+                        key={`${post.id}-saved-media-${idx}`}
+                        url={mediaUrl}
+                        autoPlayOnScroll={true}
+                      />
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Post Footer Counts & Share */}
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                 <div className="flex items-center gap-4">
                   <span className="flex items-center gap-1.5 font-medium">
@@ -266,6 +334,28 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
                     <MessageSquare className="w-4 h-4 text-blue-500" />
                     <span>{post.comments?.length || post.commentsCount} Comments</span>
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => handleShareSavedPost(post.id)}
+                    title="Copy direct link to this post"
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl font-bold transition-colors cursor-pointer ${
+                      copiedSavedPostId === post.id
+                        ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {copiedSavedPostId === post.id ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>Link Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 className="w-3.5 h-3.5" />
+                        <span>Share</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">

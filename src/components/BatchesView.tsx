@@ -1,38 +1,355 @@
 import React, { useState, useMemo } from 'react';
-import { Users, ChevronRight, Search, Sparkles, Award } from 'lucide-react';
-import { BATCH_LIST, ALUMNI_PROFILES } from '../data/mockData';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  Users,
+  ChevronRight,
+  Search,
+  Sparkles,
+  ArrowRight,
+  X,
+  ArrowLeft,
+  MapPin,
+  Briefcase,
+  GraduationCap,
+  ShieldCheck,
+  Phone,
+  Mail,
+} from 'lucide-react';
+import { BATCH_LIST, ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
+import { BatchSummary, AlumniProfile } from '../types';
 import { NDCLogo } from './NDCLogo';
 
 interface BatchesViewProps {
   onSelectBatch: (batchYear: number) => void;
+  onViewProfile?: (profileId: number) => void;
 }
 
-export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch }) => {
+const FIRST_NAMES = [
+  'Tanvir', 'Tahmid', 'Nafis', 'Zubair', 'Fahim', 'Shafayat', 'Mahir', 'Arib',
+  'Adib', 'Rashedul', 'Sajid', 'Abrar', 'Shuvro', 'Mehedi', 'Asifur', 'Syed',
+  'Tariqul', 'Masud', 'Farhan', 'Kamrul', 'Ashfaq', 'galib', 'Sadman', 'Rafid',
+  'Tawsif', 'Muntasir', 'Hasibul', 'Nazmul', 'Imtiaz', 'Soumya', 'Debashish', 'Anindya',
+  'Shahriar', 'Rizwan', 'salman', 'Arman', 'Fardin', 'Ishraq', 'Nabil', 'Raiyan',
+];
+
+const LAST_NAMES = [
+  'Rahman', 'Hossain', 'Ahmed', 'Karim', 'Chowdhury', 'Islam', 'Alam', 'Sadik',
+  'Jamil', 'Faysal', 'Ahsan', 'Mahbub', 'Zahin', 'Hasan', 'Paul', 'Dev',
+  'Siddiqui', 'Khan', 'Talukder', 'Bhuiyan', 'Majumder', 'kabir', 'Uddin', 'Sarker',
+];
+
+const SCIENCE_ROLES = [
+  { pos: 'Senior Software Engineer', inst: 'Google', deg: ['HSC', 'BSc Engineering', 'MSc'], spec: 'Computer Science & Software', city: 'Mountain View', country: 'USA' },
+  { pos: 'Consultant Cardiologist', inst: 'Dhaka Medical College Hospital', deg: ['HSC', 'MBBS', 'FCPS'], spec: 'Medicine, Surgery & Healthcare', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'AI Research Scientist', inst: 'Microsoft Research', deg: ['HSC', 'BSc Engineering', 'PhD'], spec: 'Artificial Intelligence & Data', city: 'Seattle', country: 'USA' },
+  { pos: 'Professor of Electrical Engineering', inst: 'BUET', deg: ['HSC', 'BSc Engineering', 'PhD'], spec: 'Electrical & Electronic Engineering', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Lead Structural Engineer', inst: 'AECOM', deg: ['HSC', 'BSc Engineering', 'MSc'], spec: 'Civil & Structural Engineering', city: 'London', country: 'UK' },
+  { pos: 'Associate Professor of Medicine', inst: 'BSMMU', deg: ['HSC', 'MBBS', 'MD'], spec: 'Medicine, Surgery & Healthcare', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Principal Cloud Architect', inst: 'Amazon Web Services', deg: ['HSC', 'BSc Engineering'], spec: 'Cybersecurity & Cloud', city: 'Toronto', country: 'Canada' },
+  { pos: 'Chief Architect', inst: 'Vitti Sthapati Brindo', deg: ['HSC', 'B.Arch', 'M.Arch'], spec: 'Architecture & Urban Planning', city: 'Dhaka', country: 'Bangladesh' },
+];
+
+const ARTS_ROLES = [
+  { pos: 'Additional Foreign Secretary', inst: 'Ministry of Foreign Affairs', deg: ['HSC', 'BSS', 'MSS'], spec: 'Foreign Affairs & Diplomacy', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Barrister-at-Law & Senior Counsel', inst: 'Supreme Court of Bangladesh', deg: ['HSC', 'LLB', 'LLM', 'Barrister-at-Law'], spec: 'Constitutional & Corporate Law', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Professor of Economics', inst: 'University of Dhaka', deg: ['HSC', 'BSS', 'MSS', 'PhD'], spec: 'Economics & Development Policy', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Senior Policy Advisor', inst: 'United Nations Development Programme', deg: ['HSC', 'BA', 'MA'], spec: 'Economics & Development Policy', city: 'Geneva', country: 'Switzerland' },
+  { pos: 'Executive Editor', inst: 'The Daily Star', deg: ['HSC', 'BSS', 'MSS'], spec: 'Journalism & Media Communications', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Deputy Secretary', inst: 'Government of Bangladesh', deg: ['HSC', 'BSS', 'MSS', 'BCS'], spec: 'Civil Service & Administration (BCS)', city: 'Dhaka', country: 'Bangladesh' },
+];
+
+const COMMERCE_ROLES = [
+  { pos: 'Managing Director & Partner', inst: 'Standard Chartered Bank', deg: ['HSC', 'BBA', 'MBA', 'CFA'], spec: 'Finance, Banking & Investment', city: 'Singapore', country: 'Singapore' },
+  { pos: 'Senior Partner & Fellow Chartered Accountant', inst: 'Hoda Vasi Chowdhury & Co', deg: ['HSC', 'BBA', 'CA / ACA', 'FCA'], spec: 'Chartered Accountancy & Audit', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Chief Marketing Officer', inst: 'Grameenphone Ltd.', deg: ['HSC', 'BBA', 'MBA'], spec: 'Marketing & Brand Strategy', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Vice President, Investment Banking', inst: 'Goldman Sachs', deg: ['HSC', 'BBA', 'MBA', 'CFA'], spec: 'Finance, Banking & Investment', city: 'New York', country: 'USA' },
+  { pos: 'Director of Supply Chain', inst: 'Unilever Bangladesh', deg: ['HSC', 'BBA', 'EMBA'], spec: 'Supply Chain & Operations', city: 'Dhaka', country: 'Bangladesh' },
+  { pos: 'Founder & CEO', inst: 'NextGen FinTech BD', deg: ['HSC', 'BBA', 'MBA'], spec: 'Entrepreneurship & Startups', city: 'Dhaka', country: 'Bangladesh' },
+];
+
+const AVATAR_POOL = [
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80',
+];
+
+function generateGroupAlumniList(
+  batch: BatchSummary,
+  groupValue: string,
+  targetCount: number
+): AlumniProfile[] {
+  const stored = loadStoredAlumniProfiles();
+  const allReal = [...stored, ...ALUMNI_PROFILES].filter(
+    (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+  );
+
+  const realMatches = allReal.filter(
+    (p) =>
+      (p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear) &&
+      p.group?.toLowerCase() === groupValue.toLowerCase()
+  );
+
+  const [category, code] = groupValue.split(' ');
+  const isScience = category === 'Science';
+  const isArts = category === 'Arts';
+  const rolePool = isScience ? SCIENCE_ROLES : isArts ? ARTS_ROLES : COMMERCE_ROLES;
+  const deptPrefix = isScience ? '1' : isArts ? '2' : '3';
+  const hscShort = String(1950 + batch.batchYear).slice(-2);
+  const groupNumCode = isScience
+    ? code
+    : String((code.charCodeAt(0) - 64)).padStart(2, '0');
+
+  const generatedCount = Math.max(0, targetCount - realMatches.length);
+  const seedBase =
+    batch.batchYear * 1000 +
+    groupValue.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) * 13;
+
+  const generated: AlumniProfile[] = Array.from({ length: generatedCount }, (_, idx) => {
+    const seed = seedBase + idx * 17;
+    const fName = FIRST_NAMES[seed % FIRST_NAMES.length];
+    const mName = FIRST_NAMES[(seed * 3 + 7) % FIRST_NAMES.length];
+    const lName = LAST_NAMES[(seed * 5 + 11) % LAST_NAMES.length];
+    const fullName =
+      fName.toLowerCase() === mName.toLowerCase()
+        ? `Md. ${fName.charAt(0).toUpperCase() + fName.slice(1)} ${lName}`
+        : `${fName.charAt(0).toUpperCase() + fName.slice(1)} ${mName.charAt(0).toUpperCase() + mName.slice(1)} ${lName}`;
+
+    const role = rolePool[seed % rolePool.length];
+    const rollSeq = String(idx + 1).padStart(2, '0');
+    const collegeRoll = `${deptPrefix}${hscShort}${groupNumCode}${rollSeq}`;
+
+    return {
+      id: 900000 + batch.batchYear * 1000 + idx + 1,
+      userId: 900000 + batch.batchYear * 1000 + idx + 1,
+      fullName,
+      avatarUrl: AVATAR_POOL[seed % AVATAR_POOL.length],
+      batchYear: batch.batchYear,
+      session: batch.session,
+      group: groupValue,
+      collegeRoll,
+      profession: role.pos,
+      position: role.pos,
+      institution: role.inst,
+      specialty: [role.spec],
+      degree: role.deg,
+      city: role.city,
+      country: role.country,
+      phone: `+88017${String((seed * 12345) % 90000000 + 10000000).slice(0, 8)}`,
+      whatsapp: `+88017${String((seed * 12345) % 90000000 + 10000000).slice(0, 8)}`,
+      email: `${fName.toLowerCase()}.${lName.toLowerCase()}${batch.batchYear}@ndcalumni.org`,
+      isPublic: true,
+      online: idx % 3 === 0,
+      lastSeen: idx % 3 === 0 ? 'Online' : '2h ago',
+      postsCount: (seed % 8) + 1,
+      badges: ['Verified Notredamian'],
+      bio: `Notredamian from Batch ${batch.batchYear} ${batch.session}, ${groupValue}. Currently serving as ${role.pos} at ${role.inst}.`,
+    };
+  });
+
+  return [...realMatches, ...generated];
+}
+
+const SCIENCE_GROUPS = Array.from({ length: 17 }, (_, i) =>
+  i + 1 < 10 ? `0${i + 1}` : `${i + 1}`
+);
+const ARTS_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const COMMERCE_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+function computeBatchGroupCounts(batch: BatchSummary) {
+  const realBatchProfiles = ALUMNI_PROFILES.filter(
+    (p) => p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear
+  );
+
+  const scienceCounts: Record<string, number> = {};
+  const artsCounts: Record<string, number> = {};
+  const commerceCounts: Record<string, number> = {};
+
+  const totalTarget = batch.total;
+  const scienceTarget = Math.round(totalTarget * 0.62);
+  const commerceTarget = Math.round(totalTarget * 0.22);
+  const artsTarget = Math.max(0, totalTarget - scienceTarget - commerceTarget);
+
+  // Distribute Science across 01–17 deterministically
+  let scienceSum = 0;
+  SCIENCE_GROUPS.forEach((code, idx) => {
+    const base = Math.floor(scienceTarget / 17);
+    const variation = ((batch.batchYear * 3 + idx * 5) % 7) - 3;
+    const realCount = realBatchProfiles.filter(
+      (p) => p.group?.toLowerCase() === `science ${code}`.toLowerCase()
+    ).length;
+    const val = Math.max(2, base + variation) + realCount;
+    scienceCounts[code] = val;
+    scienceSum += val;
+  });
+  // Adjust group 05 / 01 slightly so total stays balanced
+  const sciDiff = scienceTarget - scienceSum;
+  scienceCounts['01'] = Math.max(2, scienceCounts['01'] + sciDiff);
+
+  // Distribute Arts across A–H
+  let artsSum = 0;
+  ARTS_GROUPS.forEach((code, idx) => {
+    const base = Math.floor(artsTarget / 8);
+    const variation = ((batch.batchYear * 2 + idx * 3) % 5) - 2;
+    const realCount = realBatchProfiles.filter(
+      (p) => p.group?.toLowerCase() === `arts ${code}`.toLowerCase()
+    ).length;
+    const val = Math.max(1, base + variation) + realCount;
+    artsCounts[code] = val;
+    artsSum += val;
+  });
+  const artsDiff = artsTarget - artsSum;
+  artsCounts['A'] = Math.max(1, artsCounts['A'] + artsDiff);
+
+  // Distribute Commerce across A–H
+  let commSum = 0;
+  COMMERCE_GROUPS.forEach((code, idx) => {
+    const base = Math.floor(commerceTarget / 8);
+    const variation = ((batch.batchYear * 5 + idx * 2) % 5) - 2;
+    const realCount = realBatchProfiles.filter(
+      (p) => p.group?.toLowerCase() === `commerce ${code}`.toLowerCase()
+    ).length;
+    const val = Math.max(2, base + variation) + realCount;
+    commerceCounts[code] = val;
+    commSum += val;
+  });
+  const commDiff = commerceTarget - commSum;
+  commerceCounts['A'] = Math.max(2, commerceCounts['A'] + commDiff);
+
+  const scienceTotal = Object.values(scienceCounts).reduce((a, b) => a + b, 0);
+  const artsTotal = Object.values(artsCounts).reduce((a, b) => a + b, 0);
+  const commerceTotal = Object.values(commerceCounts).reduce((a, b) => a + b, 0);
+
+  return {
+    scienceCounts,
+    artsCounts,
+    commerceCounts,
+    scienceTotal,
+    artsTotal,
+    commerceTotal,
+    grandTotal: scienceTotal + artsTotal + commerceTotal,
+  };
+}
+
+export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewProfile }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [rangeFilter, setRangeFilter] = useState<'all' | '1-40' | '41-60' | '61-70' | '71-76'>('all');
+  const [rangeFilter, setRangeFilter] = useState<'all' | '1-20' | '21-40' | '41-60' | '61-78'>('all');
+  const [activeBatchYear, setActiveBatchYear] = useState<number | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<string>('');
+  const [groupSearch, setGroupSearch] = useState<string>('');
+  const [previewAlumnus, setPreviewAlumnus] = useState<AlumniProfile | null>(null);
+
+  const activeBatch = useMemo(() => {
+    if (activeBatchYear === null) return null;
+    return BATCH_LIST.find((b) => b.batchYear === activeBatchYear) || null;
+  }, [activeBatchYear]);
+
+  const activeBatchGroupStats = useMemo(() => {
+    if (!activeBatch) return null;
+    return computeBatchGroupCounts(activeBatch);
+  }, [activeBatch]);
+
+  const selectedGroupAlumni = useMemo(() => {
+    if (!activeBatch || !activeBatchGroupStats || !selectedGroup) return [];
+    let count = 0;
+    if (selectedGroup.startsWith('Science ')) {
+      count = activeBatchGroupStats.scienceCounts[selectedGroup.replace('Science ', '')] || 0;
+    } else if (selectedGroup.startsWith('Arts ')) {
+      count = activeBatchGroupStats.artsCounts[selectedGroup.replace('Arts ', '')] || 0;
+    } else if (selectedGroup.startsWith('Commerce ')) {
+      count = activeBatchGroupStats.commerceCounts[selectedGroup.replace('Commerce ', '')] || 0;
+    }
+    const list = generateGroupAlumniList(activeBatch, selectedGroup, count);
+    if (!groupSearch.trim()) return list;
+    const q = groupSearch.toLowerCase().trim();
+    return list.filter(
+      (p) =>
+        p.fullName.toLowerCase().includes(q) ||
+        (p.collegeRoll && p.collegeRoll.toLowerCase().includes(q)) ||
+        p.institution.toLowerCase().includes(q) ||
+        p.position.toLowerCase().includes(q) ||
+        p.city.toLowerCase().includes(q)
+    );
+  }, [activeBatch, activeBatchGroupStats, selectedGroup, groupSearch]);
+
+  // Resolve direct quick-jump target batch when user types a batch number (1-78) or 4-digit HSC year (e.g. 2016)
+  const quickJumpBatch = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase().replace(/^batch\s*/i, '').replace(/^hsc\s*/i, '');
+    if (!q) return null;
+    const num = Number(q);
+    if (!Number.isNaN(num)) {
+      // Exact batch number (1 to 78)
+      if (num >= 1 && num <= 78) {
+        return BATCH_LIST.find((b) => b.batchYear === num) || null;
+      }
+      // 4-digit HSC year (e.g., 2016 -> Batch 66, since Batch 1 is HSC 1951)
+      if (num >= 1951 && num <= 1950 + 78) {
+        const targetBatchNum = num - 1950;
+        return BATCH_LIST.find((b) => b.batchYear === targetBatchNum) || null;
+      }
+      // 1949 or 1950 admission year -> Batch 1 or Batch 2
+      if (num === 1949) return BATCH_LIST[0] || null;
+      if (num === 1950) return BATCH_LIST[1] || null;
+    }
+    return null;
+  }, [searchTerm]);
 
   // Filter batches
   const filteredBatches = useMemo(() => {
-    return BATCH_LIST.filter((b) => {
-      // Range filter
-      if (rangeFilter === '1-40' && (b.batchYear < 1 || b.batchYear > 40)) return false;
-      if (rangeFilter === '41-60' && (b.batchYear < 41 || b.batchYear > 60)) return false;
-      if (rangeFilter === '61-70' && (b.batchYear < 61 || b.batchYear > 70)) return false;
-      if (rangeFilter === '71-76' && (b.batchYear < 71 || b.batchYear > 76)) return false;
+    const q = searchTerm.toLowerCase().trim();
 
-      // Search term
-      if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase().trim();
-        const batchNumStr = b.batchYear.toString();
-        const batchPadded = b.batchYear < 10 ? `0${b.batchYear}` : `${b.batchYear}`;
-        const matchesNum = batchNumStr === q || batchPadded === q || `batch ${batchNumStr}`.includes(q);
-        const matchesSession = b.session.toLowerCase().includes(q);
-        const matchesRep = b.representative?.toLowerCase().includes(q);
-        return matchesNum || matchesSession || matchesRep;
+    const list = BATCH_LIST.filter((b) => {
+      // When not searching, apply range filter; when searching, search across all 78 batches
+      if (!q) {
+        if (rangeFilter === '1-20' && (b.batchYear < 1 || b.batchYear > 20)) return false;
+        if (rangeFilter === '21-40' && (b.batchYear < 21 || b.batchYear > 40)) return false;
+        if (rangeFilter === '41-60' && (b.batchYear < 41 || b.batchYear > 60)) return false;
+        if (rangeFilter === '61-78' && (b.batchYear < 61 || b.batchYear > 78)) return false;
+        return true;
       }
-      return true;
+
+      const batchNumStr = b.batchYear.toString();
+      const batchPadded = b.batchYear < 10 ? `0${b.batchYear}` : `${b.batchYear}`;
+      const startYear = String(1948 + b.batchYear);
+      const sessionEndYear = String(1949 + b.batchYear);
+      const hscFullYear = String(1950 + b.batchYear);
+      const hscShortYear = hscFullYear.slice(-2);
+
+      const cleanQ = q.replace(/^batch\s*/i, '').replace(/^hsc\s*/i, '');
+
+      const matchesNum =
+        batchNumStr === cleanQ ||
+        batchPadded === cleanQ ||
+        `batch ${batchNumStr}`.includes(q) ||
+        `batch ${batchPadded}`.includes(q);
+
+      const matchesYear =
+        hscFullYear === cleanQ ||
+        startYear === cleanQ ||
+        sessionEndYear === cleanQ ||
+        `hsc ${hscShortYear}` === q ||
+        `hsc ${hscFullYear}` === q ||
+        hscFullYear.includes(cleanQ);
+
+      const matchesSession = b.session.toLowerCase().includes(q);
+      const matchesRep = b.representative?.toLowerCase().includes(q);
+
+      return matchesNum || matchesYear || matchesSession || matchesRep;
     });
-  }, [searchTerm, rangeFilter]);
+
+    // Prioritize exact quickJumpBatch at the top of search results
+    if (q && quickJumpBatch) {
+      return [...list].sort((a, b) => {
+        if (a.batchYear === quickJumpBatch.batchYear) return -1;
+        if (b.batchYear === quickJumpBatch.batchYear) return 1;
+        return a.batchYear - b.batchYear;
+      });
+    }
+
+    return list;
+  }, [searchTerm, rangeFilter, quickJumpBatch]);
 
   const totalRegistered = useMemo(() => {
     return BATCH_LIST.reduce((acc, curr) => acc + curr.total, 0);
@@ -46,25 +363,25 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch }) => {
           <div className="flex items-center gap-2 mb-1.5">
             <NDCLogo className="w-5 h-5" />
             <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
-              Notre Dame College Dhaka • 75+ Batches
+              Notre Dame College Dhaka • Batches 01 – 78
             </span>
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
               Founded: 1949 by Congregation of Holy Cross
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-slate-50 tracking-tight">
-            Generational Batch Directory
+            Generational Batch Directory (Batch 1 – 78)
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
-            Explore alumni members classified by their Notre Dame College batch and HSC session — from the pioneer Batch 01 (1949-51) to recent batches.
+            Explore all 78 alumni batches classified by their Notre Dame College session and HSC year — starting from Batch 1 (1949-50), HSC 51 through Batch 78 (2026-27), HSC 28.
           </p>
         </div>
 
         {/* Quick Highlights */}
         <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2 rounded-2xl shadow-2xs self-start md:self-auto">
           <div className="px-3 py-1 text-center border-r border-slate-200 dark:border-slate-800">
-            <div className="text-lg font-black text-blue-600 dark:text-blue-400">75+</div>
-            <div className="text-[10px] uppercase font-bold text-slate-400">Batches</div>
+            <div className="text-lg font-black text-blue-600 dark:text-blue-400">1–78</div>
+            <div className="text-[10px] uppercase font-bold text-slate-400">All Batches</div>
           </div>
           <div className="px-3 py-1 text-center border-r border-slate-200 dark:border-slate-800">
             <div className="text-lg font-black text-amber-600 dark:text-amber-400">1949</div>
@@ -77,28 +394,63 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch }) => {
         </div>
       </div>
 
-      {/* Search & Filter Bar */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        {/* Search */}
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search batch (e.g., 68, 2018, or name)..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-          />
+      {/* Search & Quick Jump Bar */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        {/* Search Input + Quick Jump Button */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-xl">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Quick jump by HSC year (e.g., 2016) or batch number (1–78)..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && quickJumpBatch) {
+                  e.preventDefault();
+                  setActiveBatchYear(quickJumpBatch.batchYear);
+                  setSelectedGroup('');
+                }
+              }}
+              className="w-full pl-10 pr-9 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                title="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {quickJumpBatch && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveBatchYear(quickJumpBatch.batchYear);
+                setSelectedGroup('');
+              }}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer shrink-0"
+            >
+              <span>
+                Jump to Batch {quickJumpBatch.batchYear} (HSC {1950 + quickJumpBatch.batchYear})
+              </span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Range filter tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
           {[
-            { id: 'all', label: 'All Batches' },
-            { id: '1-40', label: 'Batches 1-40' },
-            { id: '41-60', label: 'Batches 41-60' },
-            { id: '61-70', label: 'Batches 61-70' },
-            { id: '71-76', label: 'Batches 71-76' },
+            { id: 'all', label: 'All Batches (1–78)' },
+            { id: '1-20', label: 'Batches 1–20' },
+            { id: '21-40', label: 'Batches 21–40' },
+            { id: '41-60', label: 'Batches 41–60' },
+            { id: '61-78', label: 'Batches 61–78' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -115,6 +467,484 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch }) => {
           ))}
         </div>
       </div>
+
+      {/* Selected Batch Academic Group Breakdown (Matches Registration Form UI + Group Counts) */}
+      <AnimatePresence mode="wait">
+        {activeBatch && activeBatchGroupStats && (
+          <motion.div
+            key={activeBatch.batchYear}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border-2 border-blue-500/30 dark:border-blue-500/40 shadow-sm space-y-5"
+          >
+            {/* Top Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-base shadow-xs">
+                  {activeBatch.batchYear < 10 ? `0${activeBatch.batchYear}` : activeBatch.batchYear}
+                </div>
+                <div>
+                  <div className="flex items-center flex-wrap gap-2">
+                    <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-slate-50">
+                      Batch {activeBatch.batchYear} {activeBatch.session}
+                    </h2>
+                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
+                      • {activeBatchGroupStats.grandTotal} Total Alumni
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Academic group distribution across Science, Arts, and Commerce. Select a group to inspect its members.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => onSelectBatch(activeBatch.batchYear)}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>Open Full Batch Directory</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveBatchYear(null);
+                    setSelectedGroup('');
+                  }}
+                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Academic Category Summary Cards with Staggered Slide-Up Fade Entrance */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                {
+                  label: 'Science',
+                  sub: 'Groups 01 – 17',
+                  count: activeBatchGroupStats.scienceTotal,
+                  accent: 'text-blue-600 dark:text-blue-400',
+                  border: 'border-blue-200/70 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-950/20',
+                },
+                {
+                  label: 'Arts',
+                  sub: 'Groups A – H',
+                  count: activeBatchGroupStats.artsTotal,
+                  accent: 'text-amber-600 dark:text-amber-400',
+                  border: 'border-amber-200/70 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20',
+                },
+                {
+                  label: 'Commerce',
+                  sub: 'Groups A – H',
+                  count: activeBatchGroupStats.commerceTotal,
+                  accent: 'text-emerald-600 dark:text-emerald-400',
+                  border: 'border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20',
+                },
+              ].map((cat, idx) => (
+                <motion.div
+                  key={cat.label}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.32,
+                    delay: 0.06 + idx * 0.07,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  className={`rounded-2xl p-3.5 border flex items-center justify-between ${cat.border}`}
+                >
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900 dark:text-slate-100">
+                      {cat.label}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {cat.sub}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-lg font-black leading-none ${cat.accent}`}>
+                      {cat.count}
+                    </div>
+                    <div className="text-[10px] font-semibold text-slate-400 mt-1">
+                      Alumni
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Academic Groups Container — Same layout as Registration Form */}
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              className="rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 p-4 space-y-4"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                    Your Group
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Select the group you belonged to at Notre Dame.
+                  </p>
+                </div>
+                {selectedGroup && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">
+                      {selectedGroup.startsWith('Science ')
+                        ? `${selectedGroup} • ${activeBatchGroupStats.scienceCounts[selectedGroup.replace('Science ', '')]} Alumni`
+                        : selectedGroup.startsWith('Arts ')
+                          ? `${selectedGroup} • ${activeBatchGroupStats.artsCounts[selectedGroup.replace('Arts ', '')]} Alumni`
+                          : `${selectedGroup} • ${activeBatchGroupStats.commerceCounts[selectedGroup.replace('Commerce ', '')]} Alumni`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGroup('')}
+                      className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3.5">
+                {/* Science: 01–17 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      Science
+                    </span>
+                    <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                      {activeBatchGroupStats.scienceTotal} in Science
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SCIENCE_GROUPS.map((code) => {
+                      const value = `Science ${code}`;
+                      const count = activeBatchGroupStats.scienceCounts[code] || 0;
+                      const isSelected = selectedGroup === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setSelectedGroup(isSelected ? '' : value)}
+                          className={`min-w-[3.25rem] px-2.5 py-1.5 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                            isSelected
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-400'
+                          }`}
+                        >
+                          <span className="text-[11px] font-extrabold leading-tight">{code}</span>
+                          <span
+                            className={`text-[9px] font-semibold leading-tight mt-0.5 ${
+                              isSelected ? 'text-blue-100' : 'text-slate-400 dark:text-slate-400'
+                            }`}
+                          >
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Arts & Commerce side-by-side on desktop, stacked on mobile */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                  {/* Arts: A–H */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                        Arts
+                      </span>
+                      <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                        {activeBatchGroupStats.artsTotal} in Arts
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ARTS_GROUPS.map((code) => {
+                        const value = `Arts ${code}`;
+                        const count = activeBatchGroupStats.artsCounts[code] || 0;
+                        const isSelected = selectedGroup === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setSelectedGroup(isSelected ? '' : value)}
+                            className={`min-w-[2.75rem] px-2.5 py-1.5 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                              isSelected
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-400'
+                            }`}
+                          >
+                            <span className="text-[11px] font-extrabold leading-tight">{code}</span>
+                            <span
+                              className={`text-[9px] font-semibold leading-tight mt-0.5 ${
+                                isSelected ? 'text-blue-100' : 'text-slate-400 dark:text-slate-400'
+                              }`}
+                            >
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Commerce: A–H */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                        Commerce
+                      </span>
+                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                        {activeBatchGroupStats.commerceTotal} in Commerce
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {COMMERCE_GROUPS.map((code) => {
+                        const value = `Commerce ${code}`;
+                        const count = activeBatchGroupStats.commerceCounts[code] || 0;
+                        const isSelected = selectedGroup === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setSelectedGroup(isSelected ? '' : value)}
+                            className={`min-w-[2.75rem] px-2.5 py-1.5 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                              isSelected
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-400'
+                            }`}
+                          >
+                            <span className="text-[11px] font-extrabold leading-tight">{code}</span>
+                            <span
+                              className={`text-[9px] font-semibold leading-tight mt-0.5 ${
+                                isSelected ? 'text-blue-100' : 'text-slate-400 dark:text-slate-400'
+                              }`}
+                            >
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Alumni List for Selected Group */}
+            <AnimatePresence mode="wait">
+              {selectedGroup && (
+                <motion.div
+                  key={selectedGroup}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.28 }}
+                  className="pt-2 space-y-4"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50/60 dark:bg-blue-950/25 border border-blue-200/70 dark:border-blue-900/50 rounded-2xl p-3.5">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-black text-slate-900 dark:text-slate-100">
+                          Batch {activeBatch.batchYear} • {selectedGroup} Alumni
+                        </span>
+                        <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">
+                          ({selectedGroupAlumni.length} Members)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Showing all alumni members from {selectedGroup} in Batch {activeBatch.batchYear} {activeBatch.session}.
+                      </p>
+                    </div>
+
+                    <div className="relative w-full sm:w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder={`Search in ${selectedGroup} (name, roll, org)...`}
+                        value={groupSearch}
+                        onChange={(e) => setGroupSearch(e.target.value)}
+                        className="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                      />
+                      {groupSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setGroupSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Alumni Cards Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[540px] overflow-y-auto pr-1">
+                    {selectedGroupAlumni.map((alumnus) => (
+                      <div
+                        key={alumnus.id}
+                        onClick={() => {
+                          if (alumnus.id < 900000 && onViewProfile) {
+                            onViewProfile(alumnus.id);
+                          } else {
+                            setPreviewAlumnus(alumnus);
+                          }
+                        }}
+                        className="group bg-white dark:bg-slate-800/90 rounded-2xl p-3.5 border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs hover:shadow-sm transition-all cursor-pointer flex items-start gap-3"
+                      >
+                        <div className="relative shrink-0">
+                          <img
+                            src={alumnus.avatarUrl}
+                            alt={alumnus.fullName}
+                            className="w-11 h-11 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
+                          />
+                          {alumnus.online && (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-800" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <h5 className="text-xs font-extrabold text-slate-900 dark:text-slate-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                              {alumnus.fullName}
+                            </h5>
+                            <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
+                            <span>Roll: {alumnus.collegeRoll || 'N/A'}</span>
+                            <span>•</span>
+                            <span>{alumnus.group}</span>
+                          </div>
+
+                          <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate mt-1">
+                            {alumnus.position}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                            <span className="truncate">{alumnus.institution}</span>
+                            <span className="shrink-0">
+                              {alumnus.city}, {alumnus.country}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Alumnus Detail Preview Modal */}
+      <AnimatePresence>
+        {previewAlumnus && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setPreviewAlumnus(null)}
+            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3.5">
+                  <img
+                    src={previewAlumnus.avatarUrl}
+                    alt={previewAlumnus.fullName}
+                    className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
+                        {previewAlumnus.fullName}
+                      </h3>
+                      <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5">
+                      Batch {previewAlumnus.batchYear} {previewAlumnus.session} • {previewAlumnus.group}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      College Roll: {previewAlumnus.collegeRoll}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewAlumnus(null)}
+                  className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl">
+                {previewAlumnus.bio}
+              </p>
+
+              <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span>
+                    <strong>{previewAlumnus.position}</strong> at {previewAlumnus.institution}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <GraduationCap className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>
+                    Degrees: {previewAlumnus.degree.join(', ')} • {previewAlumnus.specialty.join(', ')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>
+                    {previewAlumnus.city}, {previewAlumnus.country}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                {previewAlumnus.phone && (
+                  <a
+                    href={`tel:${previewAlumnus.phone}`}
+                    className="py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>Call Alumnus</span>
+                  </a>
+                )}
+                {previewAlumnus.email && (
+                  <a
+                    href={`mailto:${previewAlumnus.email}`}
+                    className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Send Email</span>
+                  </a>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Batches Grid */}
       {filteredBatches.length === 0 ? (
@@ -136,13 +966,24 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch }) => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredBatches.map((batch) => {
-            const hasRegisteredAlumni = ALUMNI_PROFILES.some((p) => p.batchYear === batch.batchYear);
+            const hasRegisteredAlumni = ALUMNI_PROFILES.some(
+              (p) => p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear
+            );
+            const isSelectedBatch = activeBatchYear === batch.batchYear;
 
             return (
               <div
                 key={batch.batchYear}
-                onClick={() => onSelectBatch(batch.batchYear)}
-                className="group bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-md hover:border-blue-400 dark:hover:border-blue-500 transition-all cursor-pointer flex flex-col justify-between"
+                onClick={() => {
+                  setActiveBatchYear(batch.batchYear);
+                  setSelectedGroup('');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`group bg-white dark:bg-slate-900 rounded-3xl p-5 border shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between ${
+                  isSelectedBatch
+                    ? 'border-blue-600 dark:border-blue-400 ring-2 ring-blue-500/20'
+                    : 'border-slate-200/80 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
+                }`}
               >
                 <div>
                   {/* Top row with batch number badge and session year */}
@@ -156,16 +997,16 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch }) => {
                   </div>
 
                   {/* Batch Title */}
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                      Batch {batch.batchYear}
+                  <div className="flex items-center flex-wrap gap-1.5">
+                    <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      Batch {batch.batchYear} {batch.session}
                     </h3>
                     {batch.batchYear === 1 && (
                       <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
                         1st Pioneer
                       </span>
                     )}
-                    {batch.batchYear === 35 && (
+                    {batch.batchYear === 78 && (
                       <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
                         Latest
                       </span>

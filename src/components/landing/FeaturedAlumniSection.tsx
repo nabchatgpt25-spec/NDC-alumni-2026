@@ -381,12 +381,19 @@ export const FeaturedAlumniSection: React.FC<FeaturedAlumniSectionProps> = ({
 
   // Combine famous Notredamians with any registered high-ranking profiles
   const allProminentAlumni = useMemo(() => {
-    // If user has registered profiles, prepend or append them
     const combined = [...FAMOUS_NOTREDAMIANS];
     if (alumniList && alumniList.length > 0) {
-      alumniList.forEach((userAlumnus) => {
-        if (!combined.some((p) => p.fullName.toLowerCase() === userAlumnus.fullName.toLowerCase())) {
-          combined.push(userAlumnus);
+      alumniList.forEach((userAlumnus, idx) => {
+        const sameName = combined.some(
+          (p) => p.fullName.toLowerCase() === userAlumnus.fullName.toLowerCase()
+        );
+        if (!sameName) {
+          const hasSameId = combined.some((p) => p.id === userAlumnus.id);
+          combined.push(
+            hasSameId
+              ? { ...userAlumnus, id: 700000 + userAlumnus.id + idx }
+              : userAlumnus
+          );
         }
       });
     }
@@ -576,9 +583,9 @@ export const FeaturedAlumniSection: React.FC<FeaturedAlumniSectionProps> = ({
         className="flex gap-3 sm:gap-5 overflow-x-auto pb-3 sm:pb-4 pt-1 sm:pt-2 no-scrollbar scroll-smooth cursor-grab active:cursor-grabbing select-none"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
-        {filteredAlumni.map((alumnus) => (
+        {filteredAlumni.map((alumnus, idx) => (
           <div
-            key={alumnus.id}
+            key={`${alumnus.id}-${idx}`}
             onClick={() => onSelectAlumnus(alumnus)}
             className="w-[275px] sm:w-[320px] lg:w-[350px] shrink-0 group glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-5 cursor-pointer flex flex-col justify-between"
           >

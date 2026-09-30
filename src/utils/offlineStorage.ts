@@ -1,4 +1,5 @@
 import { AlumniProfile, PostItem } from '../types';
+import { SEED_ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
 
 export const CACHED_DIRECTORY_KEY = 'ndc_cached_directory';
 export const CACHED_DIRECTORY_TIMESTAMP_KEY = 'ndc_cached_directory_timestamp';
@@ -20,13 +21,15 @@ export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
     session: '1993-95',
     group: 'Science',
     collegeRoll: '195012',
-    profession: 'Academic & Scientist',
+    profession: 'Academic & Researcher',
     position: 'Professor & Head of Computer Science',
     institution: 'Bangladesh University of Engineering and Technology (BUET)',
     specialty: ['Computer Science & Software', 'Artificial Intelligence & Data'],
     degree: ['HSC', 'BSc Engineering', 'PhD'],
     city: 'Dhaka',
     country: 'Bangladesh',
+    latitude: 23.7275,
+    longitude: 90.3915,
     phone: '+880 1711-234567',
     email: 'mahfuz.ndc@gmail.com',
     whatsapp: '8801711234567',
@@ -47,13 +50,15 @@ export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
     session: '2006-08',
     group: 'Science',
     collegeRoll: '108044',
-    profession: 'Tech Executive',
+    profession: 'Engineer / Tech Executive',
     position: 'Staff Engineering Lead',
     institution: 'Google Cloud, Silicon Valley',
     specialty: ['Computer Science & Software', 'Artificial Intelligence & Data'],
     degree: ['HSC', 'BSc Engg (BUET)', 'MSc (Stanford)'],
-    city: 'Mountain View, CA',
+    city: 'Mountain View',
     country: 'United States',
+    latitude: 37.391,
+    longitude: -122.078,
     phone: '+1 (650) 555-0199',
     email: 'tanvir.chowdhury@alumni.ndc.edu',
     whatsapp: '16505550199',
@@ -74,13 +79,15 @@ export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
     session: '2000-02',
     group: 'Science',
     collegeRoll: '102078',
-    profession: 'Technology Director & Architect',
+    profession: 'Engineer / Tech Executive',
     position: 'Principal Cloud & Infrastructure Architect',
     institution: 'Global Enterprise Systems Ltd',
     specialty: ['Civil & Structural Engineering', 'Computer Science & Software'],
     degree: ['HSC', 'BSc in EEE (BUET)', 'MSc in Systems Engineering'],
     city: 'Dhaka',
     country: 'Bangladesh',
+    latitude: 23.751,
+    longitude: 90.394,
     phone: '+880 1713-456789',
     email: 'tariqul.systems@gmail.com',
     whatsapp: '8801713456789',
@@ -101,13 +108,15 @@ export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
     session: '2008-10',
     group: 'Business Studies',
     collegeRoll: '210015',
-    profession: 'Business Executive & Founder',
+    profession: 'Entrepreneur & Founder',
     position: 'Managing Director & CEO',
     institution: 'Apex Fintech & Ventures',
     specialty: ['Business Administration & Management', 'Finance, Banking & Investment'],
     degree: ['HSC', 'BBA (IBA, DU)', 'MBA (INSEAD)'],
     city: 'Singapore',
     country: 'Singapore',
+    latitude: 1.2895,
+    longitude: 103.85,
     phone: '+65 9123 4567',
     email: 'farhan.rezwan@apexfin.sg',
     whatsapp: '6591234567',
@@ -128,13 +137,15 @@ export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
     session: '2012-14',
     group: 'Humanities',
     collegeRoll: '314008',
-    profession: 'Lawyer & Advocate',
+    profession: 'Lawyer & Legal Counsel',
     position: 'Advocate, Supreme Court of Bangladesh',
     institution: 'Chambers of Law & Corporate Associates',
     specialty: ['Constitutional & Corporate Law', 'Civil Service & Administration (BCS)'],
     degree: ['HSC', 'LLB (Hons, London)', 'Barrister-at-Law (Lincoln’s Inn)'],
     city: 'Dhaka',
     country: 'Bangladesh',
+    latitude: 23.734,
+    longitude: 90.405,
     phone: '+880 1715-998877',
     email: 'nabeel.hasan@supremecourt.bd',
     whatsapp: '8801715998877',
@@ -155,13 +166,15 @@ export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
     session: '2016-18',
     group: 'Science',
     collegeRoll: '118088',
-    profession: 'Engineer / Tech',
+    profession: 'Engineer / Tech Executive',
     position: 'Robotics & Embedded Systems Engineer',
     institution: 'Autonomous Mobility Labs',
     specialty: ['Mechanical & Robotics', 'Artificial Intelligence & Data'],
     degree: ['HSC', 'BSc Engg (EEE, BUET)'],
     city: 'Dhaka',
     country: 'Bangladesh',
+    latitude: 23.725,
+    longitude: 90.389,
     phone: '+880 1718-223344',
     email: 'fahim.shahriar@eee.buet.ac.bd',
     whatsapp: '8801718223344',
@@ -227,17 +240,40 @@ export const INITIAL_OFFLINE_SAVED_POSTS: PostItem[] = [
 ];
 
 export function getCachedDirectory(): AlumniProfile[] {
-  if (typeof window === 'undefined') return INITIAL_OFFLINE_DIRECTORY;
+  const baseList = [...INITIAL_OFFLINE_DIRECTORY, ...SEED_ALUMNI_PROFILES];
+  if (typeof window === 'undefined') return baseList;
   try {
+    const stored = loadStoredAlumniProfiles();
     const raw = localStorage.getItem(CACHED_DIRECTORY_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
+    const parsedCached: AlumniProfile[] = raw ? JSON.parse(raw) : [];
+
+    const combined = [
+      ...stored,
+      ...(Array.isArray(parsedCached) ? parsedCached : []),
+      ...INITIAL_OFFLINE_DIRECTORY,
+      ...SEED_ALUMNI_PROFILES,
+    ];
+
+    const uniqueMap = new Map<number, AlumniProfile>();
+    combined.forEach((p) => {
+      if (!p || typeof p.id !== 'number') return;
+      const normalizedId = p.id >= 800001 && p.id <= 800016 ? p.id - 800000 + 100 : p.id;
+      const normalizedCity = p.city === 'Mountain View, CA' ? 'Mountain View' : p.city;
+      if (!uniqueMap.has(normalizedId)) {
+        uniqueMap.set(normalizedId, {
+          ...p,
+          id: normalizedId,
+          userId: normalizedId,
+          city: normalizedCity,
+        });
+      }
+    });
+
+    return Array.from(uniqueMap.values());
   } catch (e) {
     console.warn('Failed to parse cached directory', e);
   }
-  return INITIAL_OFFLINE_DIRECTORY;
+  return baseList;
 }
 
 export function saveCachedDirectory(profiles: AlumniProfile[]) {

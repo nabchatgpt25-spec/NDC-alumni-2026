@@ -19,32 +19,330 @@ import {
   Upload,
   Image as ImageIcon,
   Sparkles,
-  Check
+  Check,
+  MessageSquare,
+  Heart,
+  Trash2,
+  Send,
+  Video,
+  Link2,
+  Plus,
+  X
 } from 'lucide-react';
-import { AlumniProfile, SPECIALTIES_LIST, DEGREES_LIST } from '../types';
-import { ALUMNI_PROFILES } from '../data/mockData';
+import { AlumniProfile, PostItem, PostComment, SPECIALTIES_LIST, DEGREES_LIST } from '../types';
+import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
+import { UNIVERSAL_DIRECTORY_PROFILES } from './DirectoryView';
 import { useAuth } from '../context/AuthContext';
 import { AchievementBadgeChip, BADGE_CONFIGS } from './AchievementBadge';
 import { PhotoChangeModal, PhotoType } from './PhotoChangeModal';
 import { WhatsAppIcon, FacebookIcon } from './SocialIcons';
 import { calculateProfileCompletion } from '../utils/profileCompletion';
+import { INITIAL_OFFLINE_SAVED_POSTS, INITIAL_OFFLINE_DIRECTORY } from '../utils/offlineStorage';
+import { PostLightboxModal } from './PostLightboxModal';
+import {
+  extractUrlsFromText,
+  renderTextWithClickableLinks,
+  SharedEmbedCard
+} from './SmartPostMediaAndEmbeds';
+import { VerificationStatusBadge } from './verification/VerificationStatusBadge';
+import {
+  vouchForAlumniProfile,
+  getVouchShareLink,
+  simulateDemoVouchForUser,
+  loadVouchRequests
+} from '../utils/verificationService';
+import { saveStoredAlumniProfiles } from '../data/mockData';
 
 interface ProfileViewProps {
   profileId: number;
   onBack: () => void;
   backLabel?: string;
+  onOpenVerificationCenter?: (tab?: 'status' | 'vouch_classmates' | 'upload_id' | 'policy') => void;
 }
 
-export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, backLabel }) => {
-  const { currentUser, updateProfile } = useAuth();
-  const isMine = profileId === currentUser.id || profileId === currentUser.userId;
+export const ProfileView: React.FC<ProfileViewProps> = ({
+  profileId,
+  onBack,
+  backLabel,
+  onOpenVerificationCenter,
+}) => {
+  const { isLoggedIn, currentUser, updateProfile } = useAuth();
 
-  const initialProfile: AlumniProfile = isMine
-    ? currentUser
-    : ALUMNI_PROFILES.find((p) => p.id === profileId) || currentUser;
+  // All feed posts loaded from localStorage so we can display and manage this user's posts in the "Posts" tab
+  const [allPosts, setAllPosts] = useState<PostItem[]>(() => {
+    if (typeof window === 'undefined') return INITIAL_OFFLINE_SAVED_POSTS;
+    try {
+      const raw = localStorage.getItem('ndc_alumni_posts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load posts in ProfileView', e);
+    }
+    return INITIAL_OFFLINE_SAVED_POSTS;
+  });
 
-  const [profile, setProfile] = useState<AlumniProfile>(initialProfile);
-  const [activeTab, setActiveTab] = useState<'about' | 'timeline' | 'edit'>('about');
+  const resolveProfileById = (targetId: number): AlumniProfile => {
+    if (targetId === currentUser.id || targetId === currentUser.userId) {
+      return currentUser;
+    }
+    const allKnownProfiles = [
+      ...loadStoredAlumniProfiles(),
+      ...ALUMNI_PROFILES,
+      ...UNIVERSAL_DIRECTORY_PROFILES,
+      ...INITIAL_OFFLINE_DIRECTORY,
+    ];
+    const matched = allKnownProfiles.find(
+      (p) => p.id === targetId || p.userId === targetId
+    );
+    if (matched) return matched;
+
+    const matchingPost = allPosts.find((p) => p.userId === targetId);
+    if (matchingPost) {
+      return {
+        id: targetId,
+        userId: targetId,
+        fullName: matchingPost.fullName,
+        avatarUrl: matchingPost.avatarUrl,
+        coverUrl: '/src/assets/images/ndc_campus_hero_1790233370828.jpg',
+        batchYear: matchingPost.batchYear,
+        profession: 'Notredamian Alumnus',
+        position: 'Alumni Member',
+        institution: 'Notre Dame College Alumni Network',
+        specialty: [],
+        degree: ['HSC'],
+        city: 'Dhaka',
+        country: 'Bangladesh',
+        isPublic: true,
+        online: true,
+        postsCount: 1,
+        badges: ['Verified Notredamian'],
+      };
+    }
+
+    return allKnownProfiles[0] || currentUser;
+  };
+
+  const [profile, setProfile] = useState<AlumniProfile>(() => resolveProfileById(profileId));
+  const isMine =
+    isLoggedIn &&
+    (profileId === currentUser.id || profileId === currentUser.userId) &&
+    (profile.id === currentUser.id || profile.userId === currentUser.userId);
+
+  const [activeTab, setActiveTab] = useState<'about' | 'posts' | 'edit'>('about');
+
+  const syncAllPosts = (updated: PostItem[]) => {
+    setAllPosts(updated);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ndc_alumni_posts', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed to save posts from ProfileView', e);
+      }
+    }
+  };
+
+  // Profile Posts composer & interaction state (strictly for own profile)
+  const [newPostText, setNewPostText] = useState('');
+  const [newPostImages, setNewPostImages] = useState<string[]>([]);
+  const [newPostVideos, setNewPostVideos] = useState<string[]>([]);
+  const [editingProfilePostId, setEditingProfilePostId] = useState<number | null>(null);
+  const [editingProfilePostText, setEditingProfilePostText] = useState('');
+  const [postCommentInputs, setPostCommentInputs] = useState<Record<number, string>>({});
+  const postPhotoInputRef = useRef<HTMLInputElement>(null);
+  const postVideoInputRef = useRef<HTMLInputElement>(null);
+  const [lightboxState, setLightboxState] = useState<{
+    isOpen: boolean;
+    images: string[];
+    initialIndex: number;
+    postAuthor?: {
+      fullName: string;
+      avatarUrl: string;
+      batchYear?: number;
+      createdAt?: string;
+    };
+    postCaption?: string;
+  }>({
+    isOpen: false,
+    images: [],
+    initialIndex: 0,
+  });
+
+  const profilePosts = allPosts.filter(
+    (p) =>
+      p.userId === profile.userId ||
+      p.userId === profile.id ||
+      p.fullName.toLowerCase() === profile.fullName.toLowerCase()
+  );
+
+  const handleProfilePostPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file: File) => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const res = ev.target?.result as string;
+        if (res) setNewPostImages((prev) => [...prev, res]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleProfilePostVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file: File) => {
+      if (!file.type.startsWith('video/')) return;
+      if (file.size <= 15 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const res = ev.target?.result as string;
+          if (res) setNewPostVideos((prev) => [...prev, res]);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setNewPostVideos((prev) => [...prev, URL.createObjectURL(file)]);
+      }
+    });
+    e.target.value = '';
+  };
+
+  const handleCreateProfilePost = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isMine) return;
+    if (!newPostText.trim() && newPostImages.length === 0 && newPostVideos.length === 0) return;
+    const created: PostItem = {
+      id: Date.now(),
+      userId: currentUser.userId,
+      fullName: currentUser.fullName,
+      avatarUrl: currentUser.avatarUrl,
+      batchYear: currentUser.batchYear,
+      content: newPostText.trim(),
+      images: [...newPostImages],
+      videos: [...newPostVideos],
+      category: 'General Update',
+      likesCount: 0,
+      commentsCount: 0,
+      createdAt: 'Just now',
+      likedByMe: false,
+      comments: [],
+    };
+    syncAllPosts([created, ...allPosts]);
+    setNewPostText('');
+    setNewPostImages([]);
+    setNewPostVideos([]);
+  };
+
+  const handleSaveEditProfilePost = (postId: number) => {
+    if (!isMine) return;
+    const trimmed = editingProfilePostText.trim();
+    if (!trimmed) return;
+    const updated = allPosts.map((p) =>
+      p.id === postId && (p.userId === currentUser.userId || p.userId === currentUser.id)
+        ? { ...p, content: trimmed, isEdited: true }
+        : p
+    );
+    syncAllPosts(updated);
+    setEditingProfilePostId(null);
+    setEditingProfilePostText('');
+  };
+
+  const handleToggleLikeProfilePost = (postId: number) => {
+    const updated = allPosts.map((p) => {
+      if (p.id === postId) {
+        const nextLiked = !p.likedByMe;
+        return {
+          ...p,
+          likedByMe: nextLiked,
+          likesCount: nextLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1),
+        };
+      }
+      return p;
+    });
+    syncAllPosts(updated);
+  };
+
+  const handleDeleteProfilePost = (postId: number) => {
+    if (!isMine) return;
+    syncAllPosts(
+      allPosts.filter(
+        (p) => !(p.id === postId && (p.userId === currentUser.userId || p.userId === currentUser.id))
+      )
+    );
+  };
+
+  const handleAddProfilePostComment = (postId: number) => {
+    const text = (postCommentInputs[postId] || '').trim();
+    if (!text) return;
+    const newComment: PostComment = {
+      id: Date.now(),
+      postId,
+      userId: currentUser.userId,
+      fullName: currentUser.fullName,
+      avatarUrl: currentUser.avatarUrl,
+      content: text,
+      likesCount: 0,
+      likedByMe: false,
+      createdAt: 'Just now',
+      replies: [],
+    };
+    const updated = allPosts.map((p) =>
+      p.id === postId
+        ? {
+            ...p,
+            commentsCount: p.commentsCount + 1,
+            comments: [...(p.comments || []), newComment],
+          }
+        : p
+    );
+    syncAllPosts(updated);
+    setPostCommentInputs((prev) => ({ ...prev, [postId]: '' }));
+  };
+
+  const [copiedProfilePostId, setCopiedProfilePostId] = useState<number | null>(null);
+  const [profileShareCopied, setProfileShareCopied] = useState(false);
+
+  const handleShareProfilePost = async (postId: number) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('post', String(postId));
+    url.hash = `post-${postId}`;
+    const directUrl = url.toString();
+
+    let copied = false;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(directUrl);
+        copied = true;
+      } catch {
+        copied = false;
+      }
+    }
+    if (!copied && typeof document !== 'undefined') {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = directUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch {
+        // ignore
+      }
+    }
+
+    setCopiedProfilePostId(postId);
+    setTimeout(() => {
+      setCopiedProfilePostId((prev) => (prev === postId ? null : prev));
+    }, 2500);
+  };
 
   useEffect(() => {
     if (!isMine && activeTab === 'edit') {
@@ -160,12 +458,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
         setEditBadges(currentUser.badges || []);
       }
     } else {
-      const found = ALUMNI_PROFILES.find((p) => p.id === profileId);
-      if (found) {
-        setProfile(found);
-      }
+      const resolved = resolveProfileById(profileId);
+      setProfile(resolved);
     }
-  }, [profileId, currentUser, isMine]);
+  }, [profileId, currentUser]);
 
   // Auto-save Edit Profile form progress (including 'Others' custom inputs) to localStorage
   useEffect(() => {
@@ -525,11 +821,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
               </div>
 
               <div className="mb-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-50 tracking-tight">
                     {profile.fullName}
                   </h1>
-                  <ShieldCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  <VerificationStatusBadge
+                    profile={profile}
+                    onClick={() => onOpenVerificationCenter?.(isMine ? 'status' : 'vouch_classmates')}
+                    size="md"
+                  />
                 </div>
                 <div className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2 mt-0.5">
                   <span className="px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800">
@@ -582,12 +882,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
                 type="button"
                 onClick={() => {
                   navigator.clipboard?.writeText(window.location.href);
-                  alert('Profile link copied to clipboard!');
+                  setProfileShareCopied(true);
+                  setTimeout(() => setProfileShareCopied(false), 2500);
                 }}
-                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-colors"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-colors cursor-pointer"
                 title="Share profile"
               >
-                <Share2 className="w-4 h-4" />
+                {profileShareCopied ? (
+                  <Check className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <Share2 className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
@@ -665,36 +970,152 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
             </div>
           )}
 
-          {/* Tab Selector */}
-          <div className="flex gap-4 mt-6 border-b border-slate-100 dark:border-slate-800 text-xs font-bold">
+          {/* Active Verification & Peer Vouch Card */}
+          <div
+            className={`mt-4 p-4 rounded-2xl border ${
+              (profile.verificationStatus || 'verified') === 'verified'
+                ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-500/30'
+                : 'bg-amber-50/70 dark:bg-amber-950/25 border-amber-500/40'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ShieldCheck
+                    className={`w-4 h-4 ${
+                      (profile.verificationStatus || 'verified') === 'verified'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                    }`}
+                  />
+                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
+                    {(profile.verificationStatus || 'verified') === 'verified'
+                      ? 'Tier 3: Verified Notredamian Alumnus'
+                      : `Tier 2: Pending Classmate Verification (${
+                          profile.vouchesCount ?? (profile.verifiedBy?.length || 0)
+                        }/2 Vouches)`}
+                  </span>
+                  {profile.collegeRoll && (
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                      Roll: {profile.collegeRoll}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                  {profile.verifiedBy && profile.verifiedBy.length > 0
+                    ? `Verified by: ${profile.verifiedBy.join(' • ')}`
+                    : (profile.verificationStatus || 'verified') === 'verified'
+                    ? 'Verified via Notre Dame College 2-Brother Vouch & Credential Protocol.'
+                    : 'Awaiting 2 classmate vouches or NDC ID card upload to unlock full Verified Notredamian badge.'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {isMine ? (
+                  <>
+                    {(profile.verificationStatus || 'verified') !== 'verified' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          simulateDemoVouchForUser(currentUser, (updated) => {
+                            updateProfile(updated);
+                            setProfile(updated);
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>⚡ Simulate Classmate Vouch</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onOpenVerificationCenter?.('status')}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Verification Center</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {!(profile.verifiedBy || []).some((v) =>
+                      v.toLowerCase().includes(currentUser.fullName.toLowerCase())
+                    ) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            const { updatedProfile } = vouchForAlumniProfile(
+                              profile,
+                              currentUser
+                            );
+                            setProfile(updatedProfile);
+                            const stored = loadStoredAlumniProfiles();
+                            const idx = stored.findIndex((p) => p.id === updatedProfile.id);
+                            if (idx > -1) {
+                              stored[idx] = updatedProfile;
+                              saveStoredAlumniProfiles(stored);
+                            }
+                          } catch {
+                            onOpenVerificationCenter?.('vouch_classmates');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>✓ Vouch for Brother</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onOpenVerificationCenter?.('vouch_classmates')}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Trust Queue</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Tab Selector: About | Posts | Edit Profile */}
+          <div className="flex gap-6 mt-6 border-b border-slate-100 dark:border-slate-800 text-xs font-bold">
             <button
               type="button"
               onClick={() => setActiveTab('about')}
-              className={`pb-3 border-b-2 transition-colors ${
+              className={`pb-3 border-b-2 transition-colors cursor-pointer ${
                 activeTab === 'about'
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              About & Credentials
+              About
             </button>
+
             <button
               type="button"
-              onClick={() => setActiveTab('timeline')}
-              className={`pb-3 border-b-2 transition-colors ${
-                activeTab === 'timeline'
+              onClick={() => setActiveTab('posts')}
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'posts'
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              Career & Education Timeline
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Posts</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-extrabold text-slate-600 dark:text-slate-300">
+                {profilePosts.length}
+              </span>
             </button>
 
             {isMine && (
               <button
                 type="button"
                 onClick={() => setActiveTab('edit')}
-                className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 ${
+                className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
                   activeTab === 'edit'
                     ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                     : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -708,93 +1129,528 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
         </div>
       </div>
 
-      {/* Tab 1: ABOUT */}
+      {/* Tab 1: ABOUT (Combined About & Credentials + Career & Education Timeline) */}
       {activeTab === 'about' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {profile.bio && (
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs md:col-span-2">
-              <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-                Biography
-              </h3>
-              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                {profile.bio}
-              </p>
-            </div>
-          )}
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {profile.bio && (
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs md:col-span-2">
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                  Biography
+                </h3>
+                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                  {profile.bio}
+                </p>
+              </div>
+            )}
 
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-            <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
-              <GraduationCap className="w-4 h-4 text-blue-600" />
-              <span>Degrees & Educational Qualifications</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profile.degree && profile.degree.map((deg, i) => (
-                <span
-                  key={i}
-                  className="px-3 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900 text-xs font-bold rounded-xl"
-                >
-                  {deg}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-            <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
-              <Award className="w-4 h-4 text-emerald-600" />
-              <span>Professional Specialties & Expertise</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profile.specialty && profile.specialty.map((spec, i) => (
-                <span
-                  key={i}
-                  className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-900 text-xs font-bold rounded-xl"
-                >
-                  {spec}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Achievement Badges & Recognition Card */}
-          {profile.badges && profile.badges.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs md:col-span-2 space-y-3">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
               <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
-                <Award className="w-4 h-4 text-amber-500" />
-                <span>Achievement Badges & Community Recognition</span>
+                <GraduationCap className="w-4 h-4 text-blue-600" />
+                <span>Degrees & Educational Qualifications</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-                {profile.badges.map((b) => (
-                  <AchievementBadgeChip key={b} badgeName={b} size="lg" />
-                ))}
+              <div className="flex flex-wrap gap-2">
+                {profile.degree && profile.degree.length > 0 ? (
+                  profile.degree.map((deg, i) => (
+                    <span
+                      key={i}
+                      className="px-3 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900 text-xs font-bold rounded-xl"
+                    >
+                      {deg}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-400">No degrees listed yet.</span>
+                )}
               </div>
             </div>
-          )}
+
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+              <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
+                <Award className="w-4 h-4 text-emerald-600" />
+                <span>Professional Specialties & Expertise</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {profile.specialty && profile.specialty.length > 0 ? (
+                  profile.specialty.map((spec, i) => (
+                    <span
+                      key={i}
+                      className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-900 text-xs font-bold rounded-xl"
+                    >
+                      {spec}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-400">No specialties listed yet.</span>
+                )}
+              </div>
+            </div>
+
+            {/* Achievement Badges & Recognition Card */}
+            {profile.badges && profile.badges.length > 0 && (
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs md:col-span-2 space-y-3">
+                <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
+                  <Award className="w-4 h-4 text-amber-500" />
+                  <span>Achievement Badges & Community Recognition</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                  {profile.badges.map((b) => (
+                    <AchievementBadgeChip key={b} badgeName={b} size="lg" />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Career & Education Timeline (Merged directly into About) */}
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-blue-600" />
+              <span>Career & Education Timeline</span>
+            </h3>
+
+            <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-blue-200 dark:before:bg-blue-900">
+              {profile.careerHistory && profile.careerHistory.length > 0 ? (
+                profile.careerHistory.map((line, idx) => (
+                  <div key={idx} className="relative group">
+                    <span className="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-white dark:bg-slate-900 border-2 border-blue-600 ring-4 ring-blue-50 dark:ring-blue-950/60" />
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
+                      {line}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-400">No career history entries available yet.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Tab 2: TIMELINE */}
-      {activeTab === 'timeline' && (
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-blue-600" />
-            <span>Career Milestones & Institutional Postings</span>
-          </h3>
+      {/* Tab 2: POSTS */}
+      {activeTab === 'posts' && (
+        <div className="space-y-5">
+          {/* Quick Post Composer on own profile */}
+          {isMine && (
+            <form
+              onSubmit={handleCreateProfilePost}
+              className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3.5"
+            >
+              <div className="flex items-start gap-3">
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.fullName}
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-blue-500/20 shrink-0"
+                />
+                <textarea
+                  rows={3}
+                  value={newPostText}
+                  onChange={(e) => setNewPostText(e.target.value)}
+                  placeholder="Share an update, photo, video, or link (YouTube, Facebook, Instagram, LinkedIn) on your profile..."
+                  className="flex-1 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 resize-none"
+                />
+              </div>
 
-          <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-blue-200 dark:before:bg-blue-900">
-            {profile.careerHistory && profile.careerHistory.length > 0 ? (
-              profile.careerHistory.map((line, idx) => (
-                <div key={idx} className="relative group">
-                  <span className="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-white dark:bg-slate-900 border-2 border-blue-600 ring-4 ring-blue-50 dark:ring-blue-950/60" />
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
-                    {line}
-                  </div>
+              {/* Hidden File Inputs */}
+              <input
+                type="file"
+                ref={postPhotoInputRef}
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                onChange={handleProfilePostPhotoUpload}
+                className="hidden"
+              />
+              <input
+                type="file"
+                ref={postVideoInputRef}
+                accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                multiple
+                onChange={handleProfilePostVideoUpload}
+                className="hidden"
+              />
+
+              {/* Attached Photos Preview */}
+              {newPostImages.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {newPostImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700"
+                    >
+                      <img src={img} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNewPostImages((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        className="absolute top-1 right-1 p-1 bg-black/75 hover:bg-rose-600 text-white rounded-full cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-400">No career history entries available yet.</p>
-            )}
-          </div>
+              )}
+
+              {/* Attached Videos or Detected Link Preview */}
+              {(() => {
+                const previewLinks = Array.from(
+                  new Set([...newPostVideos, ...extractUrlsFromText(newPostText)])
+                );
+                if (previewLinks.length === 0) return null;
+                return (
+                  <div className="space-y-2.5">
+                    {previewLinks.map((url, idx) => (
+                      <div key={idx} className="relative">
+                        <SharedEmbedCard url={url} autoPlayOnScroll={false} />
+                        {newPostVideos.includes(url) && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setNewPostVideos((prev) => prev.filter((v) => v !== url))
+                            }
+                            className="absolute top-2.5 right-2.5 p-1.5 bg-black/80 hover:bg-rose-600 text-white rounded-full cursor-pointer z-20"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => postPhotoInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
+                  >
+                    <ImageIcon className="w-4 h-4 text-emerald-500" />
+                    <span>Photo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => postVideoInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-xs font-bold hover:bg-purple-100 transition-colors cursor-pointer"
+                  >
+                    <Video className="w-4 h-4 text-purple-500" />
+                    <span>Video</span>
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={
+                    !newPostText.trim() &&
+                    newPostImages.length === 0 &&
+                    newPostVideos.length === 0
+                  }
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Post</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Profile Posts List */}
+          {profilePosts.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 border border-slate-200/80 dark:border-slate-800 text-center shadow-xs">
+              <div className="w-12 h-12 mx-auto rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                <MessageSquare className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                No Posts Published Yet
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+                {isMine
+                  ? 'Share your first update, photo, video, or social link above to display it on your profile timeline and alumni feed.'
+                  : `${profile.fullName} has not published any posts to the timeline yet.`}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-5">
+                  {/* View-only notice when viewing another alumnus's profile */}
+                  {!isMine && (
+                    <div className="bg-slate-100/80 dark:bg-slate-800/60 px-4 py-2.5 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <Eye className="w-4 h-4 text-blue-500 shrink-0" />
+                      <span>
+                        Viewing <strong>{profile.fullName}</strong>&apos;s profile in read-only mode. Only the profile owner can create, edit, or delete posts here.
+                      </span>
+                    </div>
+                  )}
+
+                  {profilePosts.map((post) => {
+                const isPostMine =
+                  isMine &&
+                  (post.userId === currentUser.userId || post.userId === currentUser.id);
+                const postMediaLinks = Array.from(
+                  new Set([
+                    ...(post.videos || []),
+                    ...extractUrlsFromText(post.content),
+                  ])
+                );
+
+                return (
+                  <article
+                    key={post.id}
+                    className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={post.avatarUrl}
+                          alt={post.fullName}
+                          className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100 dark:ring-slate-800"
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                              {post.fullName}
+                            </span>
+                            <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            {post.isEdited && (
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                (edited)
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                            <span>Batch {post.batchYear}</span>
+                            <span>·</span>
+                            <span>{post.createdAt}</span>
+                            {post.category && (
+                              <>
+                                <span>·</span>
+                                <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold text-[10px]">
+                                  {post.category}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isPostMine && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingProfilePostId(post.id);
+                              setEditingProfilePostText(post.content);
+                            }}
+                            title="Edit post"
+                            className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProfilePost(post.id)}
+                            title="Delete post"
+                            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {editingProfilePostId === post.id && isPostMine ? (
+                      <div className="space-y-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                        <textarea
+                          rows={3}
+                          value={editingProfilePostText}
+                          onChange={(e) => setEditingProfilePostText(e.target.value)}
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingProfilePostId(null);
+                              setEditingProfilePostText('');
+                            }}
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditProfilePost(post.id)}
+                            className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      post.content && (
+                        <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line break-words">
+                          {renderTextWithClickableLinks(post.content)}
+                        </p>
+                      )
+                    )}
+
+                    {/* Post Images */}
+                    {post.images && post.images.length > 0 && (
+                      <div
+                        className={`grid gap-2 rounded-2xl overflow-hidden ${
+                          post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                        }`}
+                      >
+                        {post.images.map((imgUrl, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() =>
+                              setLightboxState({
+                                isOpen: true,
+                                images: post.images,
+                                initialIndex: idx,
+                                postAuthor: {
+                                  fullName: post.fullName,
+                                  avatarUrl: post.avatarUrl,
+                                  batchYear: post.batchYear,
+                                  createdAt: post.createdAt,
+                                },
+                                postCaption: post.content,
+                              })
+                            }
+                            className="cursor-pointer rounded-xl overflow-hidden bg-slate-950"
+                          >
+                            <img
+                              src={imgUrl}
+                              alt=""
+                              className={`w-full object-cover ${
+                                post.images.length === 1 ? 'max-h-[420px]' : 'h-48'
+                              }`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Post Videos & Shared Social/Web Links */}
+                    {postMediaLinks.length > 0 && (
+                      <div className="space-y-3">
+                        {postMediaLinks.map((mediaUrl, idx) => (
+                          <SharedEmbedCard
+                            key={`${post.id}-profile-media-${idx}`}
+                            url={mediaUrl}
+                            autoPlayOnScroll={true}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Like, Comment & Share Bar */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleLikeProfilePost(post.id)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                            post.likedByMe
+                              ? 'text-rose-600 bg-rose-50 dark:bg-rose-950/30'
+                              : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <Heart
+                            className={`w-4 h-4 ${
+                              post.likedByMe ? 'fill-rose-500 text-rose-500' : ''
+                            }`}
+                          />
+                          <span>
+                            {post.likesCount} {post.likesCount === 1 ? 'Like' : 'Likes'}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleShareProfilePost(post.id)}
+                          title="Copy direct link to this post"
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                            copiedProfilePostId === post.id
+                              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {copiedProfilePostId === post.id ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                              <span>Link Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Share2 className="w-4 h-4" />
+                              <span>Share</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <span className="font-semibold">
+                        {post.comments?.length || post.commentsCount} Comments
+                      </span>
+                    </div>
+
+                    {/* Comments List & Input */}
+                    {post.comments && post.comments.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        {post.comments.map((c) => (
+                          <div key={c.id} className="flex items-start gap-2 text-xs">
+                            <img
+                              src={c.avatarUrl}
+                              alt={c.fullName}
+                              className="w-6 h-6 rounded-full object-cover mt-0.5"
+                            />
+                            <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-3 py-1.5">
+                              <span className="font-bold text-slate-900 dark:text-slate-100 mr-1.5">
+                                {c.fullName}
+                              </span>
+                              <span className="text-slate-700 dark:text-slate-300">
+                                {c.content}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {isMine && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="text"
+                          value={postCommentInputs[post.id] || ''}
+                          onChange={(e) =>
+                            setPostCommentInputs((prev) => ({
+                              ...prev,
+                              [post.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleAddProfilePostComment(post.id);
+                          }}
+                          placeholder="Write a comment..."
+                          className="flex-1 px-3.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddProfilePostComment(post.id)}
+                          className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full cursor-pointer"
+                        >
+                          <Send className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1085,19 +1941,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Civil Service / BCS Cadre (if applicable)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 41st BCS (Administration / Foreign Affairs)"
-                    value={editCadre}
-                    onChange={(e) => setEditCadre(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Degrees (Click to toggle)
@@ -1336,6 +2179,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ profileId, onBack, bac
         fullName={profile.fullName}
         onClose={() => setPhotoModal((prev) => ({ ...prev, isOpen: false }))}
         onSave={handleSavePhoto}
+      />
+
+      {/* Lightbox Modal for Profile Post Photos */}
+      <PostLightboxModal
+        isOpen={lightboxState.isOpen}
+        images={lightboxState.images}
+        initialIndex={lightboxState.initialIndex}
+        onClose={() => setLightboxState((prev) => ({ ...prev, isOpen: false }))}
+        postAuthor={lightboxState.postAuthor}
+        postCaption={lightboxState.postCaption}
       />
     </div>
   );

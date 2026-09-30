@@ -18,10 +18,13 @@ import {
   BookmarkCheck,
   Sun,
   Moon,
+  ShieldCheck,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { NDCLogo } from './NDCLogo';
+import { loadVouchRequests } from '../utils/verificationService';
 
 export interface NavItemConfig {
   id: string;
@@ -37,6 +40,7 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   customNavItems?: NavItemConfig[];
+  onOpenVerificationCenter?: (tab?: 'status' | 'vouch_classmates' | 'upload_id' | 'policy') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -45,15 +49,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
   customNavItems,
+  onOpenVerificationCenter,
 }) => {
   const { isDark, toggleTheme } = useTheme();
+  const { currentUser } = useAuth();
+  const isVerified = (currentUser.verificationStatus || 'verified') === 'verified';
+  const pendingCount = loadVouchRequests().filter((r) => r.status === 'pending').length;
 
   // Navigation items defined strictly according to project specifications
   const defaultNavItems: NavItemConfig[] = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'alumni', label: 'Alumni Directory', icon: Users },
     { id: 'find', label: 'Find Alumni', icon: Search },
-    { id: 'saved-posts', label: 'Saved Posts', icon: BookmarkCheck, badge: 'OFFLINE', badgeType: 'count' },
     { id: 'map', label: 'Alumni Map', icon: MapPin },
     { id: 'batches', label: 'Batch Directory', icon: BookOpen },
     { id: 'institutions', label: 'Institutions', icon: Building2, badge: 'SOON', badgeType: 'soon' },
@@ -196,6 +203,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>My Profile</span>
           </button>
 
+          {onOpenVerificationCenter && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenVerificationCenter(isVerified ? 'vouch_classmates' : 'status');
+                onClose();
+              }}
+              className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-white transition-all text-left cursor-pointer mt-1"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span className="truncate">Verification Center</span>
+              </div>
+              <span
+                className={`shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border tracking-wider ${
+                  isVerified
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                }`}
+              >
+                {isVerified ? (pendingCount > 0 ? `${pendingCount} Vouch` : 'Verified') : 'Pending'}
+              </span>
+            </button>
+          )}
+
           {/* Quick Light / Dark Mode Toggle */}
           <button
             type="button"
@@ -219,23 +251,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Bottom Card */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-800/80">
           <PWAInstallButton className="w-full justify-center mb-3" />
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800/60 border border-blue-100 dark:border-slate-700">
-            <div className="flex items-center gap-2.5 mb-2">
-              <div className="w-7 h-7 rounded-lg bg-blue-600 dark:bg-blue-500 text-white flex items-center justify-center">
-                <GraduationCap className="w-4 h-4" />
-              </div>
-              <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                NDC Reunion 2026
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed mb-2.5">
-              Connecting Notredamians from Batch 01 (1949) to HSC 2026. Forever brothers.
-            </p>
-            <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">
-              Motijheel, Dhaka, Bangladesh
-            </div>
-          </div>
-          <div className="mt-2.5 text-center text-[10px] text-slate-400 dark:text-slate-500">
+          <div className="text-center text-[10px] text-slate-400 dark:text-slate-500">
             <a
               href="http://nurulanambashir.gt.tc/?i=1"
               target="_blank"

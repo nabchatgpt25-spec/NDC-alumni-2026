@@ -125,7 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
     await new Promise((r) => setTimeout(r, 800));
-    const verificationStatus = profileData.verificationStatus || (profileData.verificationMethod === 'id_card_upload' ? 'verified' : 'pending_vouch');
+    const verificationStatus = profileData.verificationStatus || (profileData.verificationMethod === 'id_card_upload' && profileData.idProofUrl ? 'verified' : 'pending_vouch');
     const newProfile: AlumniProfile = {
       id: Date.now(),
       userId: Math.floor(Math.random() * 10000) + 1000,
@@ -139,8 +139,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       section: profileData.section || 'Group 4',
       verificationStatus: verificationStatus,
       verificationMethod: profileData.verificationMethod || 'two_vouches',
-      verifiedBy: profileData.verifiedBy || (verificationStatus === 'verified' ? ['Tanvir Ahmed Chowdhury (Batch 58)'] : []),
-      vouchesCount: profileData.vouchesCount ?? (verificationStatus === 'verified' ? 2 : 1),
+      verifiedBy: profileData.verifiedBy || (verificationStatus === 'verified' ? ['NDC Verification System (ID Proof Verified)'] : []),
+      vouchesCount: profileData.vouchesCount ?? (verificationStatus === 'verified' ? 2 : 0),
       vouchTargetCount: 2,
       idProofUrl: profileData.idProofUrl,
       verificationDate: verificationStatus === 'verified' ? 'Today' : undefined,

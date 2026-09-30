@@ -100,33 +100,41 @@ export const ContactUsView: React.FC = () => {
                   <span className="font-semibold text-slate-500">Secretariat Office:</span> +880 2-41070714
                 </div>
                 <div className="text-slate-700 dark:text-slate-300">
-                  <span className="font-semibold text-slate-500">Alumni Desk Mobile:</span> +880 1711-002233
+                  <span className="font-semibold text-slate-500">WhatsApp / Mobile:</span>{' '}
+                  <a
+                    href="https://wa.me/8801764436846"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                  >
+                    01764436846
+                  </a>
                 </div>
                 <div className="text-slate-700 dark:text-slate-300">
                   <span className="font-semibold text-slate-500">Official Email:</span> alumni@ndc.edu.bd
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex flex-wrap items-center gap-2 pt-2">
                 <a
-                  href="https://wa.me/8801711223344"
+                  href="https://wa.me/8801764436846"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 text-xs font-bold transition-colors"
-                  aria-label="WhatsApp"
+                  aria-label="WhatsApp 01764436846"
                 >
                   <WhatsAppIcon className="w-3.5 h-3.5" />
-                  <span>WhatsApp SOS</span>
+                  <span>WhatsApp: 01764436846</span>
                 </a>
                 <a
-                  href="https://facebook.com"
+                  href="https://www.facebook.com/nurulanambashir"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 text-xs font-bold transition-colors"
                   aria-label="Facebook"
                 >
                   <FacebookIcon className="w-3.5 h-3.5" />
-                  <span>Facebook Page</span>
+                  <span>Facebook</span>
                 </a>
               </div>
             </div>
