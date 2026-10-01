@@ -14,6 +14,9 @@ import {
   MapPin,
   X
 } from 'lucide-react';
+import campusHeroImg from '../../assets/images/ndc_campus_hero_1790233370828.jpg';
+import reunionCelebrationImg from '../../assets/images/ndc_reunion_celebration_1790233384454.jpg';
+import mainGateImg from '../../assets/images/ndc_main_gate_1790748632254.jpg';
 
 interface NetworkNode {
   id: string;
@@ -374,7 +377,7 @@ export const StatsBar: React.FC = () => {
       <div
         className="absolute inset-0 bg-cover bg-center opacity-[0.055] mix-blend-luminosity filter blur-[1px] pointer-events-none"
         style={{
-          backgroundImage: "url('/src/assets/images/ndc_campus_hero_1790233370828.jpg')",
+          backgroundImage: `url(${campusHeroImg})`,
           maskImage: 'radial-gradient(ellipse at center, black 35%, transparent 80%)',
           WebkitMaskImage: 'radial-gradient(ellipse at center, black 35%, transparent 80%)',
         }}
@@ -384,7 +387,7 @@ export const StatsBar: React.FC = () => {
       <div
         className="absolute left-0 top-0 bottom-0 w-64 bg-cover bg-center opacity-[0.035] mix-blend-screen filter blur-[0.5px] pointer-events-none hidden md:block"
         style={{
-          backgroundImage: "url('/src/assets/images/ndc_reunion_celebration_1790233384454.jpg')",
+          backgroundImage: `url(${reunionCelebrationImg})`,
           maskImage: 'linear-gradient(to right, black 15%, transparent 90%)',
           WebkitMaskImage: 'linear-gradient(to right, black 15%, transparent 90%)',
         }}
@@ -394,7 +397,7 @@ export const StatsBar: React.FC = () => {
       <div
         className="absolute right-0 top-0 bottom-0 w-64 bg-cover bg-center opacity-[0.035] mix-blend-screen filter blur-[0.5px] pointer-events-none hidden md:block"
         style={{
-          backgroundImage: "url('/src/assets/images/ndc_main_gate_1790748632254.jpg')",
+          backgroundImage: `url(${mainGateImg})`,
           maskImage: 'linear-gradient(to left, black 15%, transparent 90%)',
           WebkitMaskImage: 'linear-gradient(to left, black 15%, transparent 90%)',
         }}
@@ -406,21 +409,6 @@ export const StatsBar: React.FC = () => {
           src="/ndc-logo.svg"
           alt="Notre Dame Crest Watermark"
           className="w-56 h-56 object-contain filter drop-shadow-xl"
-        />
-      </div>
-
-      {/* Interactive 3D Canvas Globe (Sits subtly behind cards) */}
-      <div
-        className="absolute inset-0 flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing opacity-85"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        title="Click and drag to rotate the 3D globe"
-      >
-        <canvas
-          ref={canvasRef}
-          className="w-full h-full max-w-4xl max-h-[240px] sm:max-h-[340px]"
         />
       </div>
 

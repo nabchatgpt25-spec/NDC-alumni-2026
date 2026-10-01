@@ -28,6 +28,7 @@ import { useAuth } from '../context/AuthContext';
 import { BATCH_LIST } from '../data/mockData';
 import { WhatsAppIcon } from './SocialIcons';
 import { NDCLogo } from './NDCLogo';
+import { compressImageFileToDataUrl } from '../utils/mediaStorage';
 
 interface AuthModalProps {
   initialMode: 'login' | 'register' | 'forgot';
@@ -156,16 +157,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [verificationMethod, setVerificationMethod] = useState<'two_vouches' | 'id_card_upload'>('two_vouches');
   const [idProofPreview, setIdProofPreview] = useState<string>('');
 
-  const handleIdProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleIdProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (typeof ev.target?.result === 'string') {
-        setIdProofPreview(ev.target.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    if (!file.type.startsWith('image/')) {
+      setErrorMessage('Please upload a valid image file (JPG, PNG, or WEBP).');
+      return;
+    }
+    try {
+      const compressed = await compressImageFileToDataUrl(file);
+      setIdProofPreview(compressed);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (typeof ev.target?.result === 'string') {
+          setIdProofPreview(ev.target.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Auto-save registration form progress to localStorage

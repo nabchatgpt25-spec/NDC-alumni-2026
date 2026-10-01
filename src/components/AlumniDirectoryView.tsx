@@ -23,6 +23,7 @@ import { AlumniProfile } from '../types';
 import { matchesUniversalSearch, UNIVERSAL_DIRECTORY_PROFILES } from './DirectoryView';
 import { VerificationStatusBadge } from './verification/VerificationStatusBadge';
 import { vouchForAlumniProfile } from '../utils/verificationService';
+import { Tilt3DCard } from './motion/CinematicMotion';
 
 interface AlumniDirectoryViewProps {
   onViewProfile: (profileId: number) => void;
@@ -283,9 +284,10 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {displayed.map((profile) => (
-            <div
+            <Tilt3DCard
               key={profile.id}
-              className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+              maxTilt={3}
+              className="group bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 hover:border-blue-400/60 dark:hover:border-blue-500/40 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-start gap-3.5">
@@ -378,7 +380,11 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
 
                 {profile.fbLink && (
                   <a
-                    href={profile.fbLink}
+                    href={
+                      /^https?:\/\//i.test(profile.fbLink.trim())
+                        ? profile.fbLink.trim()
+                        : `https://${profile.fbLink.trim().replace(/^(javascript|vbscript|data):/i, '')}`
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition-colors"
@@ -424,7 +430,7 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
                   <span>View Profile</span>
                 </button>
               </div>
-            </div>
+            </Tilt3DCard>
           ))}
         </div>
       )}

@@ -1,4 +1,6 @@
 import { GalleryAlbum } from '../types';
+import reunionCelebrationImg from '../assets/images/ndc_reunion_celebration_1790233384454.jpg';
+import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 
 export const INITIAL_ALBUMS: GalleryAlbum[] = [
   {
@@ -11,13 +13,13 @@ export const INITIAL_ALBUMS: GalleryAlbum[] = [
     location: 'NDC Campus Grounds & Ganguly Hall, Motijheel, Dhaka',
     batchYear: 0, // All batches
     photosCount: 6,
-    coverUrl: '/src/assets/images/ndc_reunion_celebration_1790233384454.jpg',
+    coverUrl: reunionCelebrationImg,
     createdBy: 'NDC Alumni Association Central Committee',
     createdDate: 'Dec 28, 2025',
     photos: [
       {
         id: 'p-101',
-        url: '/src/assets/images/ndc_reunion_celebration_1790233384454.jpg',
+        url: reunionCelebrationImg,
         caption: 'Joyous gathering of Notredamians in traditional panjabi on campus grounds.',
         uploaderName: 'Tanvir Ahmed Chowdhury',
         uploaderAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
@@ -29,7 +31,7 @@ export const INITIAL_ALBUMS: GalleryAlbum[] = [
       },
       {
         id: 'p-102',
-        url: '/src/assets/images/ndc_campus_hero_1790233370828.jpg',
+        url: campusHeroImg,
         caption: 'The iconic red brick main building and Harrington building under bright sunny skies.',
         uploaderName: 'Prof. Dr. Mahfuzur Rahman',
         uploaderAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',

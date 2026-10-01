@@ -1,5 +1,7 @@
 import { AlumniProfile, PostItem } from '../types';
 import { SEED_ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
+import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
+import reunionCelebrationImg from '../assets/images/ndc_reunion_celebration_1790233384454.jpg';
 
 export const CACHED_DIRECTORY_KEY = 'ndc_cached_directory';
 export const CACHED_DIRECTORY_TIMESTAMP_KEY = 'ndc_cached_directory_timestamp';
@@ -16,7 +18,7 @@ export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
     userId: 1001,
     fullName: 'Prof. Mahfuzur Rahman, PhD',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    coverUrl: '/src/assets/images/ndc_campus_hero_1790233370828.jpg',
+    coverUrl: campusHeroImg,
     batchYear: 45,
     session: '1993-95',
     group: 'Science',
@@ -161,7 +163,7 @@ export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
     userId: 1006,
     fullName: 'Fahim Shahriar',
     avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&auto=format&fit=crop&q=80',
-    coverUrl: '/src/assets/images/ndc_campus_hero_1790233370828.jpg',
+    coverUrl: campusHeroImg,
     batchYear: 68,
     session: '2016-18',
     group: 'Science',
@@ -199,7 +201,7 @@ export const INITIAL_OFFLINE_SAVED_POSTS: PostItem[] = [
     batchYear: 45,
     content:
       'Official Announcement: Notre Dame College Dhaka Platinum Jubilee & Grand Reunion 2026 is officially set for December at our beloved Motijheel campus! All Notredamians from early batches to HSC 2026 are cordially invited. Registration, batch coordinator directories, and souvenir article submission forms are now live on this portal. Diligite Lumen Sapientiae!',
-    images: ['/src/assets/images/ndc_campus_hero_1790233370828.jpg'],
+    images: [campusHeroImg],
     likesCount: 142,
     commentsCount: 38,
     createdAt: '2 days ago',
@@ -228,7 +230,7 @@ export const INITIAL_OFFLINE_SAVED_POSTS: PostItem[] = [
     batchYear: 52,
     content:
       'Walking past the Father Harrington Building and the basketball ground this morning brought back twenty years of memories. The discipline, the quizzes, the club addas, and the timeless mentorship from our Fathers shaped who we are today. Proud to be a Notredamian forever.',
-    images: ['/src/assets/images/ndc_reunion_celebration_1790233384454.jpg'],
+    images: [reunionCelebrationImg],
     likesCount: 98,
     commentsCount: 17,
     createdAt: '3 days ago',

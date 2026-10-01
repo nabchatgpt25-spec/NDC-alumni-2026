@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'events', label: 'Events', icon: Calendar, badge: 'SOON', badgeType: 'soon' },
     { id: 'gallery', label: 'Gallery', icon: Image },
     { id: 'careers', label: 'Career Portal', icon: Briefcase, badge: 'SOON', badgeType: 'soon' },
-    { id: 'emergency', label: 'Emergency Help', icon: HeartHandshake, badge: 'SOON', badgeType: 'soon' },
+    { id: 'emergency', label: 'Blood Network', icon: HeartHandshake, badge: 'LIVE', badgeType: 'hot' },
     { id: 'contact', label: 'Contact Us', icon: Mail },
   ];
 
@@ -80,6 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (id === 'dashboard' && activeTab === 'feed') return true;
     if (id === 'alumni' && activeTab === 'directory') return true;
     if (id === 'batches' && activeTab.startsWith('batch:')) return true;
+    if (id === 'emergency' && (activeTab === 'blood' || activeTab === 'blood-network')) return true;
     return false;
   };
 

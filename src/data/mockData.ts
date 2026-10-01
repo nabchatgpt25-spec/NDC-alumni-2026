@@ -1,4 +1,5 @@
 import { AlumniProfile, PostItem, NotificationItem, BatchSummary } from '../types';
+import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 
 export const PROFILES_STORAGE_KEY = 'ndc_alumni_profiles';
 export const POSTS_STORAGE_KEY = 'ndc_alumni_posts';
@@ -499,7 +500,7 @@ export const DEFAULT_BLANK_USER: AlumniProfile = {
   userId: 0,
   fullName: 'Notredamian Alumnus',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-  coverUrl: '/src/assets/images/ndc_campus_hero_1790233370828.jpg',
+  coverUrl: campusHeroImg,
   batchYear: 68,
   session: '2016-18 (HSC 2018)',
   group: 'Science',

@@ -94,7 +94,73 @@ export function markAsVideo(url: string) {
 }
 
 /**
- * Save an uploaded picture or video file of ANY size into persistent IndexedDB storage
+ * Compress an image file on an offscreen canvas into a persistent, lightweight Data URL
+ * (max dimension 1200px, JPEG/WebP quality 0.82) so it persists across reloads in localStorage.
+ */
+export function compressImageFileToDataUrl(
+  file: File | Blob,
+  maxDimension = 1200,
+  quality = 0.82
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      reject(new Error('DOM unavailable'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result;
+      if (typeof dataUrl !== 'string') {
+        reject(new Error('Invalid image data'));
+        return;
+      }
+      // Keep SVGs and small images (< 140KB) intact without re-encoding
+      if (file.type === 'image/svg+xml' || file.size <= 140 * 1024) {
+        resolve(dataUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width >= height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(dataUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const outputMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          const compressed = canvas.toDataURL(
+            outputMime === 'image/png' && file.size > 400 * 1024 ? 'image/jpeg' : outputMime,
+            quality
+          );
+          resolve(compressed);
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Save an uploaded picture or video file of ANY size into persistent storage
  */
 export async function saveMediaFile(
   file: File | Blob,
@@ -108,9 +174,18 @@ export async function saveMediaFile(
   const size = file.size || 0;
   const type = file.type || (isVideo ? 'video/mp4' : 'image/jpeg');
 
-  // Instant zero-lag Object URL for immediate preview and streaming playback
   let url = '';
-  if (typeof window !== 'undefined' && window.URL && window.URL.createObjectURL) {
+  if (!isVideo) {
+    try {
+      url = await compressImageFileToDataUrl(file);
+      objectUrlCache.set(id, url);
+    } catch {
+      // Fallback below
+    }
+  }
+
+  // Fallback or Video Object URL for streaming playback
+  if (!url && typeof window !== 'undefined' && window.URL && window.URL.createObjectURL) {
     url = window.URL.createObjectURL(file);
     objectUrlCache.set(id, url);
     if (isVideo) {

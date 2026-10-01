@@ -11,6 +11,97 @@
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+/* ==========================================================================
+   CINEMATIC INSTITUTIONAL MOTION & 3D DEPTH SYSTEM
+   ========================================================================== */
+
+.tilt-3d-surface {
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
+}
+
+.card-spotlight-overlay {
+  background: radial-gradient(
+    360px circle at var(--card-mouse-x, 50%) var(--card-mouse-y, 50%),
+    rgba(37, 99, 235, 0.09),
+    rgba(217, 119, 6, 0.04) 45%,
+    transparent 80%
+  );
+}
+
+.dark .card-spotlight-overlay {
+  background: radial-gradient(
+    360px circle at var(--card-mouse-x, 50%) var(--card-mouse-y, 50%),
+    rgba(96, 165, 250, 0.13),
+    rgba(251, 191, 36, 0.05) 45%,
+    transparent 80%
+  );
+}
+
+@keyframes float3dSlow {
+  0%, 100% {
+    transform: translate3d(0, 0px, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -8px, 0) rotate(0.6deg);
+  }
+}
+
+@keyframes float3dDelayed {
+  0%, 100% {
+    transform: translate3d(0, 0px, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, 7px, 0) rotate(-0.6deg);
+  }
+}
+
+@keyframes subtleGradientShift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.float-3d-slow {
+  animation: float3dSlow 7s ease-in-out infinite;
+}
+
+.float-3d-delayed {
+  animation: float3dDelayed 8.5s ease-in-out infinite;
+}
+
+.animated-institutional-gradient {
+  background-size: 200% 200%;
+  animation: subtleGradientShift 10s ease infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .float-3d-slow,
+  .float-3d-delayed,
+  .animated-institutional-gradient {
+    animation: none !important;
+  }
+}
+
 /* Ensure cross-browser text-gradient clipping */
 .bg-clip-text {
   -webkit-background-clip: text !important;
@@ -59,6 +150,108 @@
 .dark .glass-card:hover {
   box-shadow: 0 16px 30px -8px rgba(0, 0, 0, 0.4);
   border-color: rgba(96, 165, 250, 0.35);
+}
+
+/* ==========================================================================
+   LIQUID GLASS PROFILE ARCHITECTURE (Light & Dark Refractive Surfaces)
+   ========================================================================== */
+
+.liquid-glass-profile-shell {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.34) 0%,
+    rgba(240, 249, 255, 0.18) 45%,
+    rgba(238, 242, 255, 0.28) 100%
+  );
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  box-shadow:
+    0 24px 64px -12px rgba(30, 58, 138, 0.12),
+    0 8px 24px -6px rgba(15, 23, 42, 0.05),
+    inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.88),
+    inset 0 -1px 1.5px 0 rgba(148, 163, 184, 0.18),
+    inset 1px 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.dark .liquid-glass-profile-shell {
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.38) 0%,
+    rgba(23, 37, 84, 0.20) 48%,
+    rgba(15, 23, 42, 0.34) 100%
+  );
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 28px 72px -12px rgba(0, 0, 0, 0.55),
+    0 8px 28px -6px rgba(30, 64, 175, 0.18),
+    inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 -1px 1.5px 0 rgba(56, 189, 248, 0.14),
+    inset 1px 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.liquid-glass-card {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.48) 0%,
+    rgba(255, 255, 255, 0.28) 55%,
+    rgba(248, 250, 252, 0.40) 100%
+  );
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 14px 36px -10px rgba(30, 58, 138, 0.09),
+    0 4px 12px -2px rgba(15, 23, 42, 0.04),
+    inset 0 1.5px 0.5px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 1px 0 rgba(255, 255, 255, 0.4);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease, border-color 0.25s ease;
+}
+
+.dark .liquid-glass-card {
+  background: linear-gradient(
+    145deg,
+    rgba(15, 23, 42, 0.42) 0%,
+    rgba(30, 41, 59, 0.26) 55%,
+    rgba(15, 23, 42, 0.36) 100%
+  );
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 18px 42px -10px rgba(0, 0, 0, 0.48),
+    inset 0 1.5px 0.5px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 1px 0 rgba(96, 165, 250, 0.12);
+}
+
+.liquid-glass-subcard {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.38) 0%,
+    rgba(241, 245, 249, 0.22) 100%
+  );
+  backdrop-filter: blur(14px) saturate(175%);
+  -webkit-backdrop-filter: blur(14px) saturate(175%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    0 4px 14px -4px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+}
+
+.dark .liquid-glass-subcard {
+  background: linear-gradient(
+    135deg,
+    rgba(30, 41, 59, 0.34) 0%,
+    rgba(15, 23, 42, 0.22) 100%
+  );
+  backdrop-filter: blur(14px) saturate(175%);
+  -webkit-backdrop-filter: blur(14px) saturate(175%);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow:
+    0 6px 18px -4px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
 }
 
 /* Button hover & click interactions */

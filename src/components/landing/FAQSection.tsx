@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   HelpCircle,
   ChevronDown,
   ChevronUp,
-  ShieldCheck,
-  UserPlus,
   ArrowRight
 } from 'lucide-react';
+import { ScrollReveal } from '../motion/CinematicMotion';
 
 interface FAQItem {
   question: string;
@@ -55,30 +55,37 @@ export const FAQSection: React.FC<FAQSectionProps> = ({ onOpenRegister }) => {
     setOpenIndex(openIndex === idx ? null : idx);
   };
 
+  const prefersReducedMotion = useReducedMotion();
   const visibleFaqs = showAll ? FAQS : FAQS.slice(0, INITIAL_VISIBLE_COUNT);
 
   return (
     <section className="py-5 sm:py-8 lg:py-10 max-w-4xl mx-auto px-4 sm:px-6">
-      <div className="text-center mb-3.5 sm:mb-5">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-1.5">
-          <HelpCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-          <span>Trust & Verification</span>
+      <ScrollReveal>
+        <div className="text-center mb-3.5 sm:mb-5">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-1.5">
+            <HelpCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            <span>Trust &amp; Verification</span>
+          </div>
+          <h2 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+            Frequently Asked Questions
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-0.5 max-w-lg mx-auto">
+            Key information on peer verification, batch lounge security, and membership.
+          </p>
         </div>
-        <h2 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-          Frequently Asked Questions
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-0.5 max-w-lg mx-auto">
-          Key information on peer verification, batch lounge security, and membership.
-        </p>
-      </div>
+      </ScrollReveal>
 
       <div className="space-y-2.5">
         {visibleFaqs.map((faq, idx) => {
           const isOpen = openIndex === idx;
           return (
-            <div
+            <motion.div
               key={idx}
-              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden transition-all shadow-xs"
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.15 }}
+              transition={{ duration: 0.4, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
+              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-blue-400/50 dark:hover:border-blue-500/40 overflow-hidden transition-all shadow-xs"
             >
               <button
                 type="button"
@@ -93,12 +100,22 @@ export const FAQSection: React.FC<FAQSectionProps> = ({ onOpenRegister }) => {
                 </span>
               </button>
 
-              {isOpen && (
-                <div className="px-3.5 pb-4 sm:px-4 sm:pb-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
-                  {faq.answer}
-                </div>
-              )}
-            </div>
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.div
+                    initial={prefersReducedMotion ? { opacity: 1 } : { height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={prefersReducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                    transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-3.5 pb-4 sm:px-4 sm:pb-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
+                      {faq.answer}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
           );
         })}
       </div>

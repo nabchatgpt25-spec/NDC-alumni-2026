@@ -54,11 +54,21 @@ const UNFURL_CACHE_PREFIX = 'ndc_unfurl_v3_';
 export function normalizeUrlInput(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return '';
+  const lower = trimmed.toLowerCase();
   if (
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('data:') ||
-    trimmed.startsWith('blob:')
+    lower.startsWith('javascript:') ||
+    lower.startsWith('vbscript:') ||
+    lower.startsWith('file:') ||
+    (lower.startsWith('data:') && !lower.startsWith('data:image/') && !lower.startsWith('data:video/'))
+  ) {
+    return '';
+  }
+  if (
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.startsWith('data:image/') ||
+    lower.startsWith('data:video/') ||
+    lower.startsWith('blob:')
   ) {
     return trimmed;
   }
@@ -72,7 +82,7 @@ export function normalizeUrlInput(raw: string): string {
   ) {
     return `https://${trimmed}`;
   }
-  return trimmed;
+  return `https://${trimmed.replace(/^\/+/, '')}`;
 }
 
 /**

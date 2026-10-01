@@ -1099,20 +1099,53 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
     };
   }, []);
 
+  const escapeMapHtml = (raw?: string | number): string => {
+    if (raw === undefined || raw === null) return '';
+    return String(raw)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  const sanitizeMapUrl = (raw?: string): string => {
+    if (!raw) return '';
+    const trimmed = raw.trim();
+    if (
+      trimmed.startsWith('https://') ||
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('data:image/') ||
+      trimmed.startsWith('blob:') ||
+      trimmed.startsWith('/')
+    ) {
+      return escapeMapHtml(trimmed);
+    }
+    return '';
+  };
+
   // Helper to create an individual alumnus marker
   const createAlumnusMarker = (alumnus: AlumniProfile, lat: number, lng: number) => {
     const dept = getPrimaryDepartment(alumnus);
+    const safeName = escapeMapHtml(alumnus.fullName);
+    const safePosition = escapeMapHtml(alumnus.position);
+    const safeCity = escapeMapHtml(alumnus.city);
+    const safeCountry = escapeMapHtml(alumnus.country);
+    const safeInstitution = escapeMapHtml(alumnus.institution);
+    const safeBatch = escapeMapHtml(alumnus.batchYear);
+    const safeAvatar = sanitizeMapUrl(alumnus.avatarUrl);
+    const safeId = Number(alumnus.id) || 0;
 
     const customIcon = L.divIcon({
       className: 'alumni-custom-marker',
       html: `
         <div class="group relative flex flex-col items-center cursor-pointer transition-transform duration-200 hover:scale-115">
           <div class="relative w-11 h-11 rounded-full bg-white dark:bg-slate-900 shadow-xl overflow-hidden border-2 border-white" style="box-shadow: 0 0 0 3px ${dept.ringColor}, 0 10px 15px -3px rgba(0,0,0,0.3)">
-            <img src="${alumnus.avatarUrl}" alt="${alumnus.fullName}" class="w-full h-full object-cover pointer-events-none" />
+            <img src="${safeAvatar}" alt="${safeName}" class="w-full h-full object-cover pointer-events-none" />
           </div>
           <div class="w-2.5 h-2.5 rotate-45 -mt-1 shadow-xs border-r border-b border-white" style="background-color: ${dept.ringColor}"></div>
           <span class="absolute -top-1.5 -right-1.5 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full ring-2 ring-white shadow-xs" style="background-color: ${dept.ringColor}">
-            B${alumnus.batchYear}
+            B${safeBatch}
           </span>
         </div>
       `,
@@ -1127,30 +1160,30 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
     popupDiv.className = 'ndc-map-popup p-1 min-w-[250px] max-w-[290px] font-sans text-slate-900';
     popupDiv.innerHTML = `
       <div class="flex items-start gap-3 pb-3 border-b border-slate-200">
-        <img src="${alumnus.avatarUrl}" alt="${alumnus.fullName}" class="w-12 h-12 rounded-full object-cover shrink-0 ring-2" style="border-color: ${dept.ringColor}" />
+        <img src="${safeAvatar}" alt="${safeName}" class="w-12 h-12 rounded-full object-cover shrink-0 ring-2" style="border-color: ${dept.ringColor}" />
         <div class="min-w-0 flex-1">
-          <div class="font-extrabold text-sm text-slate-900 leading-tight">${alumnus.fullName}</div>
-          <div class="text-[11px] font-bold text-blue-600 mt-0.5">Batch ${alumnus.batchYear} · ${alumnus.position}</div>
+          <div class="font-extrabold text-sm text-slate-900 leading-tight">${safeName}</div>
+          <div class="text-[11px] font-bold text-blue-600 mt-0.5">Batch ${safeBatch} · ${safePosition}</div>
         </div>
       </div>
       <div class="py-2.5 space-y-1.5 text-xs">
         <div class="flex items-center gap-1.5">
           <span class="font-bold text-slate-500 text-[11px]">Department:</span>
           <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${dept.badgeBg} ${dept.badgeText} border border-slate-200/50">
-            ${dept.shortName}
+            ${escapeMapHtml(dept.shortName)}
           </span>
         </div>
         <div class="flex items-center gap-1.5 text-slate-700 text-xs">
           <span class="font-bold text-slate-500 text-[11px]">Location:</span>
-          <span class="font-semibold text-slate-900">${alumnus.city}, ${alumnus.country}</span>
+          <span class="font-semibold text-slate-900">${safeCity}, ${safeCountry}</span>
         </div>
         <div class="flex items-start gap-1.5 text-slate-700 text-xs">
           <span class="font-bold text-slate-500 text-[11px] shrink-0">Org / Dept:</span>
-          <span class="font-medium text-slate-800 leading-tight">${alumnus.institution}</span>
+          <span class="font-medium text-slate-800 leading-tight">${safeInstitution}</span>
         </div>
       </div>
       <button
-        id="popup-btn-${alumnus.id}"
+        id="popup-btn-${safeId}"
         class="w-full mt-1.5 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
       >
         <span>View Full Profile</span>
@@ -1164,7 +1197,7 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
     });
 
     marker.on('popupopen', () => {
-      const btn = document.getElementById(`popup-btn-${alumnus.id}`);
+      const btn = document.getElementById(`popup-btn-${safeId}`);
       if (btn) {
         btn.onclick = (e) => {
           e.preventDefault();
@@ -1242,10 +1275,11 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
         collapseMarker.addTo(markersLayer);
       } else {
         // Multi-alumni count bubble that expands on click
+        const safeClusterCity = escapeMapHtml(cluster.city);
         const clusterIcon = L.divIcon({
           className: 'alumni-cluster-marker',
           html: `
-            <div title="Click to expand ${count} alumni in ${cluster.city}" class="group relative flex flex-col items-center cursor-pointer transition-transform duration-200 hover:scale-110">
+            <div title="Click to expand ${count} alumni in ${safeClusterCity}" class="group relative flex flex-col items-center cursor-pointer transition-transform duration-200 hover:scale-110">
               <div class="relative flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-tr from-blue-700 to-indigo-600 text-white font-black text-sm ring-4 ring-blue-400/40 shadow-xl border-2 border-white">
                 <span>${count}</span>
                 <span class="absolute -bottom-1 -right-1 flex h-4 w-4">
@@ -1255,7 +1289,7 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
               </div>
               <div class="w-2.5 h-2.5 bg-blue-700 rotate-45 -mt-1 shadow-xs border-r border-b border-white"></div>
               <div class="mt-1 bg-slate-900/90 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md whitespace-nowrap">
-                ${cluster.city} (${count})
+                ${safeClusterCity} (${count})
               </div>
             </div>
           `,

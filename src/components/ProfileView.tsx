@@ -52,12 +52,18 @@ import {
   loadVouchRequests
 } from '../utils/verificationService';
 import { saveStoredAlumniProfiles } from '../data/mockData';
+import { BloodDonorRegistration } from './BloodDonorRegistration';
+import { getDonorProfileByUserId } from '../utils/bloodDonationService';
+import { BloodNeededNowSection } from './landing/BloodNeededNowSection';
+import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
+import { compressImageFileToDataUrl } from '../utils/mediaStorage';
 
 interface ProfileViewProps {
   profileId: number;
   onBack: () => void;
   backLabel?: string;
   onOpenVerificationCenter?: (tab?: 'status' | 'vouch_classmates' | 'upload_id' | 'policy') => void;
+  onNavigate?: (route: string) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -65,6 +71,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onBack,
   backLabel,
   onOpenVerificationCenter,
+  onNavigate,
 }) => {
   const { isLoggedIn, currentUser, updateProfile } = useAuth();
 
@@ -105,7 +112,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         userId: targetId,
         fullName: matchingPost.fullName,
         avatarUrl: matchingPost.avatarUrl,
-        coverUrl: '/src/assets/images/ndc_campus_hero_1790233370828.jpg',
+        coverUrl: campusHeroImg,
         batchYear: matchingPost.batchYear,
         profession: 'Notredamian Alumnus',
         position: 'Alumni Member',
@@ -130,7 +137,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     (profileId === currentUser.id || profileId === currentUser.userId) &&
     (profile.id === currentUser.id || profile.userId === currentUser.userId);
 
-  const [activeTab, setActiveTab] = useState<'about' | 'posts' | 'edit'>('about');
+  const [activeTab, setActiveTab] = useState<'about' | 'posts' | 'edit' | 'blood'>('about');
+  const [donorRefreshTick, setDonorRefreshTick] = useState(0);
+  const [isBloodCardClosed, setIsBloodCardClosed] = useState(false);
+  const [isVerificationCardClosed, setIsVerificationCardClosed] = useState(false);
+  const donorRecord = getDonorProfileByUserId(profile.id);
 
   const syncAllPosts = (updated: PostItem[]) => {
     setAllPosts(updated);
@@ -181,12 +192,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (!files || files.length === 0) return;
     Array.from(files).forEach((file: File) => {
       if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const res = ev.target?.result as string;
-        if (res) setNewPostImages((prev) => [...prev, res]);
-      };
-      reader.readAsDataURL(file);
+      compressImageFileToDataUrl(file)
+        .then((res) => {
+          if (res) setNewPostImages((prev) => [...prev, res]);
+        })
+        .catch(() => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const res = ev.target?.result as string;
+            if (res) setNewPostImages((prev) => [...prev, res]);
+          };
+          reader.readAsDataURL(file);
+        });
     });
     e.target.value = '';
   };
@@ -626,10 +643,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result && typeof event.target.result === 'string') {
-          const dataUrl = event.target.result;
+      compressImageFileToDataUrl(file)
+        .then((dataUrl) => {
           if (type === 'avatar') {
             updateProfile({ avatarUrl: dataUrl });
             setProfile((prev) => ({ ...prev, avatarUrl: dataUrl }));
@@ -639,9 +654,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           }
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 2000);
-        }
-      };
-      reader.readAsDataURL(file);
+        })
+        .catch(() => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (event.target?.result && typeof event.target.result === 'string') {
+              const dataUrl = event.target.result;
+              if (type === 'avatar') {
+                updateProfile({ avatarUrl: dataUrl });
+                setProfile((prev) => ({ ...prev, avatarUrl: dataUrl }));
+              } else {
+                updateProfile({ coverUrl: dataUrl });
+                setProfile((prev) => ({ ...prev, coverUrl: dataUrl }));
+              }
+              setSaveSuccess(true);
+              setTimeout(() => setSaveSuccess(false), 2000);
+            }
+          };
+          reader.readAsDataURL(file);
+        });
     }
   };
 
@@ -723,19 +754,40 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="relative max-w-4xl mx-auto space-y-6 rounded-[2rem] p-4 sm:p-6 lg:p-8 liquid-glass-profile-shell overflow-hidden">
+      {/* Ambient Liquid Glass Refraction Backdrop (Cover Tint + Prismatic Liquid Orbs + Specular Rim) */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2rem]">
+        {profile.coverUrl && (
+          <div
+            className="absolute -top-20 left-1/2 -translate-x-1/2 w-[135%] h-[28rem] bg-cover bg-center opacity-35 dark:opacity-30 blur-3xl scale-125 saturate-200"
+            style={{ backgroundImage: `url(${profile.coverUrl})` }}
+          />
+        )}
+        <div className="absolute -top-28 -left-24 w-96 h-96 rounded-full bg-gradient-to-br from-blue-400/40 via-cyan-300/30 to-indigo-500/35 dark:from-blue-500/30 dark:via-cyan-400/20 dark:to-indigo-600/30 blur-3xl" />
+        <div className="absolute top-1/3 -right-28 w-[26rem] h-[26rem] rounded-full bg-gradient-to-bl from-indigo-400/30 via-sky-300/30 to-amber-300/25 dark:from-indigo-500/25 dark:via-blue-500/20 dark:to-amber-500/20 blur-3xl" />
+        <div className="absolute -bottom-32 left-1/4 w-96 h-96 rounded-full bg-gradient-to-tr from-emerald-300/25 via-blue-400/30 to-purple-400/25 dark:from-emerald-500/20 dark:via-blue-600/25 dark:to-purple-600/20 blur-3xl" />
+        {/* Top Liquid Specular Sheen */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/95 dark:via-white/40 to-transparent" />
+      </div>
+
+      {/* Popup-Style Emergency Blood Notification appearing in user's profile */}
+      <BloodNeededNowSection
+        variant="profile"
+        onNavigateToBloodNetwork={() => (onNavigate ? onNavigate('emergency') : onBack())}
+      />
+
       {/* Back button */}
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
+        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 liquid-glass-subcard hover:bg-white/80 dark:hover:bg-slate-800/80 transition-all cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         <span>{backLabel || 'Back to Directory'}</span>
       </button>
 
       {/* Profile Card Header */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-xs">
+      <div className="liquid-glass-card rounded-3xl overflow-hidden">
         {/* Cover Photo */}
         <div
           className="h-48 sm:h-64 w-full bg-cover bg-center relative group"
@@ -831,12 +883,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     size="md"
                   />
                 </div>
-                <div className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2 mt-0.5">
+                <div className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 flex flex-wrap items-center gap-2 mt-0.5">
                   <span className="px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800">
                     Batch {profile.batchYear}
                   </span>
                   <span>{profile.profession}</span>
                   {profile.cadre && <span>· {profile.cadre}</span>}
+                  {(donorRecord?.isRegisteredDonor || profile.bloodGroup) && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/50 border border-rose-200/80 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 text-xs font-extrabold">
+                      <Heart className="w-3 h-3 fill-current" />
+                      <span>Blood {donorRecord?.bloodGroup || profile.bloodGroup}</span>
+                      {donorRecord?.isRegisteredDonor && (
+                        <span className="text-[10px] font-bold opacity-85">
+                          · {donorRecord.availability === 'available' ? 'Donor Ready' : 'On Cooldown'}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
 
                 {/* Achievement Badges in Header */}
@@ -867,7 +930,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               {profile.fbLink && (
                 <a
-                  href={profile.fbLink}
+                  href={
+                    /^https?:\/\//i.test(profile.fbLink.trim())
+                      ? profile.fbLink.trim()
+                      : `https://${profile.fbLink.trim().replace(/^(javascript|vbscript|data):/i, '')}`
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors"
@@ -898,7 +965,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
 
           {/* Current Position Banner */}
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="p-3.5 rounded-2xl liquid-glass-subcard flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-semibold">
               <Briefcase className="w-4 h-4 text-blue-600" />
               <span>{profile.position || 'Position not set'}</span>
@@ -918,7 +985,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {/* Profile Completion Level Card (Visible on own profile) */}
           {isMine && (
-            <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-emerald-50/60 dark:from-slate-800/90 dark:via-slate-800/70 dark:to-slate-800/90 border border-blue-200/70 dark:border-slate-700">
+            <div className="mt-4 p-4 rounded-2xl liquid-glass-subcard bg-gradient-to-r from-blue-50/55 via-indigo-50/40 to-emerald-50/45 dark:from-slate-800/65 dark:via-slate-800/45 dark:to-slate-800/65">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">
@@ -970,116 +1037,129 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           )}
 
-          {/* Active Verification & Peer Vouch Card */}
-          <div
-            className={`mt-4 p-4 rounded-2xl border ${
-              (profile.verificationStatus || 'verified') === 'verified'
-                ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-500/30'
-                : 'bg-amber-50/70 dark:bg-amber-950/25 border-amber-500/40'
-            }`}
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <ShieldCheck
-                    className={`w-4 h-4 ${
-                      (profile.verificationStatus || 'verified') === 'verified'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-amber-600 dark:text-amber-400'
-                    }`}
-                  />
-                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
-                    {(profile.verificationStatus || 'verified') === 'verified'
-                      ? 'Tier 3: Verified Notredamian Alumnus'
-                      : `Tier 2: Pending Classmate Verification (${
-                          profile.vouchesCount ?? (profile.verifiedBy?.length || 0)
-                        }/2 Vouches)`}
-                  </span>
-                  {profile.collegeRoll && (
-                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                      Roll: {profile.collegeRoll}
+          {/* Active Verification & Peer Vouch Card (Dismissible with simple Cross button) */}
+          {!isVerificationCardClosed && (
+            <div
+              className={`relative mt-4 p-4 pr-11 rounded-2xl border ${
+                (profile.verificationStatus || 'verified') === 'verified'
+                  ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-500/30'
+                  : 'bg-amber-50/70 dark:bg-amber-950/25 border-amber-500/40'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ShieldCheck
+                      className={`w-4 h-4 ${
+                        (profile.verificationStatus || 'verified') === 'verified'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-amber-600 dark:text-amber-400'
+                      }`}
+                    />
+                    <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
+                      {(profile.verificationStatus || 'verified') === 'verified'
+                        ? 'Tier 3: Verified Notredamian Alumnus'
+                        : `Tier 2: Pending Classmate Verification (${
+                            profile.vouchesCount ?? (profile.verifiedBy?.length || 0)
+                          }/2 Vouches)`}
                     </span>
+                    {profile.collegeRoll && (
+                      <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                        Roll: {profile.collegeRoll}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    {profile.verifiedBy && profile.verifiedBy.length > 0
+                      ? `Verified by: ${profile.verifiedBy.join(' • ')}`
+                      : (profile.verificationStatus || 'verified') === 'verified'
+                      ? 'Verified via Notre Dame College 2-Brother Vouch & Credential Protocol.'
+                      : 'Awaiting 2 classmate vouches or NDC ID card upload to unlock full Verified Notredamian badge.'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {isMine ? (
+                    <>
+                      {(profile.verificationStatus || 'verified') !== 'verified' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            simulateDemoVouchForUser(currentUser, (updated) => {
+                              updateProfile(updated);
+                              setProfile(updated);
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>⚡ Simulate Classmate Vouch</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onOpenVerificationCenter?.('status')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Verification Center</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {!(profile.verifiedBy || []).some((v) =>
+                        v.toLowerCase().includes(currentUser.fullName.toLowerCase())
+                      ) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            try {
+                              const { updatedProfile } = vouchForAlumniProfile(
+                                profile,
+                                currentUser
+                              );
+                              setProfile(updatedProfile);
+                              const stored = loadStoredAlumniProfiles();
+                              const idx = stored.findIndex((p) => p.id === updatedProfile.id);
+                              if (idx > -1) {
+                                stored[idx] = updatedProfile;
+                                saveStoredAlumniProfiles(stored);
+                              }
+                            } catch {
+                              onOpenVerificationCenter?.('vouch_classmates');
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>✓ Vouch for Brother</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onOpenVerificationCenter?.('vouch_classmates')}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Trust Queue</span>
+                      </button>
+                    </>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                  {profile.verifiedBy && profile.verifiedBy.length > 0
-                    ? `Verified by: ${profile.verifiedBy.join(' • ')}`
-                    : (profile.verificationStatus || 'verified') === 'verified'
-                    ? 'Verified via Notre Dame College 2-Brother Vouch & Credential Protocol.'
-                    : 'Awaiting 2 classmate vouches or NDC ID card upload to unlock full Verified Notredamian badge.'}
-                </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {isMine ? (
-                  <>
-                    {(profile.verificationStatus || 'verified') !== 'verified' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          simulateDemoVouchForUser(currentUser, (updated) => {
-                            updateProfile(updated);
-                            setProfile(updated);
-                          });
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>⚡ Simulate Classmate Vouch</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onOpenVerificationCenter?.('status')}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Verification Center</span>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {!(profile.verifiedBy || []).some((v) =>
-                      v.toLowerCase().includes(currentUser.fullName.toLowerCase())
-                    ) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          try {
-                            const { updatedProfile } = vouchForAlumniProfile(
-                              profile,
-                              currentUser
-                            );
-                            setProfile(updatedProfile);
-                            const stored = loadStoredAlumniProfiles();
-                            const idx = stored.findIndex((p) => p.id === updatedProfile.id);
-                            if (idx > -1) {
-                              stored[idx] = updatedProfile;
-                              saveStoredAlumniProfiles(stored);
-                            }
-                          } catch {
-                            onOpenVerificationCenter?.('vouch_classmates');
-                          }
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>✓ Vouch for Brother</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onOpenVerificationCenter?.('vouch_classmates')}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Trust Queue</span>
-                    </button>
-                  </>
-                )}
-              </div>
+              {/* Simple Cross (X) Button to Close Verification Notification */}
+              <button
+                type="button"
+                onClick={() => setIsVerificationCardClosed(true)}
+                aria-label="Close verification notification"
+                title="Close verification notification"
+                className="absolute top-3 right-3 p-1.5 rounded-full bg-white/80 hover:bg-rose-600 dark:bg-slate-800/90 dark:hover:bg-rose-600 text-slate-500 hover:text-white dark:text-slate-300 dark:hover:text-white border border-slate-200/80 dark:border-slate-700 transition-all cursor-pointer shadow-xs"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          </div>
+          )}
 
           {/* Tab Selector: About | Posts | Edit Profile */}
           <div className="flex gap-6 mt-6 border-b border-slate-100 dark:border-slate-800 text-xs font-bold">
@@ -1112,18 +1192,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </button>
 
             {isMine && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('edit')}
-                className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
-                  activeTab === 'edit'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                }`}
-              >
-                <Edit className="w-3.5 h-3.5" />
-                <span>Edit Profile</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('blood')}
+                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'blood'
+                      ? 'border-rose-600 text-rose-600 dark:text-rose-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Heart className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Blood Donor Settings</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('edit')}
+                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'edit'
+                      ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>Edit Profile</span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -1134,17 +1229,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {profile.bio && (
-              <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs md:col-span-2">
-                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+              <div className="liquid-glass-card p-5 rounded-3xl md:col-span-2">
+                <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                   Biography
                 </h3>
-                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
                   {profile.bio}
                 </p>
               </div>
             )}
 
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+            <div className="liquid-glass-card p-5 rounded-3xl space-y-3">
               <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
                 <GraduationCap className="w-4 h-4 text-blue-600" />
                 <span>Degrees & Educational Qualifications</span>
@@ -1154,7 +1249,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   profile.degree.map((deg, i) => (
                     <span
                       key={i}
-                      className="px-3 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900 text-xs font-bold rounded-xl"
+                      className="px-3 py-1 bg-blue-50/80 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800/80 text-xs font-bold rounded-xl backdrop-blur-xs"
                     >
                       {deg}
                     </span>
@@ -1165,7 +1260,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+            <div className="liquid-glass-card p-5 rounded-3xl space-y-3">
               <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
                 <Award className="w-4 h-4 text-emerald-600" />
                 <span>Professional Specialties & Expertise</span>
@@ -1175,7 +1270,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   profile.specialty.map((spec, i) => (
                     <span
                       key={i}
-                      className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-900 text-xs font-bold rounded-xl"
+                      className="px-3 py-1 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/80 text-xs font-bold rounded-xl backdrop-blur-xs"
                     >
                       {spec}
                     </span>
@@ -1188,7 +1283,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             {/* Achievement Badges & Recognition Card */}
             {profile.badges && profile.badges.length > 0 && (
-              <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs md:col-span-2 space-y-3">
+              <div className="liquid-glass-card p-5 rounded-3xl md:col-span-2 space-y-3">
                 <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100 font-bold text-sm">
                   <Award className="w-4 h-4 text-amber-500" />
                   <span>Achievement Badges & Community Recognition</span>
@@ -1203,18 +1298,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
 
           {/* Career & Education Timeline (Merged directly into About) */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <div className="liquid-glass-card p-6 rounded-3xl">
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-blue-600" />
               <span>Career & Education Timeline</span>
             </h3>
 
-            <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-blue-200 dark:before:bg-blue-900">
+            <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-blue-300/70 dark:before:bg-blue-800">
               {profile.careerHistory && profile.careerHistory.length > 0 ? (
                 profile.careerHistory.map((line, idx) => (
                   <div key={idx} className="relative group">
-                    <span className="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-white dark:bg-slate-900 border-2 border-blue-600 ring-4 ring-blue-50 dark:ring-blue-950/60" />
-                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
+                    <span className="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-white dark:bg-slate-900 border-2 border-blue-600 ring-4 ring-blue-50/80 dark:ring-blue-950/60" />
+                    <div className="p-3.5 rounded-2xl liquid-glass-subcard text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
                       {line}
                     </div>
                   </div>
@@ -1224,6 +1319,84 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               )}
             </div>
           </div>
+
+          {/* Blood Donation & Emergency Network Card inside About Tab (Dismissible with Cross Button) */}
+          {!isBloodCardClosed && (donorRecord?.isRegisteredDonor || isMine) && (
+            <div className="relative liquid-glass-card p-5 sm:p-6 rounded-3xl border-rose-200/80 dark:border-rose-800/50">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-8">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200/70 dark:border-rose-800/70 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                    <Heart className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                        NDC Blood Donation Network Status
+                      </h3>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/70">
+                        <Eye className="w-3 h-3" />
+                        Seen
+                      </span>
+                      {donorRecord?.isRegisteredDonor ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-600 text-white">
+                          Group {donorRecord.bloodGroup}
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          Not Registered as Active Donor
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {donorRecord?.isRegisteredDonor
+                        ? `Preferred Hospital Corridor: ${donorRecord.preferredArea} · Status: ${
+                            donorRecord.availability === 'available'
+                              ? 'Available for Coordination'
+                              : donorRecord.availability === 'on_cooldown'
+                              ? 'On Post-Donation Cooldown'
+                              : 'Temporarily Unavailable'
+                          }`
+                        : 'Optionally register as a Notredamian blood donor to receive matching emergency alerts while keeping your personal phone and address private.'}
+                    </p>
+                  </div>
+                </div>
+
+                {isMine && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('blood')}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0"
+                  >
+                    <Heart className="w-3.5 h-3.5" />
+                    <span>Manage Blood Donor Settings</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Cross (X) Button to close after seen */}
+              <button
+                type="button"
+                onClick={() => setIsBloodCardClosed(true)}
+                aria-label="Close blood notification card"
+                title="Close"
+                className="absolute top-4 right-4 p-1.5 rounded-full bg-slate-100 hover:bg-rose-600 dark:bg-slate-800 dark:hover:bg-rose-600 text-slate-600 hover:text-white dark:text-slate-300 dark:hover:text-white border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: BLOOD DONOR SETTINGS (Strictly for own profile) */}
+      {activeTab === 'blood' && isMine && (
+        <div className="space-y-5" key={donorRefreshTick}>
+          <BloodDonorRegistration
+            onSaved={() => {
+              setDonorRefreshTick((t) => t + 1);
+              setProfile(resolveProfileById(profileId));
+            }}
+          />
         </div>
       )}
 
@@ -1234,7 +1407,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           {isMine && (
             <form
               onSubmit={handleCreateProfilePost}
-              className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3.5"
+              className="liquid-glass-card p-5 rounded-3xl space-y-3.5"
             >
               <div className="flex items-start gap-3">
                 <img
@@ -1358,7 +1531,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {/* Profile Posts List */}
           {profilePosts.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 border border-slate-200/80 dark:border-slate-800 text-center shadow-xs">
+            <div className="liquid-glass-card rounded-3xl p-10 text-center">
               <div className="w-12 h-12 mx-auto rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
                 <MessageSquare className="w-6 h-6" />
               </div>
@@ -1397,7 +1570,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 return (
                   <article
                     key={post.id}
-                    className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3.5"
+                    className="liquid-glass-card rounded-3xl p-5 sm:p-6 space-y-3.5"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -1656,7 +1829,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* Tab 3: EDIT PROFILE (for current user) */}
       {activeTab === 'edit' && isMine && (
-        <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+        <div className="liquid-glass-card p-6 sm:p-8 rounded-3xl">
           {saveSuccess && (
             <div className="mb-6 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4" />
@@ -2168,6 +2341,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </button>
             </div>
           </form>
+
+          {/* Integrated Blood Donor Profile Settings inside Edit Profile */}
+          <div className="pt-2">
+            <BloodDonorRegistration
+              compact
+              onSaved={() => {
+                setDonorRefreshTick((t) => t + 1);
+                setProfile(resolveProfileById(profileId));
+              }}
+            />
+          </div>
         </div>
       )}
 

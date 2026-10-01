@@ -27,7 +27,6 @@ import { BATCH_LIST, ALUMNI_PROFILES } from '../data/mockData';
 import { AlumniProfile, BatchSummary } from '../types';
 
 import { HeroSection } from './landing/HeroSection';
-import { StatsBar } from './landing/StatsBar';
 import { QuadFeedPreview } from './landing/QuadFeedPreview';
 import { BatchLoungesGrid } from './landing/BatchLoungesGrid';
 import { FeaturedAlumniSection } from './landing/FeaturedAlumniSection';
@@ -36,6 +35,8 @@ import { FAQSection } from './landing/FAQSection';
 import { QuickProfileModal } from './landing/QuickProfileModal';
 import { BatchMembersModal } from './landing/BatchMembersModal';
 import { VerificationExplainerModal } from './landing/VerificationExplainerModal';
+import { BloodNeededNowSection } from './landing/BloodNeededNowSection';
+import { CursorSpotlight, MagneticWrap } from './motion/CinematicMotion';
 
 interface LandingPageProps {
   onOpenLogin: () => void;
@@ -71,7 +72,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     : [];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 relative">
+      {/* Global Cursor-Following Institutional Spotlight */}
+      <CursorSpotlight />
+
       {/* 1. Top Community Pulse Bar */}
       <div className="bg-slate-900 text-slate-300 text-[11px] border-b border-slate-800 py-1.5 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
@@ -199,13 +203,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Sign In
             </button>
 
-            <button
-              type="button"
-              onClick={onOpenRegister}
-              className="btn-interactive px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs shadow-blue-600/20 transition-all cursor-pointer whitespace-nowrap"
-            >
-              Join Batch
-            </button>
+            <MagneticWrap>
+              <button
+                type="button"
+                onClick={onOpenRegister}
+                className="btn-interactive px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs shadow-blue-600/20 transition-all cursor-pointer whitespace-nowrap"
+              >
+                Join Batch
+              </button>
+            </MagneticWrap>
           </div>
         </div>
 
@@ -266,9 +272,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           onOpenVerificationModal={() => setIsVerificationModalOpen(true)}
         />
 
-        {/* 3.5. Our Network at a Glance (Scroll-Triggered Animated Statistics Cards) */}
-        <StatsBar />
-
         {/* 4. Live Social Feed Preview: "The Quad Buzz" */}
         <div id="feed-preview-section">
           <QuadFeedPreview
@@ -276,6 +279,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             onOpenRegister={onOpenRegister}
           />
         </div>
+
+        {/* 4.5. Compact Emergency Blood Network Section: "Blood Needed Now" */}
+        <BloodNeededNowSection
+          variant="landing"
+          onNavigateToBloodNetwork={() => onNavigate('emergency')}
+        />
 
         {/* 5. Batch Lounges Grid (01 to 76) with Era Filters */}
         <BatchLoungesGrid
@@ -322,7 +331,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
 
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-3">
-                The private social & professional network for Notre Dame College.
+                The private social &amp; professional network for Notre Dame College.
+              </p>
+              <p className="font-serif italic text-xs font-semibold text-amber-700 dark:text-amber-300/90 mt-1.5">
+                &ldquo;Once a Notre Damian, Always a Notre Damian.&rdquo;
               </p>
               <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-1">
                 Toyenbee Circular Road, Motijheel, Dhaka-1000, Bangladesh

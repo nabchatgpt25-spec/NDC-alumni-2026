@@ -748,7 +748,11 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
 
                 {profile.fbLink && (
                   <a
-                    href={profile.fbLink}
+                    href={
+                      /^https?:\/\//i.test(profile.fbLink.trim())
+                        ? profile.fbLink.trim()
+                        : `https://${profile.fbLink.trim().replace(/^(javascript|vbscript|data):/i, '')}`
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"

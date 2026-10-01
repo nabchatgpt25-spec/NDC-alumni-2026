@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
@@ -22,10 +23,13 @@ import { ContactUsView } from './components/ContactUsView';
 import { SavedPostsView } from './components/SavedPostsView';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { VerificationCenterModal } from './components/verification/VerificationCenterModal';
+import { BloodNetworkView } from './components/BloodNetworkView';
 import { ensureVouchRequestFromUrlParams } from './utils/verificationService';
+import { CursorSpotlight } from './components/motion/CinematicMotion';
 
 function AlumniAppContent() {
-  const { isLoggedIn, currentUser, logout } = useAuth();
+  const { isLoggedIn, currentUser } = useAuth();
+  const prefersReducedMotion = useReducedMotion();
 
   // Route state: 'landing' | 'feed' | 'alumni' | 'directory' | 'find' | 'batches' | 'map' | 'gallery' | 'profile' | `batch:${number}` | `post-${number}`
   const [route, setRoute] = useState<string>(() => {
@@ -113,6 +117,7 @@ function AlumniAppContent() {
     if (previousRoute === 'batches') return 'Back to Batches';
     if (previousRoute === 'feed' || previousRoute === 'dashboard') return 'Back to Feed';
     if (previousRoute === 'find') return 'Back to Search Results';
+    if (previousRoute === 'emergency' || previousRoute === 'blood' || previousRoute === 'blood-network') return 'Back to Blood Network';
     return 'Back to Directory';
   };
 
@@ -158,7 +163,10 @@ function AlumniAppContent() {
 
   // Logged-in application shell (Notre Dame Alumni Network portal)
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex transition-colors duration-200 font-sans antialiased selection:bg-blue-500 selection:text-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex transition-colors duration-200 font-sans antialiased selection:bg-blue-500 selection:text-white relative">
+      {/* Global Cursor-Following Institutional Spotlight */}
+      <CursorSpotlight />
+
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={route.startsWith('batch:') ? 'batches' : route}
@@ -184,98 +192,117 @@ function AlumniAppContent() {
           onOpenVerificationCenter={openVerificationCenter}
         />
 
-        {/* View Router */}
+        {/* View Router with Smooth Cinematic Page Transitions */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1500px] w-full mx-auto">
-          {(route === 'feed' || route === 'dashboard') && (
-            <FeedView
-              onViewProfile={handleViewProfile}
-              onOpenVerificationCenter={openVerificationCenter}
-            />
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={`${route}-${route === 'profile' ? selectedProfileId : ''}`}
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+              transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {(route === 'feed' || route === 'dashboard') && (
+                <FeedView
+                  onViewProfile={handleViewProfile}
+                  onOpenVerificationCenter={openVerificationCenter}
+                  onNavigate={navigateTo}
+                />
+              )}
 
-          {(route === 'alumni' || (route === 'directory' && !globalSearch)) && (
-            <AlumniDirectoryView
-              onViewProfile={handleViewProfile}
-              onNavigateToFind={() => navigateTo('find')}
-              onOpenVerificationCenter={openVerificationCenter}
-            />
-          )}
+              {(route === 'alumni' || (route === 'directory' && !globalSearch)) && (
+                <AlumniDirectoryView
+                  onViewProfile={handleViewProfile}
+                  onNavigateToFind={() => navigateTo('find')}
+                  onOpenVerificationCenter={openVerificationCenter}
+                />
+              )}
 
-          {(route === 'find' || (route === 'directory' && !!globalSearch)) && (
-            <DirectoryView
-              onViewProfile={handleViewProfile}
-              initialSearch={globalSearch}
-              initialBatch={selectedBatchFilter}
-              onOpenVerificationCenter={openVerificationCenter}
-            />
-          )}
+              {(route === 'find' || (route === 'directory' && !!globalSearch)) && (
+                <DirectoryView
+                  onViewProfile={handleViewProfile}
+                  initialSearch={globalSearch}
+                  initialBatch={selectedBatchFilter}
+                  onOpenVerificationCenter={openVerificationCenter}
+                />
+              )}
 
-          {route === 'batches' && (
-            <BatchesView
-              onSelectBatch={(batchYear) => {
-                setSelectedBatchFilter(batchYear);
-                setGlobalSearch('');
-                navigateTo('find');
-              }}
-              onViewProfile={handleViewProfile}
-            />
-          )}
+              {route === 'batches' && (
+                <BatchesView
+                  onSelectBatch={(batchYear) => {
+                    setSelectedBatchFilter(batchYear);
+                    setGlobalSearch('');
+                    navigateTo('find');
+                  }}
+                  onViewProfile={handleViewProfile}
+                />
+              )}
 
-          {(route === 'map' || route === 'map-directory') && (
-            <MapView onViewProfile={handleViewProfile} />
-          )}
+              {(route === 'map' || route === 'map-directory') && (
+                <MapView onViewProfile={handleViewProfile} />
+              )}
 
-          {route === 'institutions' && (
-            <UpcomingFeatureView type="institutions" onNavigate={navigateTo} />
-          )}
+              {route === 'institutions' && (
+                <UpcomingFeatureView type="institutions" onNavigate={navigateTo} />
+              )}
 
-          {route === 'mentorship' && (
-            <UpcomingFeatureView type="mentorship" onNavigate={navigateTo} />
-          )}
+              {route === 'mentorship' && (
+                <UpcomingFeatureView type="mentorship" onNavigate={navigateTo} />
+              )}
 
-          {route === 'news' && (
-            <UpcomingFeatureView type="news" onNavigate={navigateTo} />
-          )}
+              {route === 'news' && (
+                <UpcomingFeatureView type="news" onNavigate={navigateTo} />
+              )}
 
-          {route === 'events' && (
-            <UpcomingFeatureView type="events" onNavigate={navigateTo} />
-          )}
+              {route === 'events' && (
+                <UpcomingFeatureView type="events" onNavigate={navigateTo} />
+              )}
 
-          {route === 'gallery' && (
-            <GalleryView />
-          )}
+              {route === 'gallery' && (
+                <GalleryView />
+              )}
 
-          {route === 'careers' && (
-            <UpcomingFeatureView type="careers" onNavigate={navigateTo} />
-          )}
+              {route === 'careers' && (
+                <UpcomingFeatureView type="careers" onNavigate={navigateTo} />
+              )}
 
-          {route === 'emergency' && (
-            <UpcomingFeatureView type="emergency" onNavigate={navigateTo} />
-          )}
+              {(route === 'emergency' || route === 'blood' || route === 'blood-network') && (
+                <BloodNetworkView
+                  onViewProfile={handleViewProfile}
+                  onNavigate={navigateTo}
+                />
+              )}
 
-          {route === 'contact' && (
-            <ContactUsView />
-          )}
+              {route === 'contact' && (
+                <ContactUsView />
+              )}
 
-          {(route === 'saved' || route === 'saved-posts') && (
-            <SavedPostsView onNavigate={navigateTo} />
-          )}
+              {(route === 'saved' || route === 'saved-posts') && (
+                <SavedPostsView onNavigate={navigateTo} />
+              )}
 
-          {route === 'profile' && (
-            <ProfileView
-              profileId={selectedProfileId}
-              onBack={() => navigateTo(previousRoute || 'alumni')}
-              backLabel={getBackLabel()}
-              onOpenVerificationCenter={openVerificationCenter}
-            />
-          )}
+              {route === 'profile' && (
+                <ProfileView
+                  profileId={selectedProfileId}
+                  onBack={() => navigateTo(previousRoute || 'alumni')}
+                  backLabel={getBackLabel()}
+                  onOpenVerificationCenter={openVerificationCenter}
+                  onNavigate={navigateTo}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </main>
 
         {/* Portal Footer */}
         <footer className="border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8 text-[11px] text-slate-500 dark:text-slate-400 bg-white/50 dark:bg-slate-900/50">
           <div className="max-w-[1500px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div>
-              © {new Date().getFullYear()} Notre Dame College Alumni Network. All rights reserved.
+            <div className="flex flex-wrap items-center gap-2">
+              <span>© {new Date().getFullYear()} Notre Dame College Alumni Network. All rights reserved.</span>
+              <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
+              <span className="font-serif italic text-amber-700 dark:text-amber-300/90 font-medium">
+                &ldquo;Once a Notre Damian, Always a Notre Damian.&rdquo;
+              </span>
             </div>
             <div>
               <a
