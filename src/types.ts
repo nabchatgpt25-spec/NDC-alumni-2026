@@ -21,6 +21,28 @@ export interface ThemeOption {
 
 export type VerificationStatus = 'verified' | 'pending_vouch' | 'unverified';
 export type VerificationMethod = 'two_vouches' | 'id_card_upload' | 'souvenir_photo' | 'admin_verified';
+export type VerificationDocType = 'id_card' | 'nid_card' | 'hsc_slip' | 'souvenir';
+
+export interface AdminDocSubmission {
+  id: string;
+  userId: number;
+  fullName: string;
+  avatarUrl: string;
+  batchYear: number;
+  collegeRoll: string;
+  group: string;
+  phone?: string;
+  email?: string;
+  docType: VerificationDocType;
+  docTypeLabel: string;
+  documentUrl: string;
+  submittedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string;
+  reviewedAt?: string;
+  adminNote?: string;
+  vouchLink?: string;
+}
 
 export interface VouchItem {
   id: string;
@@ -39,7 +61,7 @@ export interface VouchRequest {
   requesterAvatar: string;
   batchYear: number;
   collegeRoll: string;
-  group: 'Science' | 'Business Studies' | 'Humanities';
+  group: 'Science' | 'Business Studies' | 'Humanities' | string;
   section?: string;
   profession?: string;
   city?: string;
@@ -48,6 +70,8 @@ export interface VouchRequest {
   vouches: VouchItem[];
   targetVouches: number;
   idProofUrl?: string;
+  idDocType?: VerificationDocType;
+  adminNote?: string;
   message?: string;
 }
 
@@ -56,18 +80,23 @@ export interface AlumniProfile {
   userId: number;
   fullName: string;
   avatarUrl: string;
-  coverUrl: string;
+  coverUrl?: string;
   batchYear: number;
   session?: string;
   collegeRoll?: string;
-  group?: 'Science' | 'Business Studies' | 'Humanities';
+  group?: 'Science' | 'Business Studies' | 'Humanities' | string;
   section?: string;
   verificationStatus?: VerificationStatus;
   verificationMethod?: VerificationMethod;
   verifiedBy?: string[];
+  vouchedBy?: { id?: number; name: string; batchYear: number; collegeRoll?: string; timestamp?: string }[];
+  vouchedForIds?: number[];
   vouchesCount?: number;
   vouchTargetCount?: number;
   idProofUrl?: string;
+  idDocType?: VerificationDocType;
+  idSubmissionStatus?: 'pending' | 'approved' | 'rejected';
+  adminReviewNote?: string;
   verificationDate?: string;
   profession: string;
   position: string;
@@ -91,7 +120,7 @@ export interface AlumniProfile {
   isPublic: boolean;
   online: boolean;
   lastSeen?: string;
-  postsCount: number;
+  postsCount?: number;
   badges?: string[];
 }
 

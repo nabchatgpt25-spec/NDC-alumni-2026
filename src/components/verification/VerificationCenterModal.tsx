@@ -38,16 +38,27 @@ import { WhatsAppIcon } from '../SocialIcons';
 interface VerificationCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'status' | 'vouch_classmates' | 'upload_id' | 'policy';
+  initialTab?: 'status' | 'vouch_classmates' | 'vouch_others' | 'upload_id' | 'policy';
 }
+
+const resolveTab = (
+  tab?: string
+): 'status' | 'vouch_classmates' | 'upload_id' | 'policy' => {
+  if (tab === 'vouch_others' || tab === 'vouch_classmates') return 'vouch_classmates';
+  if (tab === 'upload_id') return 'upload_id';
+  if (tab === 'policy') return 'policy';
+  return 'status';
+};
 
 export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = ({
   isOpen,
   onClose,
-  initialTab = 'status',
+  initialTab,
 }) => {
   const { currentUser, updateProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'status' | 'vouch_classmates' | 'upload_id' | 'policy'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'status' | 'vouch_classmates' | 'upload_id' | 'policy'>(
+    resolveTab(initialTab)
+  );
   const [vouchRequests, setVouchRequests] = useState<VouchRequest[]>(loadVouchRequests());
   const [copiedLink, setCopiedLink] = useState(false);
   const [vouchSuccessMsg, setVouchSuccessMsg] = useState('');
@@ -64,7 +75,7 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
 
   useEffect(() => {
     if (isOpen) {
-      setActiveTab(initialTab);
+      setActiveTab(resolveTab(initialTab));
       setVouchRequests(loadVouchRequests());
     }
   }, [isOpen, initialTab]);

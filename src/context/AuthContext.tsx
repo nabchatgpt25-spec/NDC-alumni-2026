@@ -7,7 +7,10 @@ import {
   saveStoredAlumniProfiles,
   loadStoredAlumniProfiles
 } from '../data/mockData';
-import { registerUserVouchRequest } from '../utils/verificationService';
+import {
+  registerUserVouchRequest,
+  submitDocumentForAdminReview,
+} from '../utils/verificationService';
 
 interface RegisteredAccount {
   identifier: string;
@@ -79,6 +82,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isLoggedIn, currentUser]);
 
+  useEffect(() => {
+    const handleAdminUserUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<AlumniProfile>;
+      if (customEvent.detail && customEvent.detail.id === currentUser.id) {
+        setCurrentUser(customEvent.detail);
+      }
+    };
+    window.addEventListener('ndc_current_user_updated', handleAdminUserUpdate);
+    return () => window.removeEventListener('ndc_current_user_updated', handleAdminUserUpdate);
+  }, [currentUser.id]);
+
   const login = async (phoneOrEmail: string, pass: string): Promise<boolean> => {
     if (!phoneOrEmail || !pass) {
       throw new Error('Please enter your mobile number or email and password.');
@@ -125,7 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
     await new Promise((r) => setTimeout(r, 800));
-    const verificationStatus = profileData.verificationStatus || (profileData.verificationMethod === 'id_card_upload' && profileData.idProofUrl ? 'verified' : 'pending_vouch');
+    const verificationStatus = profileData.verificationStatus || 'pending_vouch';
     const newProfile: AlumniProfile = {
       id: Date.now(),
       userId: Math.floor(Math.random() * 10000) + 1000,
@@ -139,10 +153,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       section: profileData.section || 'Group 4',
       verificationStatus: verificationStatus,
       verificationMethod: profileData.verificationMethod || 'two_vouches',
-      verifiedBy: profileData.verifiedBy || (verificationStatus === 'verified' ? ['NDC Verification System (ID Proof Verified)'] : []),
-      vouchesCount: profileData.vouchesCount ?? (verificationStatus === 'verified' ? 2 : 0),
+      verifiedBy: profileData.verifiedBy || [],
+      vouchesCount: profileData.vouchesCount ?? 0,
       vouchTargetCount: 2,
       idProofUrl: profileData.idProofUrl,
+      idDocType: profileData.idDocType || (profileData.idProofUrl ? 'id_card' : undefined),
+      idSubmissionStatus: profileData.idProofUrl ? 'pending' : undefined,
       verificationDate: verificationStatus === 'verified' ? 'Today' : undefined,
       profession: profileData.profession ?? '',
       position: profileData.position ?? '',
@@ -164,9 +180,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       badges: profileData.badges ?? [],
     };
 
-    // If pending vouch, register a public vouch request so batchmates can verify them
-    if (newProfile.verificationStatus === 'pending_vouch') {
-      registerUserVouchRequest(newProfile);
+    // Always register a public vouch request so batchmates and Admin can verify them
+    registerUserVouchRequest(newProfile);
+
+    // If they uploaded an ID / NID document during registration, submit it to the Admin Review Queue
+    if (newProfile.idProofUrl) {
+      submitDocumentForAdminReview(
+        newProfile,
+        newProfile.idDocType || 'id_card',
+        newProfile.idProofUrl
+      );
     }
 
     // Add to current user and active ALUMNI_PROFILES array

@@ -21,6 +21,8 @@ import { UpcomingFeatureView } from './components/UpcomingFeatureView';
 import { ContactUsView } from './components/ContactUsView';
 import { SavedPostsView } from './components/SavedPostsView';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { VerificationCenterModal } from './components/verification/VerificationCenterModal';
+import { ensureVouchRequestFromUrlParams } from './utils/verificationService';
 
 function AlumniAppContent() {
   const { isLoggedIn, currentUser, logout } = useAuth();
@@ -29,7 +31,7 @@ function AlumniAppContent() {
   const [route, setRoute] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('post')) {
+      if (params.get('post') || params.get('vouch_for')) {
         return 'feed';
       }
       if (window.location.hash) {
@@ -49,6 +51,33 @@ function AlumniAppContent() {
 
   // Auth modal state
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot' | null>(null);
+
+  // Verification Center Modal state
+  const [verificationModalState, setVerificationModalState] = useState<{
+    isOpen: boolean;
+    initialTab: 'status' | 'vouch_classmates' | 'vouch_others' | 'upload_id' | 'policy';
+  }>({
+    isOpen: false,
+    initialTab: 'status',
+  });
+
+  const openVerificationCenter = (
+    initialTab: 'status' | 'vouch_classmates' | 'vouch_others' | 'upload_id' | 'policy' = 'status'
+  ) => {
+    setVerificationModalState({ isOpen: true, initialTab });
+  };
+
+  // Handle ?vouch_for=... shared peer vouch link
+  useEffect(() => {
+    const req = ensureVouchRequestFromUrlParams();
+    if (req) {
+      if (isLoggedIn) {
+        setVerificationModalState({ isOpen: true, initialTab: 'vouch_others' });
+      } else {
+        setAuthModalMode('login');
+      }
+    }
+  }, [isLoggedIn]);
 
   // Sync route with window location hash
   useEffect(() => {
@@ -136,6 +165,7 @@ function AlumniAppContent() {
         onSelectTab={navigateTo}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        onOpenVerificationCenter={openVerificationCenter}
       />
 
       {/* Main Content Area */}
@@ -151,16 +181,24 @@ function AlumniAppContent() {
           }}
           searchQuery={globalSearch}
           onSearchChange={handleGlobalSearchChange}
+          onOpenVerificationCenter={openVerificationCenter}
         />
 
         {/* View Router */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1500px] w-full mx-auto">
           {(route === 'feed' || route === 'dashboard') && (
-            <FeedView onViewProfile={handleViewProfile} />
+            <FeedView
+              onViewProfile={handleViewProfile}
+              onOpenVerificationCenter={openVerificationCenter}
+            />
           )}
 
           {(route === 'alumni' || (route === 'directory' && !globalSearch)) && (
-            <AlumniDirectoryView onViewProfile={handleViewProfile} />
+            <AlumniDirectoryView
+              onViewProfile={handleViewProfile}
+              onNavigateToFind={() => navigateTo('find')}
+              onOpenVerificationCenter={openVerificationCenter}
+            />
           )}
 
           {(route === 'find' || (route === 'directory' && !!globalSearch)) && (
@@ -168,6 +206,7 @@ function AlumniAppContent() {
               onViewProfile={handleViewProfile}
               initialSearch={globalSearch}
               initialBatch={selectedBatchFilter}
+              onOpenVerificationCenter={openVerificationCenter}
             />
           )}
 
@@ -227,6 +266,7 @@ function AlumniAppContent() {
               profileId={selectedProfileId}
               onBack={() => navigateTo(previousRoute || 'alumni')}
               backLabel={getBackLabel()}
+              onOpenVerificationCenter={openVerificationCenter}
             />
           )}
         </main>
@@ -253,6 +293,13 @@ function AlumniAppContent() {
 
       {/* Global Offline Mode Status Indicator */}
       <OfflineIndicator onNavigate={navigateTo} />
+
+      {/* Active Notredamian Verification & Peer Vouch Center Modal */}
+      <VerificationCenterModal
+        isOpen={verificationModalState.isOpen}
+        onClose={() => setVerificationModalState((prev) => ({ ...prev, isOpen: false }))}
+        initialTab={verificationModalState.initialTab}
+      />
 
       {authModalMode && (
         <AuthModal

@@ -880,7 +880,7 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
 
   // Extract batch and organization options
   const filterOptions = useMemo(() => {
-    const batches = Array.from(new Set(allMapAlumni.map((p) => p.batchYear))).sort((a, b) => a - b);
+    const batches = Array.from(new Set<number>(allMapAlumni.map((p) => Number(p.batchYear)))).sort((a, b) => a - b);
     const organizations = Array.from(
       new Set(
         allMapAlumni.filter((p) => matchAlumnusToRegion(p, selectedRegionId, selectedSubRegionCity)).map(

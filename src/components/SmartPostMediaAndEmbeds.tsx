@@ -45,11 +45,11 @@ export interface UnfurledLinkData {
   publisher?: string;
 }
 
-const UNFURL_CACHE_PREFIX = 'ndc_unfurl_v2_';
+const UNFURL_CACHE_PREFIX = 'ndc_unfurl_v3_';
 
 /**
  * Normalizes a raw URL string so links like "www.facebook.com/..." or "facebook.com/..."
- * or "fb.watch/..." work even if the user omitted "https://"
+ * or "fb.watch/..." or "notredame.edu.bd" work even if the user omitted "https://"
  */
 export function normalizeUrlInput(raw: string): string {
   const trimmed = raw.trim();
@@ -65,6 +65,9 @@ export function normalizeUrlInput(raw: string): string {
   if (
     /^(www\.|m\.|web\.|facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be|instagram\.com|linkedin\.com|lnkd\.in|tiktok\.com|vimeo\.com)/i.test(
       trimmed
+    ) ||
+    /^[a-z0-9-]+(?:\.[a-z0-9-]+)+\.(?:com|org|net|edu|gov|bd|io|co|tc|info|me|app|dev|ai|news|tv|uk|us|ca|au|in|xyz|live|online|site|tech)(?:\/.*|$)/i.test(
+      trimmed
     )
   ) {
     return `https://${trimmed}`;
@@ -73,18 +76,19 @@ export function normalizeUrlInput(raw: string): string {
 }
 
 /**
- * Extracts all URLs (including http://, https://, www., facebook.com/, fb.watch/, youtu.be/, etc.) from text
+ * Extracts all URLs (including http://, https://, www., facebook.com/, fb.watch/, youtu.be/, or domain links) from text
  */
 export function extractUrlsFromText(text: string): string[] {
   if (!text) return [];
   const urlRegex =
-    /(?:https?:\/\/|www\.|(?:facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be|instagram\.com|linkedin\.com|tiktok\.com|vimeo\.com)\/)[^\s<>"')]+/gi;
-  const matches = text.match(urlRegex) || [];
+    /(?:https?:\/\/|www\.|(?:facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be|instagram\.com|linkedin\.com|tiktok\.com|vimeo\.com)\/|(?:[a-z0-9-]+\.)+(?:com|org|net|edu|gov|bd|io|co|tc|info|me|app|dev|ai|news|tv|uk|us|ca|au|in|xyz|live|online|site|tech)(?:\/|$))[^\s<>"')]*/gi;
+  const matches: string[] = text.match(urlRegex) || [];
   return Array.from(
     new Set(
       matches
-        .map((u) => normalizeUrlInput(u.replace(/[.,;!?]+$/, '')))
-        .filter(Boolean)
+        .filter((u: string) => !u.includes('@'))
+        .map((u: string) => normalizeUrlInput(u.replace(/[.,;!?]+$/, '')))
+        .filter((u: string) => /^https?:\/\//i.test(u))
     )
   );
 }
@@ -95,11 +99,12 @@ export function extractUrlsFromText(text: string): string[] {
 export function renderTextWithClickableLinks(text: string): React.ReactNode {
   if (!text) return null;
   const splitRegex =
-    /((?:https?:\/\/|www\.|(?:facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be|instagram\.com|linkedin\.com|tiktok\.com|vimeo\.com)\/)[^\s<>"')]+)/gi;
+    /((?:https?:\/\/|www\.|(?:facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be|instagram\.com|linkedin\.com|tiktok\.com|vimeo\.com)\/|(?:[a-z0-9-]+\.)+(?:com|org|net|edu|gov|bd|io|co|tc|info|me|app|dev|ai|news|tv|uk|us|ca|au|in|xyz|live|online|site|tech)\/)[^\s<>"')]*)/gi;
   const parts = text.split(splitRegex);
   return parts.map((part, idx) => {
     if (
-      /^(?:https?:\/\/|www\.|(?:facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be|instagram\.com|linkedin\.com|tiktok\.com|vimeo\.com)\/)/i.test(
+      !part.includes('@') &&
+      /^(?:https?:\/\/|www\.|(?:facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be|instagram\.com|linkedin\.com|tiktok\.com|vimeo\.com)\/|(?:[a-z0-9-]+\.)+(?:com|org|net|edu|gov|bd|io|co|tc|info|me|app|dev|ai|news|tv|uk|us|ca|au|in|xyz|live|online|site|tech)\/)/i.test(
         part
       )
     ) {
@@ -452,7 +457,7 @@ function useLinkUnfurl(url: string, enabled = true) {
     }
 
     setLoading(true);
-    fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`)
+    fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=true`)
       .then((res) => res.json())
       .then((json) => {
         if (isCancelled) return;
@@ -462,7 +467,7 @@ function useLinkUnfurl(url: string, enabled = true) {
             resolvedUrl: d.url || url,
             title: d.title || undefined,
             description: d.description || undefined,
-            imageUrl: d.image?.url || d.logo?.url || undefined,
+            imageUrl: d.image?.url || d.screenshot?.url || d.logo?.url || undefined,
             videoUrl: d.video?.url || undefined,
             author: d.author || undefined,
             publisher: d.publisher || undefined,
@@ -1152,7 +1157,11 @@ export const SharedEmbedCard: React.FC<{
     );
   }
 
-  // Generic Link Preview Card (News, Blogs, Portfolios, X/Twitter, Other Platforms) - 100% Full Visibility
+  // Generic Link Preview Card (Websites, News, Blogs, Portfolios, X/Twitter, Other Platforms) - 100% Full Visibility
+  const websitePreviewImage =
+    unfurled?.imageUrl ||
+    `https://image.thum.io/get/width/900/crop/600/noanimate/${info.normalizedUrl}`;
+
   return (
     <a
       href={info.normalizedUrl}
@@ -1160,16 +1169,17 @@ export const SharedEmbedCard: React.FC<{
       rel="noopener noreferrer"
       className="block rounded-2xl overflow-hidden border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-800/50 dark:hover:bg-slate-800 transition-all group shadow-xs"
     >
-      {unfurled?.imageUrl && (
-        <div className="w-full max-h-64 overflow-hidden bg-slate-900 border-b border-slate-200/60 dark:border-slate-800">
-          <img
-            src={unfurled.imageUrl}
-            alt={unfurled.title || info.titleHint}
-            className="w-full max-h-64 object-cover group-hover:scale-102 transition-transform"
-            referrerPolicy="no-referrer"
-          />
-        </div>
-      )}
+      <div className="w-full max-h-64 overflow-hidden bg-slate-900 border-b border-slate-200/60 dark:border-slate-800 relative">
+        <img
+          src={websitePreviewImage}
+          alt={unfurled?.title || info.titleHint}
+          className="w-full max-h-64 object-cover group-hover:scale-102 transition-transform"
+          referrerPolicy="no-referrer"
+          onError={(e) => {
+            (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+          }}
+        />
+      </div>
       <div className="p-4 flex items-start justify-between gap-3">
         <div className="space-y-1.5 min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
