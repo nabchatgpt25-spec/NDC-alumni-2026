@@ -3,13 +3,15 @@ import { createServer as createHttpServer } from 'http';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import * as dotenv from 'dotenv';
-import { requireAuth, optionalAuth, type AuthRequest } from './src/middleware/auth.ts';
+import { requireAuth, requireAdmin, optionalAuth, type AuthRequest } from './src/middleware/auth.ts';
 import { getUsers } from './src/db/users.ts';
 import {
   adminUpdateAlumniGovernance,
   createOrRegisterAlumniProfile,
   createOrUpdateOfficialNotice,
+  findAlumniByCredential,
   generateBulkBatchCohortSample,
   getAcademicStreamGroupsConfig,
   getAdminOverviewMetrics,
@@ -20,6 +22,7 @@ import {
   queryPaginatedAlumniProfiles,
   reviewVerificationSubmission,
   toggleAcademicStreamGroupActive,
+  updateAlumniPassword,
 } from './src/db/adminRepository.ts';
 
 dotenv.config();
@@ -51,10 +54,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, x-ndc-admin-email'
-    );
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -118,12 +118,7 @@ function resolveActor(req: AuthRequest) {
       role: 'admin',
     };
   }
-  const headerEmail = (req.headers['x-ndc-admin-email'] as string) || 'admin@ndcalumni.org';
-  return {
-    uid: 'ndc-portal-admin',
-    email: headerEmail,
-    role: 'admin',
-  };
+  throw new Error('Unauthorized: Valid admin credentials required on backend');
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +138,208 @@ app.post('/api/auth/sync', requireAuth, async (req: AuthRequest, res: Response) 
   }
 });
 
+function formatAlumniRowToProfile(row: any) {
+  return {
+    id: row.id,
+    userId: row.id,
+    fullName: row.fullName || 'Notredamian Alumnus',
+    avatarUrl:
+      row.avatarUrl ||
+      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+    coverUrl: row.coverUrl || undefined,
+    batchYear: row.batchYear || 68,
+    session: row.session || undefined,
+    collegeRoll: row.collegeRoll || '',
+    academicStream: row.academicStream,
+    academicGroup: row.academicGroup,
+    group: row.academicStream || 'Science',
+    section: row.section || 'Group 4',
+    verificationStatus: row.verificationStatus || 'pending_vouch',
+    verificationMethod: row.verificationMethod || 'two_vouches',
+    verifiedBy: row.verifiedByAdmin ? [row.verifiedByAdmin] : [],
+    vouchesCount: row.vouchesCount || 0,
+    vouchTargetCount: row.vouchTargetCount || 2,
+    profession: row.profession || '',
+    position: row.position || '',
+    institution: row.institution || '',
+    cadre: row.cadre || '',
+    specialty: Array.isArray(row.specialty) ? row.specialty : [],
+    degree: Array.isArray(row.degree) ? row.degree : ['HSC'],
+    city: row.city || 'Dhaka',
+    country: row.country || 'Bangladesh',
+    phone: row.phone || '',
+    whatsapp: row.whatsapp || '',
+    email: row.email || '',
+    fbLink: row.fbLink || '',
+    bio: row.bio || '',
+    bloodGroup: row.bloodGroup || undefined,
+    isRegisteredDonor: Boolean(row.isRegisteredDonor),
+    donorAvailability: row.donorAvailability || 'available',
+    role: row.role || 'member',
+    accountStatus: row.accountStatus || 'active',
+    isPublic: Boolean(row.isPublic),
+    postsCount: row.postsCount || 0,
+    badges: Array.isArray(row.badges) ? row.badges : [],
+  };
+}
+
+const PASSWORD_SALT = 'ndc_dhaka_1949_salt_v1:';
+
+function hashPasswordServer(raw: string): string {
+  if (!raw) return '';
+  if (raw.startsWith('sha256:')) return raw;
+  const hash = crypto.createHash('sha256').update(PASSWORD_SALT + raw).digest('hex');
+  return `sha256:${hash}`;
+}
+
+function verifyPasswordServer(storedHash: string | null | undefined, inputPass: string): boolean {
+  if (!storedHash) return true;
+  const hashedInput = hashPasswordServer(inputPass);
+  if (storedHash === hashedInput) return true;
+  if (storedHash === inputPass) return true;
+  return false;
+}
+
+// Global Cross-Device Registration Endpoint (stores directly in Cloud SQL)
+app.post('/api/auth/register', rateLimitGuard(25, 60_000), async (req: Request, res: Response) => {
+  try {
+    const {
+      fullName,
+      avatarUrl,
+      coverUrl,
+      batchYear,
+      session,
+      collegeRoll,
+      academicStream,
+      academicGroup,
+      section,
+      profession,
+      position,
+      institution,
+      specialty,
+      degree,
+      city,
+      country,
+      phone,
+      whatsapp,
+      email,
+      password,
+      bloodGroup,
+      isRegisteredDonor,
+    } = req.body;
+
+    if (!fullName?.trim()) {
+      return res.status(400).json({ error: 'Please provide your Full Name.' });
+    }
+    if (!phone?.trim() && !email?.trim()) {
+      return res.status(400).json({ error: 'Please provide your Mobile Number or Email.' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+
+    const hashedPassword = hashPasswordServer(password);
+
+    const created = await createOrRegisterAlumniProfile({
+      fullName: fullName.trim(),
+      avatarUrl,
+      batchYear: Number(batchYear) || 68,
+      session,
+      collegeRoll: collegeRoll?.trim(),
+      academicStream:
+        academicStream === 'Humanities' || academicStream === 'Business Studies'
+          ? academicStream
+          : 'Science',
+      academicGroup: academicGroup || null,
+      section: section || 'Group 4',
+      profession: profession || '',
+      position: position || '',
+      institution: institution || '',
+      specialty: Array.isArray(specialty) ? specialty : [],
+      degree: Array.isArray(degree) ? degree : ['HSC'],
+      city: city || 'Dhaka',
+      country: country || 'Bangladesh',
+      phone: phone?.trim() || null,
+      whatsapp: whatsapp?.trim() || null,
+      email: email?.trim() || null,
+      passwordHash: hashedPassword,
+      bloodGroup: bloodGroup || null,
+      isRegisteredDonor: Boolean(isRegisteredDonor),
+    });
+
+    res.status(201).json({
+      success: true,
+      profile: formatAlumniRowToProfile(created),
+    });
+  } catch (error: any) {
+    console.error('Registration failed:', error);
+    res.status(400).json({ error: error.message || 'Registration failed.' });
+  }
+});
+
+// Global Cross-Device Login Endpoint (verifies credentials against Cloud SQL)
+app.post('/api/auth/login', rateLimitGuard(40, 60_000), async (req: Request, res: Response) => {
+  try {
+    const { identifier, password } = req.body;
+    if (!identifier?.trim() || !password) {
+      return res.status(400).json({ error: 'Please enter your mobile number or email and password.' });
+    }
+
+    const alumnus = await findAlumniByCredential(identifier.trim());
+    if (!alumnus) {
+      return res.status(404).json({
+        error: 'No registered account found with this phone number or email. Please register your verified profile first.',
+      });
+    }
+
+    if (alumnus.accountStatus === 'suspended') {
+      return res.status(403).json({ error: 'Your account is currently suspended. Please contact Notre Dame Alumni support.' });
+    }
+
+    const isValid = verifyPasswordServer(alumnus.passwordHash, password);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Incorrect password. Please try again.' });
+    }
+
+    // If account was created without a passwordHash, persist it now for seamless cross-device auth
+    if (!alumnus.passwordHash) {
+      const newHash = hashPasswordServer(password);
+      await updateAlumniPassword(alumnus.id, newHash);
+    }
+
+    res.json({
+      success: true,
+      profile: formatAlumniRowToProfile(alumnus),
+    });
+  } catch (error: any) {
+    console.error('Login failed:', error);
+    res.status(500).json({ error: error.message || 'Login failed. Please try again.' });
+  }
+});
+
+// Global Cross-Device Password Reset Endpoint
+app.post('/api/auth/reset-password', rateLimitGuard(15, 60_000), async (req: Request, res: Response) => {
+  try {
+    const { phone, newPassword } = req.body;
+    if (!phone?.trim() || !newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Valid phone number and new password (min 6 chars) required.' });
+    }
+
+    const alumnus = await findAlumniByCredential(phone.trim());
+    if (!alumnus) {
+      return res.status(404).json({ error: 'No account found with this mobile number.' });
+    }
+
+    const newHash = hashPasswordServer(newPassword);
+    await updateAlumniPassword(alumnus.id, newHash);
+
+    res.json({ success: true, message: 'Password updated successfully across all devices.' });
+  } catch (error: any) {
+    console.error('Password reset failed:', error);
+    res.status(500).json({ error: error.message || 'Password reset failed.' });
+  }
+});
+
 // Get synchronized users (Protected by Firebase Auth)
 app.get('/api/users', requireAuth, async (_req: AuthRequest, res: Response) => {
   try {
@@ -151,6 +348,141 @@ app.get('/api/users', requireAuth, async (_req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('Failed to fetch users:', error);
     res.status(500).json({ error: error.message || 'Failed to fetch users' });
+  }
+});
+
+function decodeHtmlEntities(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#x2F;/gi, '/')
+    .replace(/&#x3D;/gi, '=')
+    .replace(/&#(\d+);/g, (_, dec) => {
+      try {
+        return String.fromCharCode(Number(dec));
+      } catch {
+        return _;
+      }
+    });
+}
+
+// Universal Rich Link Unfurl & OpenGraph Media Extractor (Facebook Pictures, Posts, Videos, YouTube, Instagram, LinkedIn, Web)
+app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Response) => {
+  const targetUrl = req.query.url as string;
+  if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+    return res.status(400).json({ error: 'Valid HTTP/HTTPS URL required' });
+  }
+
+  const cleanUrl = targetUrl.trim();
+  // Handle direct media files immediately
+  if (/\.(jpeg|jpg|png|webp|gif)(\?.*)?$/i.test(cleanUrl)) {
+    return res.json({
+      resolvedUrl: cleanUrl,
+      imageUrl: cleanUrl,
+      mediaType: 'photo',
+      title: 'Direct Photo',
+      publisher: new URL(cleanUrl).hostname,
+    });
+  }
+  if (/\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(cleanUrl)) {
+    return res.json({
+      resolvedUrl: cleanUrl,
+      videoUrl: cleanUrl,
+      mediaType: 'video',
+      title: 'Direct Video Stream',
+      publisher: new URL(cleanUrl).hostname,
+    });
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+
+    const isFacebook = /(?:facebook\.com|fb\.watch|fb\.com)/i.test(cleanUrl);
+    // Facebook and social networks serve rich public OpenGraph metadata to crawler UAs without login wall
+    const crawlerUa = isFacebook
+      ? 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
+    const resp = await fetch(cleanUrl, {
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent': crawlerUa,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,bn;q=0.8',
+        'Cache-Control': 'no-cache',
+      },
+    });
+    clearTimeout(timer);
+
+    const finalResolvedUrl = resp.url || cleanUrl;
+    const rawHtml = await resp.text();
+
+    const getMeta = (propName: string): string | undefined => {
+      const p1 = new RegExp(`<meta[^>]+(?:property|name)=["']${propName}["'][^>]+content=["']([^"']*)["']`, 'i');
+      const m1 = rawHtml.match(p1);
+      if (m1 && m1[1]) return decodeHtmlEntities(m1[1].trim());
+
+      const p2 = new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${propName}["']`, 'i');
+      const m2 = rawHtml.match(p2);
+      if (m2 && m2[1]) return decodeHtmlEntities(m2[1].trim());
+
+      return undefined;
+    };
+
+    const titleMatch = rawHtml.match(/<title[^>]*>([^<]*)<\/title>/i);
+    const htmlTitle = titleMatch && titleMatch[1] ? decodeHtmlEntities(titleMatch[1].trim()) : undefined;
+
+    let title = getMeta('og:title') || getMeta('twitter:title') || htmlTitle;
+    let description = getMeta('og:description') || getMeta('twitter:description') || getMeta('description');
+    let imageUrl = getMeta('og:image:secure_url') || getMeta('og:image') || getMeta('twitter:image');
+    let videoUrl = getMeta('og:video:secure_url') || getMeta('og:video:url') || getMeta('og:video');
+    const siteName = getMeta('og:site_name') || getMeta('publisher');
+    const ogType = getMeta('og:type');
+
+    if (isFacebook) {
+      if (title && /^(Log into Facebook|Facebook|Log in to Facebook)/i.test(title)) {
+        title = undefined;
+      }
+      if (description && /^(Log into Facebook|Facebook helps you connect)/i.test(description)) {
+        description = undefined;
+      }
+    }
+
+    let mediaType: 'photo' | 'video' | 'post' | 'article' | 'website' = 'website';
+    if (videoUrl || ogType?.includes('video') || /(?:videos\/|reel\/|watch|\/share\/v\/|\/share\/r\/|fb\.watch)/i.test(finalResolvedUrl)) {
+      mediaType = 'video';
+    } else if (imageUrl && (/(?:photo\.php|photos\/|\/photo\/)/i.test(finalResolvedUrl) || ogType?.includes('image'))) {
+      mediaType = 'photo';
+    } else if (isFacebook) {
+      mediaType = 'post';
+    }
+
+    res.json({
+      resolvedUrl: finalResolvedUrl,
+      title,
+      description,
+      imageUrl,
+      videoUrl,
+      publisher: siteName || (isFacebook ? 'Facebook' : undefined),
+      mediaType,
+      ogType,
+    });
+  } catch (error: any) {
+    const isFb = /(?:facebook\.com|fb\.watch|fb\.com)/i.test(cleanUrl);
+    res.json({
+      resolvedUrl: cleanUrl,
+      publisher: isFb ? 'Facebook' : undefined,
+      mediaType: isFb ? 'post' : 'website',
+      error: error.message,
+    });
   }
 });
 
@@ -174,7 +506,8 @@ app.get(
     try {
       const isAdminView =
         req.query.adminView === 'true' &&
-        (Boolean(req.user) || Boolean(req.headers['x-ndc-admin-email']));
+        (req.dbUser?.role === 'admin' ||
+          (req.user?.email && req.user.email === 'nurulanambashir20@gmail.com'));
 
       const result = await queryPaginatedAlumniProfiles({
         page: Number(req.query.page) || 1,
@@ -238,7 +571,7 @@ app.post(
 app.get(
   '/api/admin/overview',
   rateLimitGuard(60, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (_req: AuthRequest, res: Response) => {
     try {
       const overview = await getAdminOverviewMetrics();
@@ -254,7 +587,7 @@ app.get(
 app.patch(
   '/api/admin/alumni/:id',
   rateLimitGuard(40, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const profileId = Number(req.params.id);
@@ -286,7 +619,7 @@ app.patch(
 app.get(
   '/api/admin/verifications',
   rateLimitGuard(60, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const status = (req.query.status as string) || 'all';
@@ -303,7 +636,7 @@ app.get(
 app.post(
   '/api/admin/verifications/:id/review',
   rateLimitGuard(40, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const submissionId = Number(req.params.id);
@@ -330,7 +663,7 @@ app.post(
 app.get(
   '/api/admin/blood-requests',
   rateLimitGuard(60, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (_req: AuthRequest, res: Response) => {
     try {
       const requests = await getBloodEmergencyList();
@@ -345,7 +678,7 @@ app.get(
 app.patch(
   '/api/admin/blood-requests/:id',
   rateLimitGuard(40, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const id = Number(req.params.id);
@@ -372,7 +705,7 @@ app.patch(
 app.get(
   '/api/admin/notices',
   rateLimitGuard(60, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (_req: AuthRequest, res: Response) => {
     try {
       const notices = await getOfficialNoticesList();
@@ -387,7 +720,7 @@ app.get(
 app.post(
   '/api/admin/notices',
   rateLimitGuard(30, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = resolveActor(req);
@@ -415,7 +748,7 @@ app.post(
 app.patch(
   '/api/admin/stream-groups/:id',
   rateLimitGuard(30, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const id = Number(req.params.id);
@@ -439,7 +772,7 @@ app.patch(
 app.post(
   '/api/admin/bulk-cohort',
   rateLimitGuard(10, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = resolveActor(req);
@@ -462,7 +795,7 @@ app.post(
 app.get(
   '/api/admin/export-sql-bundle',
   rateLimitGuard(20, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (_req: AuthRequest, res: Response) => {
     try {
       const files = [
@@ -494,7 +827,7 @@ app.get(
 app.get(
   '/api/admin/export-full-backup',
   rateLimitGuard(15, 60_000),
-  optionalAuth,
+  requireAdmin,
   async (_req: AuthRequest, res: Response) => {
     try {
       const [overview, directory, verifications, blood, notices] = await Promise.all([

@@ -59,7 +59,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Navigation items defined strictly according to project specifications
   const defaultNavItems: NavItemConfig[] = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'admin', label: 'Admin Command Center', icon: ShieldCheck, badge: 'ADMIN', badgeType: 'hot' },
     { id: 'alumni', label: 'Alumni Directory', icon: Users },
     { id: 'find', label: 'Find Alumni', icon: Search },
     { id: 'map', label: 'Alumni Map', icon: MapPin },

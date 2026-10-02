@@ -49,7 +49,7 @@ const SCIENCE_ROLES = [
   { pos: 'Chief Architect', inst: 'Vitti Sthapati Brindo', deg: ['HSC', 'B.Arch', 'M.Arch'], spec: 'Architecture & Urban Planning', city: 'Dhaka', country: 'Bangladesh' },
 ];
 
-const ARTS_ROLES = [
+const HUMANITIES_ROLES = [
   { pos: 'Additional Foreign Secretary', inst: 'Ministry of Foreign Affairs', deg: ['HSC', 'BSS', 'MSS'], spec: 'Foreign Affairs & Diplomacy', city: 'Dhaka', country: 'Bangladesh' },
   { pos: 'Barrister-at-Law & Senior Counsel', inst: 'Supreme Court of Bangladesh', deg: ['HSC', 'LLB', 'LLM', 'Barrister-at-Law'], spec: 'Constitutional & Corporate Law', city: 'Dhaka', country: 'Bangladesh' },
   { pos: 'Professor of Economics', inst: 'University of Dhaka', deg: ['HSC', 'BSS', 'MSS', 'PhD'], spec: 'Economics & Development Policy', city: 'Dhaka', country: 'Bangladesh' },
@@ -94,9 +94,9 @@ function generateGroupAlumniList(
 
   const [category, code] = groupValue.split(' ');
   const isScience = category === 'Science';
-  const isArts = category === 'Arts';
-  const rolePool = isScience ? SCIENCE_ROLES : isArts ? ARTS_ROLES : COMMERCE_ROLES;
-  const deptPrefix = isScience ? '1' : isArts ? '2' : '3';
+  const isHumanities = category === 'Humanities' || category === 'Arts';
+  const rolePool = isScience ? SCIENCE_ROLES : isHumanities ? HUMANITIES_ROLES : COMMERCE_ROLES;
+  const deptPrefix = isScience ? '1' : isHumanities ? '2' : '3';
   const hscShort = String(1950 + batch.batchYear).slice(-2);
   const groupNumCode = isScience
     ? code
@@ -155,7 +155,7 @@ function generateGroupAlumniList(
 const SCIENCE_GROUPS = Array.from({ length: 17 }, (_, i) =>
   i + 1 < 10 ? `0${i + 1}` : `${i + 1}`
 );
-const ARTS_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const HUMANITIES_GROUPS = ['G', 'H', 'L', 'W'];
 const COMMERCE_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 function computeBatchGroupCounts(batch: BatchSummary) {
@@ -164,13 +164,13 @@ function computeBatchGroupCounts(batch: BatchSummary) {
   );
 
   const scienceCounts: Record<string, number> = {};
-  const artsCounts: Record<string, number> = {};
+  const humanitiesCounts: Record<string, number> = {};
   const commerceCounts: Record<string, number> = {};
 
   const totalTarget = batch.total;
   const scienceTarget = Math.round(totalTarget * 0.62);
   const commerceTarget = Math.round(totalTarget * 0.22);
-  const artsTarget = Math.max(0, totalTarget - scienceTarget - commerceTarget);
+  const humanitiesTarget = Math.max(0, totalTarget - scienceTarget - commerceTarget);
 
   // Distribute Science across 01–17 deterministically
   let scienceSum = 0;
@@ -188,28 +188,32 @@ function computeBatchGroupCounts(batch: BatchSummary) {
   const sciDiff = scienceTarget - scienceSum;
   scienceCounts['01'] = Math.max(2, scienceCounts['01'] + sciDiff);
 
-  // Distribute Arts across A–H
-  let artsSum = 0;
-  ARTS_GROUPS.forEach((code, idx) => {
-    const base = Math.floor(artsTarget / 8);
+  // Distribute Humanities across G, H, L, W
+  let humanitiesSum = 0;
+  HUMANITIES_GROUPS.forEach((code, idx) => {
+    const base = Math.floor(humanitiesTarget / HUMANITIES_GROUPS.length);
     const variation = ((batch.batchYear * 2 + idx * 3) % 5) - 2;
     const realCount = realBatchProfiles.filter(
-      (p) => p.group?.toLowerCase() === `arts ${code}`.toLowerCase()
+      (p) =>
+        p.group?.toLowerCase() === `humanities ${code}`.toLowerCase() ||
+        p.group?.toLowerCase() === `arts ${code}`.toLowerCase()
     ).length;
     const val = Math.max(1, base + variation) + realCount;
-    artsCounts[code] = val;
-    artsSum += val;
+    humanitiesCounts[code] = val;
+    humanitiesSum += val;
   });
-  const artsDiff = artsTarget - artsSum;
-  artsCounts['A'] = Math.max(1, artsCounts['A'] + artsDiff);
+  const humanitiesDiff = humanitiesTarget - humanitiesSum;
+  humanitiesCounts['G'] = Math.max(1, humanitiesCounts['G'] + humanitiesDiff);
 
   // Distribute Commerce across A–H
   let commSum = 0;
   COMMERCE_GROUPS.forEach((code, idx) => {
-    const base = Math.floor(commerceTarget / 8);
+    const base = Math.floor(commerceTarget / COMMERCE_GROUPS.length);
     const variation = ((batch.batchYear * 5 + idx * 2) % 5) - 2;
     const realCount = realBatchProfiles.filter(
-      (p) => p.group?.toLowerCase() === `commerce ${code}`.toLowerCase()
+      (p) =>
+        p.group?.toLowerCase() === `commerce ${code}`.toLowerCase() ||
+        p.group?.toLowerCase() === `business studies ${code}`.toLowerCase()
     ).length;
     const val = Math.max(2, base + variation) + realCount;
     commerceCounts[code] = val;
@@ -219,17 +223,19 @@ function computeBatchGroupCounts(batch: BatchSummary) {
   commerceCounts['A'] = Math.max(2, commerceCounts['A'] + commDiff);
 
   const scienceTotal = Object.values(scienceCounts).reduce((a, b) => a + b, 0);
-  const artsTotal = Object.values(artsCounts).reduce((a, b) => a + b, 0);
+  const humanitiesTotal = Object.values(humanitiesCounts).reduce((a, b) => a + b, 0);
   const commerceTotal = Object.values(commerceCounts).reduce((a, b) => a + b, 0);
 
   return {
     scienceCounts,
-    artsCounts,
+    humanitiesCounts,
     commerceCounts,
+    artsCounts: humanitiesCounts, // backward compatibility
     scienceTotal,
-    artsTotal,
+    humanitiesTotal,
+    artsTotal: humanitiesTotal, // backward compatibility
     commerceTotal,
-    grandTotal: scienceTotal + artsTotal + commerceTotal,
+    grandTotal: scienceTotal + humanitiesTotal + commerceTotal,
   };
 }
 
@@ -256,10 +262,12 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
     let count = 0;
     if (selectedGroup.startsWith('Science ')) {
       count = activeBatchGroupStats.scienceCounts[selectedGroup.replace('Science ', '')] || 0;
-    } else if (selectedGroup.startsWith('Arts ')) {
-      count = activeBatchGroupStats.artsCounts[selectedGroup.replace('Arts ', '')] || 0;
-    } else if (selectedGroup.startsWith('Commerce ')) {
-      count = activeBatchGroupStats.commerceCounts[selectedGroup.replace('Commerce ', '')] || 0;
+    } else if (selectedGroup.startsWith('Humanities ') || selectedGroup.startsWith('Arts ')) {
+      const code = selectedGroup.replace('Humanities ', '').replace('Arts ', '');
+      count = activeBatchGroupStats.humanitiesCounts[code] || 0;
+    } else if (selectedGroup.startsWith('Commerce ') || selectedGroup.startsWith('Business Studies ')) {
+      const code = selectedGroup.replace('Commerce ', '').replace('Business Studies ', '');
+      count = activeBatchGroupStats.commerceCounts[code] || 0;
     }
     const list = generateGroupAlumniList(activeBatch, selectedGroup, count);
     if (!groupSearch.trim()) return list;
@@ -495,7 +503,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Academic group distribution across Science, Arts, and Commerce. Select a group to inspect its members.
+                    Academic group distribution across Science, Humanities, and Commerce. Select a group to inspect its members.
                   </p>
                 </div>
               </div>
@@ -534,9 +542,9 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                   border: 'border-blue-200/70 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-950/20',
                 },
                 {
-                  label: 'Arts',
-                  sub: 'Groups A – H',
-                  count: activeBatchGroupStats.artsTotal,
+                  label: 'Humanities',
+                  sub: 'Groups G, H, L, W',
+                  count: activeBatchGroupStats.humanitiesTotal,
                   accent: 'text-amber-600 dark:text-amber-400',
                   border: 'border-amber-200/70 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20',
                 },
@@ -600,9 +608,9 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                     <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">
                       {selectedGroup.startsWith('Science ')
                         ? `${selectedGroup} • ${activeBatchGroupStats.scienceCounts[selectedGroup.replace('Science ', '')]} Alumni`
-                        : selectedGroup.startsWith('Arts ')
-                          ? `${selectedGroup} • ${activeBatchGroupStats.artsCounts[selectedGroup.replace('Arts ', '')]} Alumni`
-                          : `${selectedGroup} • ${activeBatchGroupStats.commerceCounts[selectedGroup.replace('Commerce ', '')]} Alumni`}
+                        : selectedGroup.startsWith('Humanities ') || selectedGroup.startsWith('Arts ')
+                          ? `${selectedGroup.replace('Arts ', 'Humanities ')} • ${activeBatchGroupStats.humanitiesCounts[selectedGroup.replace('Humanities ', '').replace('Arts ', '')]} Alumni`
+                          : `${selectedGroup} • ${activeBatchGroupStats.commerceCounts[selectedGroup.replace('Commerce ', '').replace('Business Studies ', '')]} Alumni`}
                     </span>
                     <button
                       type="button"
@@ -656,22 +664,22 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                   </div>
                 </div>
 
-                {/* Arts & Commerce side-by-side on desktop, stacked on mobile */}
+                {/* Humanities & Commerce side-by-side on desktop, stacked on mobile */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
-                  {/* Arts: A–H */}
+                  {/* Humanities: G, H, L, W */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                        Arts
+                        Humanities
                       </span>
                       <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                        {activeBatchGroupStats.artsTotal} in Arts
+                        {activeBatchGroupStats.humanitiesTotal} in Humanities
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {ARTS_GROUPS.map((code) => {
-                        const value = `Arts ${code}`;
-                        const count = activeBatchGroupStats.artsCounts[code] || 0;
+                      {HUMANITIES_GROUPS.map((code) => {
+                        const value = `Humanities ${code}`;
+                        const count = activeBatchGroupStats.humanitiesCounts[code] || 0;
                         const isSelected = selectedGroup === value;
                         return (
                           <button

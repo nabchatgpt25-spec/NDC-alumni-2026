@@ -54,7 +54,6 @@ import {
 import { saveStoredAlumniProfiles } from '../data/mockData';
 import { BloodDonorRegistration } from './BloodDonorRegistration';
 import { getDonorProfileByUserId } from '../utils/bloodDonationService';
-import { BloodNeededNowSection } from './landing/BloodNeededNowSection';
 import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 import { compressImageFileToDataUrl } from '../utils/mediaStorage';
 
@@ -754,40 +753,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   return (
-    <div className="relative max-w-4xl mx-auto space-y-6 rounded-[2rem] p-4 sm:p-6 lg:p-8 liquid-glass-profile-shell overflow-hidden">
-      {/* Ambient Liquid Glass Refraction Backdrop (Cover Tint + Prismatic Liquid Orbs + Specular Rim) */}
-      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2rem]">
-        {profile.coverUrl && (
-          <div
-            className="absolute -top-20 left-1/2 -translate-x-1/2 w-[135%] h-[28rem] bg-cover bg-center opacity-35 dark:opacity-30 blur-3xl scale-125 saturate-200"
-            style={{ backgroundImage: `url(${profile.coverUrl})` }}
-          />
-        )}
-        <div className="absolute -top-28 -left-24 w-96 h-96 rounded-full bg-gradient-to-br from-blue-400/40 via-cyan-300/30 to-indigo-500/35 dark:from-blue-500/30 dark:via-cyan-400/20 dark:to-indigo-600/30 blur-3xl" />
-        <div className="absolute top-1/3 -right-28 w-[26rem] h-[26rem] rounded-full bg-gradient-to-bl from-indigo-400/30 via-sky-300/30 to-amber-300/25 dark:from-indigo-500/25 dark:via-blue-500/20 dark:to-amber-500/20 blur-3xl" />
-        <div className="absolute -bottom-32 left-1/4 w-96 h-96 rounded-full bg-gradient-to-tr from-emerald-300/25 via-blue-400/30 to-purple-400/25 dark:from-emerald-500/20 dark:via-blue-600/25 dark:to-purple-600/20 blur-3xl" />
-        {/* Top Liquid Specular Sheen */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/95 dark:via-white/40 to-transparent" />
-      </div>
+    <div className="relative max-w-4xl mx-auto space-y-6 rounded-[2.5rem] p-4 sm:p-6 lg:p-8 liquid-glass-profile-shell overflow-hidden">
+      {/* Ambient Liquid Glass Refraction Backdrop (Cool Bluish Sapphire & Cyan Liquid Glow) */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2.5rem]">
+        {/* Soft Blue Base Gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-950/20 via-sky-950/15 to-slate-900/30 dark:from-blue-950/50 dark:via-slate-950/60 dark:to-blue-950/50" />
 
-      {/* Popup-Style Emergency Blood Notification appearing in user's profile */}
-      <BloodNeededNowSection
-        variant="profile"
-        onNavigateToBloodNetwork={() => (onNavigate ? onNavigate('emergency') : onBack())}
-      />
+        {/* Liquid Refraction Orbs - Glowing Sapphire & Cyan */}
+        <div className="absolute -top-32 -left-20 w-[30rem] h-[30rem] rounded-full bg-gradient-to-br from-blue-500/30 via-sky-400/20 to-indigo-600/25 dark:from-blue-500/25 dark:via-cyan-400/18 dark:to-indigo-600/25 blur-3xl" />
+        <div className="absolute top-1/3 -right-28 w-[28rem] h-[28rem] rounded-full bg-gradient-to-bl from-cyan-400/25 via-blue-500/20 to-indigo-400/25 dark:from-cyan-400/18 dark:via-blue-600/20 dark:to-indigo-500/18 blur-3xl" />
+        <div className="absolute -bottom-36 left-1/4 w-[32rem] h-[32rem] rounded-full bg-gradient-to-tr from-sky-400/25 via-blue-600/20 to-indigo-600/25 dark:from-sky-500/20 dark:via-blue-600/20 dark:to-indigo-700/20 blur-3xl" />
+
+        {/* Specular Liquid Edge Highlights */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-300/80 dark:via-blue-400/40 to-transparent" />
+      </div>
 
       {/* Back button */}
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 liquid-glass-subcard hover:bg-white/80 dark:hover:bg-slate-800/80 transition-all cursor-pointer"
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-blue-700 dark:text-blue-300 liquid-glass-subcard hover:bg-blue-50/80 dark:hover:bg-blue-900/30 transition-all cursor-pointer border border-blue-300/40 dark:border-blue-400/25 shadow-xs"
       >
         <ArrowLeft className="w-4 h-4" />
         <span>{backLabel || 'Back to Directory'}</span>
       </button>
 
       {/* Profile Card Header */}
-      <div className="liquid-glass-card rounded-3xl overflow-hidden">
+      <div className="liquid-glass-card rounded-3xl overflow-hidden border border-blue-200/50 dark:border-blue-500/20 shadow-xl">
         {/* Cover Photo */}
         <div
           className="h-48 sm:h-64 w-full bg-cover bg-center relative group"
@@ -797,7 +789,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               : 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
           }}
         >
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/20 to-transparent" />
 
           {isMine && (
             <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -823,10 +815,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Head Bar */}
         <div className="px-6 pb-6 pt-0 relative">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-20 mb-4">
-            {/* Avatar & Basic Info */}
-            <div className="flex items-end gap-4">
-              <div className="relative group">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
+            {/* Avatar on Left + Details on Right of Avatar */}
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 min-w-0">
+              {/* Profile Avatar (Cleanly overlapping cover photo) */}
+              <div className="relative group -mt-16 sm:-mt-20 shrink-0">
                 <input
                   ref={avatarFileInputRef}
                   type="file"
@@ -837,7 +830,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <img
                   src={profile.avatarUrl}
                   alt={profile.fullName}
-                  className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover ring-4 ring-white dark:ring-slate-900 shadow-lg bg-white"
+                  className="w-28 h-28 sm:w-36 sm:h-36 rounded-full object-cover ring-4 ring-white/90 dark:ring-slate-900/90 shadow-2xl bg-white dark:bg-slate-800"
                 />
                 <span
                   className={`absolute bottom-2 right-2 w-4 h-4 rounded-full ring-2 ring-white dark:ring-slate-900 ${
@@ -872,9 +865,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 )}
               </div>
 
-              <div className="mb-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-50 tracking-tight">
+              {/* Profile Name & Details: Placed on the Right Side of Profile Pic, In Card Body */}
+              <div className="flex-1 min-w-0 pt-2 sm:pt-4 text-center sm:text-left">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
                     {profile.fullName}
                   </h1>
                   <VerificationStatusBadge
@@ -883,14 +877,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     size="md"
                   />
                 </div>
-                <div className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 flex flex-wrap items-center gap-2 mt-0.5">
-                  <span className="px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800">
+
+                <div className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2">
+                  <span className="px-3 py-1 rounded-full bg-blue-500/15 dark:bg-blue-500/20 border border-blue-400/30 text-blue-700 dark:text-blue-300 font-extrabold backdrop-blur-md">
                     Batch {profile.batchYear}
                   </span>
-                  <span>{profile.profession}</span>
-                  {profile.cadre && <span>· {profile.cadre}</span>}
+                  <span className="text-slate-700 dark:text-slate-200 font-semibold">{profile.profession}</span>
+                  {profile.cadre && <span className="text-slate-500 dark:text-slate-400">· {profile.cadre}</span>}
                   {(donorRecord?.isRegisteredDonor || profile.bloodGroup) && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/50 border border-rose-200/80 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 text-xs font-extrabold">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-400/30 text-rose-600 dark:text-rose-400 text-xs font-extrabold backdrop-blur-md">
                       <Heart className="w-3 h-3 fill-current" />
                       <span>Blood {donorRecord?.bloodGroup || profile.bloodGroup}</span>
                       {donorRecord?.isRegisteredDonor && (
@@ -904,7 +899,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 {/* Achievement Badges in Header */}
                 {profile.badges && profile.badges.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 mt-2.5">
                     {profile.badges.map((badge) => (
                       <AchievementBadgeChip key={badge} badgeName={badge} size="md" />
                     ))}
@@ -914,7 +909,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Social & Contact Actions */}
-            <div className="flex items-center gap-2 pt-2 sm:pt-0">
+            <div className="flex items-center justify-center sm:justify-end gap-2 pt-2 sm:pt-4 shrink-0">
               {profile.whatsapp && (
                 <a
                   href={`https://wa.me/${profile.whatsapp.replace(/[^0-9]/g, '')}`}
@@ -965,16 +960,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
 
           {/* Current Position Banner */}
-          <div className="p-3.5 rounded-2xl liquid-glass-subcard flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-semibold">
-              <Briefcase className="w-4 h-4 text-blue-600" />
+          <div className="p-3.5 rounded-2xl liquid-glass-subcard border border-blue-200/60 dark:border-blue-500/20 bg-gradient-to-r from-blue-500/8 via-sky-500/5 to-indigo-500/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200 font-semibold">
+              <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>{profile.position || 'Position not set'}</span>
               <span className="text-slate-400">at</span>
-              <span className="text-slate-900 dark:text-slate-100">{profile.institution || 'Organization not set'}</span>
+              <span className="text-slate-900 dark:text-white font-bold">{profile.institution || 'Organization not set'}</span>
             </div>
 
             <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+              <MapPin className="w-3.5 h-3.5 text-blue-500/70" />
               <span>
                 {profile.city || profile.country
                   ? [profile.city, profile.country].filter(Boolean).join(', ')
@@ -985,7 +980,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {/* Profile Completion Level Card (Visible on own profile) */}
           {isMine && (
-            <div className="mt-4 p-4 rounded-2xl liquid-glass-subcard bg-gradient-to-r from-blue-50/55 via-indigo-50/40 to-emerald-50/45 dark:from-slate-800/65 dark:via-slate-800/45 dark:to-slate-800/65">
+            <div className="mt-4 p-4 rounded-2xl liquid-glass-subcard border border-blue-300/50 dark:border-blue-500/25 bg-gradient-to-r from-blue-500/10 via-sky-500/8 to-indigo-500/12 dark:from-blue-950/40 dark:via-slate-900/50 dark:to-blue-900/30">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">

@@ -18,8 +18,7 @@ import {
   Award,
   CreditCard,
   ChevronRight,
-  MessageSquare,
-  Lock
+  MessageSquare
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { NDCLogo } from './NDCLogo';
@@ -93,15 +92,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           {/* Right: Quick Links */}
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => onNavigate('admin')}
-              className="hover:text-blue-300 transition-colors cursor-pointer flex items-center gap-1 font-bold text-blue-400"
-            >
-              <Lock className="w-3 h-3" />
-              <span>Admin Command Center</span>
-            </button>
-            <span className="text-slate-700">|</span>
             <button
               type="button"
               onClick={() => setIsVerificationModalOpen(true)}

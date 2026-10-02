@@ -864,7 +864,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
         </div>
       )}
 
-      {/* Popup-Style Emergency Blood Notification on Dashboard */}
+      {/* Emergency Blood Alert Banner (Dismissible with Cross button) */}
       <BloodNeededNowSection
         variant="feed"
         onNavigateToBloodNetwork={() => onNavigate && onNavigate('emergency')}

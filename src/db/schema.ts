@@ -82,6 +82,7 @@ export const alumniProfiles = pgTable(
     phone: text('phone'),
     whatsapp: text('whatsapp'),
     email: text('email'),
+    passwordHash: text('password_hash'),
     fbLink: text('fb_link'),
     bio: text('bio'),
     bloodGroup: text('blood_group'), // 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-'

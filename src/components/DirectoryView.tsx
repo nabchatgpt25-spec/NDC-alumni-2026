@@ -100,7 +100,7 @@ export const UNIVERSAL_DIRECTORY_PROFILES: AlumniProfile[] = [
     avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&auto=format&fit=crop&q=80',
     batchYear: 56,
     session: '(2004-05), HSC 06',
-    group: 'Arts A',
+    group: 'Humanities G',
     collegeRoll: '2060105',
     profession: 'BCS Police Cadre / Law Enforcement',
     position: 'Additional Deputy Inspector General (Addl. DIG)',

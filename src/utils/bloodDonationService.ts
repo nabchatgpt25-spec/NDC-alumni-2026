@@ -19,6 +19,26 @@ import { matchDonorsForRequest } from './bloodMatching';
 export const BLOOD_REQUESTS_STORAGE_KEY = 'ndc_blood_requests_v1';
 export const BLOOD_DONORS_STORAGE_KEY = 'ndc_blood_donors_v1';
 export const PORTAL_NOTIFICATIONS_STORAGE_KEY = 'ndc_portal_notifications_v1';
+export const BLOOD_BANNER_DISMISSED_KEY = 'ndc_blood_emergency_banner_dismissed_v2';
+
+export function isBloodBannerDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(BLOOD_BANNER_DISMISSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function dismissBloodBanner(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(BLOOD_BANNER_DISMISSED_KEY, 'true');
+    window.dispatchEvent(new CustomEvent('ndc_blood_banner_dismissed'));
+  } catch (e) {
+    console.warn('Failed to dismiss blood banner', e);
+  }
+}
 
 export const DONATION_AREAS_LIST: string[] = [
   'Shahbagh / Motijheel / Ramna (DMCH, BSMMU, BIRDEM)',

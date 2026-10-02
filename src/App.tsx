@@ -24,7 +24,6 @@ import { SavedPostsView } from './components/SavedPostsView';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { VerificationCenterModal } from './components/verification/VerificationCenterModal';
 import { BloodNetworkView } from './components/BloodNetworkView';
-import { AdminCommandCenterView } from './components/admin/AdminCommandCenterView';
 import { ensureVouchRequestFromUrlParams } from './utils/verificationService';
 import { CursorSpotlight } from './components/motion/CinematicMotion';
 
@@ -114,7 +113,6 @@ function AlumniAppContent() {
   };
 
   const getBackLabel = () => {
-    if (previousRoute === 'admin') return 'Back to Admin Command Center';
     if (previousRoute === 'map' || previousRoute === 'map-directory') return 'Back to Map';
     if (previousRoute === 'batches') return 'Back to Batches';
     if (previousRoute === 'feed' || previousRoute === 'dashboard') return 'Back to Feed';
@@ -130,15 +128,15 @@ function AlumniAppContent() {
     }
   };
 
-  // If user is logged out and on the landing page (unless viewing Admin Command Center), display the full Public Landing Page
-  if ((!isLoggedIn || route === 'landing') && route !== 'admin') {
+  // If user is logged out and on the landing page, display the full Public Landing Page
+  if (!isLoggedIn || route === 'landing') {
     return (
       <>
         <LandingPage
           onOpenLogin={() => setAuthModalMode('login')}
           onOpenRegister={() => setAuthModalMode('register')}
           onNavigate={(target) => {
-            if (target === 'landing' || target === 'admin') {
+            if (target === 'landing') {
               navigateTo(target);
             } else if (!isLoggedIn) {
               // Guest browsing prompt to log in/register to access portal
@@ -210,10 +208,6 @@ function AlumniAppContent() {
                   onOpenVerificationCenter={openVerificationCenter}
                   onNavigate={navigateTo}
                 />
-              )}
-
-              {route === 'admin' && (
-                <AdminCommandCenterView onViewProfile={handleViewProfile} />
               )}
 
               {(route === 'alumni' || (route === 'directory' && !globalSearch)) && (

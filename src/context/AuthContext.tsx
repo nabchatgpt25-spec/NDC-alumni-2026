@@ -119,7 +119,7 @@ const saveAccounts = (accounts: RegisteredAccount[]) => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const otpStoreRef = useRef<Map<string, PendingOtpEntry>>(new Map());
   const [firebaseToken, setFirebaseToken] = useState<string | null>(null);
-  const [isAdminUser, setIsAdminUser] = useState<boolean>(true);
+  const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     try {
@@ -196,7 +196,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const getAuthHeaders = async (): Promise<Record<string, string>> => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'x-ndc-admin-email': currentUser?.email || 'admin@ndcalumni.org',
     };
     if (auth.currentUser) {
       try {
@@ -222,13 +221,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setFirebaseToken(token);
 
     // Sync user to Cloud SQL database
-    await fetch(apiUrl('/api/auth/sync'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    }).catch(() => {});
+    let serverRole = 'member';
+    try {
+      const syncRes = await fetch(apiUrl('/api/auth/sync'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        serverRole = syncData?.user?.role || 'member';
+      }
+    } catch {
+      // offline fallback
+    }
 
     const cleanEmail = (fbUser.email || '').toLowerCase();
     const existingProfile = ALUMNI_PROFILES.find(
@@ -242,17 +250,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...DEFAULT_BLANK_USER,
         id: Date.now(),
         userId: Math.floor(Math.random() * 10000) + 1000,
-        fullName: fbUser.displayName || 'Notredamian Admin',
-        email: fbUser.email || 'admin@ndcalumni.org',
+        fullName: fbUser.displayName || 'Notredamian Alumnus',
+        email: fbUser.email || '',
         avatarUrl: fbUser.photoURL || DEFAULT_BLANK_USER.avatarUrl,
         verificationStatus: 'verified',
         verificationMethod: 'admin_verified',
-        badges: ['Verified Alumnus', 'Portal Admin'],
+        badges: ['Verified Alumnus'],
       };
       setCurrentUser(googleProfile);
     }
 
-    setIsAdminUser(true);
+    setIsAdminUser(serverRole === 'admin');
     setIsLoggedIn(true);
     return true;
   };
@@ -261,10 +269,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!phoneOrEmail?.trim() || !pass) {
       throw new Error('Please enter your mobile number or email and password.');
     }
-    await new Promise((r) => setTimeout(r, 500));
 
-    const accounts = loadAccounts();
     const cleanId = phoneOrEmail.trim().toLowerCase();
+
+    // 1. Primary: Verify credentials against Cloud SQL backend database (works across all devices)
+    try {
+      const res = await fetch(apiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: cleanId,
+          password: pass,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data?.success && data?.profile) {
+        const serverProfile: AlumniProfile = data.profile;
+        setCurrentUser(serverProfile);
+        setIsAdminUser(serverProfile.role === 'admin' || serverProfile.email === 'nurulanambashir20@gmail.com');
+        setIsLoggedIn(true);
+
+        // Cache locally for offline resiliency
+        const accounts = loadAccounts();
+        const existingIdx = accounts.findIndex(
+          (a) =>
+            a.identifier.toLowerCase() === cleanId ||
+            isPhoneMatch(a.profile.phone, cleanId) ||
+            (a.profile.email && a.profile.email.toLowerCase() === cleanId)
+        );
+        const hashedPass = await hashPassword(pass);
+        if (existingIdx > -1) {
+          accounts[existingIdx] = {
+            identifier: cleanId,
+            password: hashedPass,
+            profile: serverProfile,
+          };
+        } else {
+          accounts.push({
+            identifier: cleanId,
+            password: hashedPass,
+            profile: serverProfile,
+          });
+        }
+        saveAccounts(accounts);
+
+        // Update in-memory ALUMNI_PROFILES
+        const profileIdx = ALUMNI_PROFILES.findIndex((p) => p.id === serverProfile.id);
+        if (profileIdx > -1) {
+          ALUMNI_PROFILES[profileIdx] = serverProfile;
+        } else {
+          ALUMNI_PROFILES.unshift(serverProfile);
+        }
+        saveStoredAlumniProfiles(ALUMNI_PROFILES);
+
+        return true;
+      }
+
+      // If backend returned a credential validation error
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(data.error || 'Incorrect password. Please try again.');
+      }
+    } catch (netErr: any) {
+      if (netErr?.message && (netErr.message.includes('password') || netErr.message.includes('suspended'))) {
+        throw netErr;
+      }
+      // If offline, continue to local device cache fallback below
+    }
+
+    // 2. Offline / Local fallback: Check local device cache
+    const accounts = loadAccounts();
     const accountIdx = accounts.findIndex(
       (a) =>
         a.identifier.toLowerCase() === cleanId ||
@@ -310,27 +384,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
-    await new Promise((r) => setTimeout(r, 400));
-
-    const accounts = loadAccounts();
     const cleanEmail = (profileData.email || '').trim().toLowerCase();
     const cleanPhone = (profileData.phone || '').trim();
-
-    const duplicateAccount = accounts.find(
-      (a) =>
-        (cleanEmail && a.profile.email?.toLowerCase() === cleanEmail) ||
-        (cleanPhone && isPhoneMatch(a.profile.phone, cleanPhone))
-    );
-    if (duplicateAccount) {
-      throw new Error('An account with this mobile number or email is already registered. Please sign in instead.');
-    }
-
     const rawBatch = profileData.batchYear || 68;
     const hscYear = rawBatch > 1900 ? rawBatch : 1950 + rawBatch;
     const computedSession = `${hscYear - 2}-${String(hscYear).slice(-2)}`;
-
     const verificationStatus = profileData.verificationStatus || 'pending_vouch';
-    const newProfile: AlumniProfile = {
+
+    let registeredProfile: AlumniProfile | null = null;
+
+    // 1. Primary: Register account and credentials directly in Cloud SQL backend (accessible from all devices)
+    try {
+      const registerRes = await fetch(apiUrl('/api/auth/register'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: profileData.fullName?.trim(),
+          avatarUrl: profileData.avatarUrl,
+          coverUrl: campusHeroImg,
+          batchYear: rawBatch,
+          session: profileData.session || computedSession,
+          collegeRoll: profileData.collegeRoll ?? '',
+          academicStream:
+            profileData.group === 'Humanities' || profileData.group === 'Business Studies'
+              ? profileData.group
+              : 'Science',
+          academicGroup: profileData.academicGroup || null,
+          section: profileData.section || 'Group 4',
+          profession: profileData.profession ?? '',
+          position: profileData.position ?? '',
+          institution: profileData.institution ?? '',
+          specialty: profileData.specialty ?? [],
+          degree: profileData.degree ?? ['HSC'],
+          city: profileData.city ?? 'Dhaka',
+          country: profileData.country ?? 'Bangladesh',
+          phone: cleanPhone,
+          whatsapp: profileData.whatsapp ?? '',
+          email: cleanEmail,
+          password: profileData.password,
+          bloodGroup: profileData.bloodGroup,
+          isRegisteredDonor: Boolean((profileData as any).isRegisteredDonor || profileData.bloodDonorProfile?.isRegisteredDonor),
+        }),
+      });
+
+      const registerData = await registerRes.json();
+      if (!registerRes.ok) {
+        throw new Error(registerData.error || 'Registration failed. Please check your information and try again.');
+      }
+
+      if (registerData.profile) {
+        registeredProfile = registerData.profile;
+      }
+    } catch (err: any) {
+      if (err.message && (err.message.includes('already registered') || err.message.includes('Password') || err.message.includes('Please'))) {
+        throw err;
+      }
+      console.warn('Backend registration failed, proceeding with local fallback:', err);
+    }
+
+    // 2. Build profile object if server didn't return one
+    const newProfile: AlumniProfile = registeredProfile || {
       id: Date.now(),
       userId: Math.floor(Math.random() * 10000) + 1000,
       fullName: (profileData.fullName || 'Notredamian Alumnus').trim(),
@@ -360,8 +473,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       country: profileData.country ?? '',
       whatsapp: profileData.whatsapp ?? '',
       fbLink: profileData.fbLink ?? '',
-      phone: profileData.phone ?? '',
-      email: profileData.email ?? '',
+      phone: cleanPhone,
+      email: cleanEmail,
       bio: profileData.bio ?? '',
       careerHistory: profileData.careerHistory ?? [],
       isPublic: true,
@@ -369,40 +482,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       postsCount: 0,
       badges: profileData.badges ?? [],
     };
-
-    // Persist new profile to Cloud SQL backend as well
-    try {
-      const headers = await getAuthHeaders();
-      await fetch(apiUrl('/api/alumni/register'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          fullName: newProfile.fullName,
-          avatarUrl: newProfile.avatarUrl,
-          batchYear: newProfile.batchYear,
-          session: newProfile.session,
-          collegeRoll: newProfile.collegeRoll,
-          academicStream:
-            newProfile.group === 'Humanities' || newProfile.group === 'Business Studies'
-              ? newProfile.group
-              : 'Science',
-          academicGroup: null,
-          section: newProfile.section,
-          profession: newProfile.profession,
-          position: newProfile.position,
-          institution: newProfile.institution,
-          specialty: newProfile.specialty,
-          degree: newProfile.degree,
-          city: newProfile.city,
-          country: newProfile.country,
-          phone: newProfile.phone,
-          whatsapp: newProfile.whatsapp,
-          email: newProfile.email,
-        }),
-      });
-    } catch {
-      // Non-blocking fallback if offline
-    }
 
     registerUserVouchRequest(newProfile);
 
@@ -418,9 +497,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ALUMNI_PROFILES.unshift(newProfile);
     saveStoredAlumniProfiles(ALUMNI_PROFILES);
 
+    const accounts = loadAccounts();
     const hashedPassword = profileData.password ? await hashPassword(profileData.password) : undefined;
     accounts.push({
-      identifier: profileData.phone || profileData.email || newProfile.fullName,
+      identifier: cleanPhone || cleanEmail || newProfile.fullName,
       password: hashedPassword,
       profile: newProfile,
     });
@@ -499,6 +579,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         saveAccounts(accounts);
       }
+    }
+
+    // Sync updated password to Cloud SQL database so user can log in with new password on any device
+    try {
+      await fetch(apiUrl('/api/auth/reset-password'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, newPassword: newPass }),
+      });
+    } catch {
+      // offline fallback
     }
 
     otpStoreRef.current.delete(key);

@@ -84,7 +84,7 @@ export const VerificationExplainerModal: React.FC<VerificationExplainerModalProp
                     Sign Up with Your NDC Roll & Batch Year
                   </h5>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Provide your student roll (e.g., <code className="text-blue-600 dark:text-blue-400 font-mono font-bold">118042</code> for HSC 2018) and your college group (Science, Arts, or Business Studies). Our system verifies the roll format against historical NDC batch ranges.
+                    Provide your student roll (e.g., <code className="text-blue-600 dark:text-blue-400 font-mono font-bold">118042</code> for HSC 2018) and your college group (Science, Humanities, or Commerce). Our system verifies the roll format against historical NDC batch ranges.
                   </p>
                 </div>
               </div>

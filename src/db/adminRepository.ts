@@ -315,10 +315,20 @@ export async function createOrRegisterAlumniProfile(input: {
   phone?: string;
   whatsapp?: string;
   email?: string;
+  passwordHash?: string;
   bloodGroup?: string;
   isRegisteredDonor?: boolean;
 }) {
   try {
+    const cleanEmail = (input.email || '').trim().toLowerCase();
+    const cleanPhone = (input.phone || '').trim();
+    if (cleanEmail || cleanPhone) {
+      const existing = await findAlumniByCredential(cleanEmail || cleanPhone);
+      if (existing) {
+        throw new Error('An account with this mobile number or email is already registered. Please sign in instead.');
+      }
+    }
+
     const validation = await validateAcademicStreamAndGroup(
       input.academicStream,
       input.academicGroup
@@ -360,6 +370,7 @@ export async function createOrRegisterAlumniProfile(input: {
         phone: input.phone || null,
         whatsapp: input.whatsapp || null,
         email: input.email || null,
+        passwordHash: input.passwordHash || null,
         bloodGroup: input.bloodGroup || null,
         isRegisteredDonor: Boolean(input.isRegisteredDonor),
         role: 'member',
@@ -375,6 +386,63 @@ export async function createOrRegisterAlumniProfile(input: {
       cause: error,
     });
   }
+}
+
+export async function findAlumniByCredential(identifier: string) {
+  if (!identifier?.trim()) return null;
+  const clean = identifier.trim().toLowerCase();
+  const digits = clean.replace(/[^0-9]/g, '');
+
+  if (clean.includes('@')) {
+    const rows = await db
+      .select()
+      .from(alumniProfiles)
+      .where(ilike(alumniProfiles.email, clean))
+      .limit(1);
+    if (rows.length > 0) return rows[0];
+  }
+
+  // Check phone match
+  if (digits.length >= 6) {
+    const lastDigits = digits.length >= 10 ? digits.slice(-10) : digits;
+    const rows = await db
+      .select()
+      .from(alumniProfiles)
+      .where(
+        or(
+          ilike(alumniProfiles.phone, `%${lastDigits}`),
+          eq(alumniProfiles.phone, identifier.trim())
+        )
+      )
+      .limit(1);
+    if (rows.length > 0) return rows[0];
+  }
+
+  // Fallback match email or fullName
+  const rows = await db
+    .select()
+    .from(alumniProfiles)
+    .where(
+      or(
+        ilike(alumniProfiles.email, clean),
+        ilike(alumniProfiles.fullName, clean)
+      )
+    )
+    .limit(1);
+
+  return rows[0] || null;
+}
+
+export async function updateAlumniPassword(profileId: number, passwordHash: string) {
+  const updated = await db
+    .update(alumniProfiles)
+    .set({
+      passwordHash,
+      updatedAt: new Date(),
+    })
+    .where(eq(alumniProfiles.id, profileId))
+    .returning();
+  return updated[0] || null;
 }
 
 export async function adminUpdateAlumniGovernance(params: {
