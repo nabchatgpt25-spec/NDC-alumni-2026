@@ -51,7 +51,7 @@ export const getVouchShareLink = (user: AlumniProfile): string => {
   const origin =
     typeof window !== 'undefined' && window.location.origin
       ? `${window.location.origin}${window.location.pathname}`
-      : 'https://ndcalumni.org/';
+      : 'https://ndcbogura.alumniworld.xyz/';
   const safeName = (user.fullName || 'Notredamian Alumnus').trim();
   const safeRoll = (user.collegeRoll || '118042').trim();
   const safeBatch = user.batchYear || 68;

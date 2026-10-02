@@ -75,15 +75,22 @@ export interface VouchRequest {
   message?: string;
 }
 
+export type UserRole = 'member' | 'moderator' | 'admin';
+export type AcademicStreamType = 'Science' | 'Humanities' | 'Business Studies';
+
 export interface AlumniProfile {
   id: number;
   userId: number;
+  authUserId?: string;
+  role?: UserRole;
   fullName: string;
   avatarUrl: string;
   coverUrl?: string;
   batchYear: number;
   session?: string;
   collegeRoll?: string;
+  academicStream?: AcademicStreamType | null;
+  academicGroup?: string | null;
   group?: 'Science' | 'Business Studies' | 'Humanities' | string;
   section?: string;
   verificationStatus?: VerificationStatus;

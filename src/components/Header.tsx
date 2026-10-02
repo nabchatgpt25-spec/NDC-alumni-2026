@@ -135,8 +135,17 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Actions: Verification Center, Theme Toggle, Notifications, Messages, Profile */}
+        {/* Right Actions: Admin Panel, Verification Center, Theme Toggle, Notifications, Messages, Profile */}
         <div className="flex items-center gap-2 sm:gap-2.5">
+          <button
+            type="button"
+            onClick={() => onNavigate('admin')}
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shadow-xs"
+            title="Open Admin Command Center"
+          >
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline">Admin Panel</span>
+          </button>
           {onOpenVerificationCenter && (
             <button
               type="button"
@@ -324,6 +333,23 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <User className="w-4 h-4 text-slate-400" />
                     My Profile
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onNavigate('admin');
+                      setShowProfileMenu(false);
+                    }}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors text-left"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <span>Admin Command Center</span>
+                    </span>
+                    <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-blue-600 text-white">
+                      100k
+                    </span>
                   </button>
 
                   {onOpenVerificationCenter && (

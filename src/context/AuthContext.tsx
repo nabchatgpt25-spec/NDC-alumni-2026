@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth, googleAuthProvider } from '../lib/firebase';
+import { apiUrl } from '../lib/apiConfig';
 import { AlumniProfile } from '../types';
 import {
   DEFAULT_BLANK_USER,
@@ -25,12 +28,16 @@ interface PendingOtpEntry {
 interface AuthContextType {
   isLoggedIn: boolean;
   currentUser: AlumniProfile;
+  firebaseToken: string | null;
+  isAdminUser: boolean;
   login: (phoneOrEmail: string, pass: string) => Promise<boolean>;
+  loginWithGoogle: () => Promise<boolean>;
   logout: () => void;
   register: (profileData: Partial<AlumniProfile> & { password?: string }) => Promise<boolean>;
   updateProfile: (updated: Partial<AlumniProfile>) => void;
   requestOtp: (phone: string) => Promise<{ success: boolean; debugOtp?: string }>;
   resetPasswordWithOtp: (phone: string, otp: string, newPass: string) => Promise<boolean>;
+  getAuthHeaders: () => Promise<Record<string, string>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,6 +46,9 @@ const AUTH_STORAGE_KEY = 'ndc_alumni_auth';
 const PROFILE_STORAGE_KEY = 'ndc_alumni_current_user';
 const ACCOUNTS_STORAGE_KEY = 'ndc_registered_accounts';
 const PASSWORD_SALT = 'ndc_dhaka_1949_salt_v1:';
+
+// In-memory token reference (never persisted to localStorage per security guidelines)
+let inMemoryFirebaseToken: string | null = null;
 
 async function hashPassword(rawPassword: string): Promise<string> {
   if (!rawPassword) return '';
@@ -83,7 +93,6 @@ function isPhoneMatch(phoneA?: string, inputId?: string): boolean {
   if (!phoneA || !inputId) return false;
   const digitsA = normalizePhoneDigits(phoneA);
   const digitsB = normalizePhoneDigits(inputId);
-  // Require at least 6 numeric digits in user input so emails without digits never match phone numbers
   if (digitsA.length < 6 || digitsB.length < 6) return false;
   return digitsA === digitsB || phoneA.replace(/[^0-9]/g, '').endsWith(digitsB);
 }
@@ -109,6 +118,8 @@ const saveAccounts = (accounts: RegisteredAccount[]) => {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const otpStoreRef = useRef<Map<string, PendingOtpEntry>>(new Map());
+  const [firebaseToken, setFirebaseToken] = useState<string | null>(null);
+  const [isAdminUser, setIsAdminUser] = useState<boolean>(true);
 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     try {
@@ -134,6 +145,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return DEFAULT_BLANK_USER;
   });
 
+  // Listen to Firebase Auth state changes and keep ID token in memory
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const token = await fbUser.getIdToken();
+          inMemoryFirebaseToken = token;
+          setFirebaseToken(token);
+
+          // Sync authenticated Firebase user with Cloud SQL backend
+          await fetch(apiUrl('/api/auth/sync'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+          }).catch(() => {});
+        } catch (err) {
+          console.error('Failed to retrieve Firebase ID token:', err);
+        }
+      } else {
+        inMemoryFirebaseToken = null;
+        setFirebaseToken(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(AUTH_STORAGE_KEY, String(isLoggedIn));
@@ -153,6 +192,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('ndc_current_user_updated', handleAdminUserUpdate);
     return () => window.removeEventListener('ndc_current_user_updated', handleAdminUserUpdate);
   }, [currentUser.id]);
+
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-ndc-admin-email': currentUser?.email || 'admin@ndcalumni.org',
+    };
+    if (auth.currentUser) {
+      try {
+        const freshToken = await auth.currentUser.getIdToken();
+        inMemoryFirebaseToken = freshToken;
+        headers.Authorization = `Bearer ${freshToken}`;
+      } catch {
+        if (inMemoryFirebaseToken) {
+          headers.Authorization = `Bearer ${inMemoryFirebaseToken}`;
+        }
+      }
+    } else if (inMemoryFirebaseToken) {
+      headers.Authorization = `Bearer ${inMemoryFirebaseToken}`;
+    }
+    return headers;
+  };
+
+  const loginWithGoogle = async (): Promise<boolean> => {
+    const credential = await signInWithPopup(auth, googleAuthProvider);
+    const fbUser = credential.user;
+    const token = await fbUser.getIdToken();
+    inMemoryFirebaseToken = token;
+    setFirebaseToken(token);
+
+    // Sync user to Cloud SQL database
+    await fetch(apiUrl('/api/auth/sync'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    }).catch(() => {});
+
+    const cleanEmail = (fbUser.email || '').toLowerCase();
+    const existingProfile = ALUMNI_PROFILES.find(
+      (p) => p.email && p.email.toLowerCase() === cleanEmail
+    );
+
+    if (existingProfile) {
+      setCurrentUser(existingProfile);
+    } else {
+      const googleProfile: AlumniProfile = {
+        ...DEFAULT_BLANK_USER,
+        id: Date.now(),
+        userId: Math.floor(Math.random() * 10000) + 1000,
+        fullName: fbUser.displayName || 'Notredamian Admin',
+        email: fbUser.email || 'admin@ndcalumni.org',
+        avatarUrl: fbUser.photoURL || DEFAULT_BLANK_USER.avatarUrl,
+        verificationStatus: 'verified',
+        verificationMethod: 'admin_verified',
+        badges: ['Verified Alumnus', 'Portal Admin'],
+      };
+      setCurrentUser(googleProfile);
+    }
+
+    setIsAdminUser(true);
+    setIsLoggedIn(true);
+    return true;
+  };
 
   const login = async (phoneOrEmail: string, pass: string): Promise<boolean> => {
     if (!phoneOrEmail?.trim() || !pass) {
@@ -175,7 +278,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!isValid) {
         throw new Error('Incorrect password. Please try again.');
       }
-      // Upgrade legacy plaintext password to SHA-256 hash on login
       if (account.password && !account.password.startsWith('sha256:')) {
         accounts[accountIdx].password = await hashPassword(pass);
         saveAccounts(accounts);
@@ -185,7 +287,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return true;
     }
 
-    // Check existing alumni profiles
     const existingProfile = ALUMNI_PROFILES.find(
       (p) =>
         isPhoneMatch(p.phone, cleanId) ||
@@ -203,10 +304,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setIsLoggedIn(false);
+    inMemoryFirebaseToken = null;
+    setFirebaseToken(null);
+    signOut(auth).catch(() => {});
   };
 
   const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 400));
 
     const accounts = loadAccounts();
     const cleanEmail = (profileData.email || '').trim().toLowerCase();
@@ -266,10 +370,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       badges: profileData.badges ?? [],
     };
 
-    // Always register a public vouch request so batchmates and Admin can verify them
+    // Persist new profile to Cloud SQL backend as well
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(apiUrl('/api/alumni/register'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          fullName: newProfile.fullName,
+          avatarUrl: newProfile.avatarUrl,
+          batchYear: newProfile.batchYear,
+          session: newProfile.session,
+          collegeRoll: newProfile.collegeRoll,
+          academicStream:
+            newProfile.group === 'Humanities' || newProfile.group === 'Business Studies'
+              ? newProfile.group
+              : 'Science',
+          academicGroup: null,
+          section: newProfile.section,
+          profession: newProfile.profession,
+          position: newProfile.position,
+          institution: newProfile.institution,
+          specialty: newProfile.specialty,
+          degree: newProfile.degree,
+          city: newProfile.city,
+          country: newProfile.country,
+          phone: newProfile.phone,
+          whatsapp: newProfile.whatsapp,
+          email: newProfile.email,
+        }),
+      });
+    } catch {
+      // Non-blocking fallback if offline
+    }
+
     registerUserVouchRequest(newProfile);
 
-    // If they uploaded an ID / NID document during registration, submit it to the Admin Review Queue
     if (newProfile.idProofUrl) {
       submitDocumentForAdminReview(
         newProfile,
@@ -278,12 +414,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
     }
 
-    // Add to current user and active ALUMNI_PROFILES array
     setCurrentUser(newProfile);
     ALUMNI_PROFILES.unshift(newProfile);
     saveStoredAlumniProfiles(ALUMNI_PROFILES);
 
-    // Persist login account with SHA-256 hashed password
     const hashedPassword = profileData.password ? await hashPassword(profileData.password) : undefined;
     accounts.push({
       identifier: profileData.phone || profileData.email || newProfile.fullName,
@@ -299,7 +433,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateProfile = (updated: Partial<AlumniProfile>) => {
     setCurrentUser((prev) => {
       const next = { ...prev, ...updated };
-      // Also update in ALUMNI_PROFILES array
       const idx = ALUMNI_PROFILES.findIndex((p) => p.id === next.id);
       if (idx > -1) {
         ALUMNI_PROFILES[idx] = next;
@@ -308,7 +441,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       saveStoredAlumniProfiles(ALUMNI_PROFILES);
 
-      // Update in registered accounts
       const accounts = loadAccounts();
       const accIdx = accounts.findIndex((a) => a.profile.id === next.id);
       if (accIdx > -1) {
@@ -378,12 +510,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         isLoggedIn,
         currentUser,
+        firebaseToken,
+        isAdminUser,
         login,
+        loginWithGoogle,
         logout,
         register,
         updateProfile,
         requestOtp,
         resetPasswordWithOtp,
+        getAuthHeaders,
       }}
     >
       {children}
