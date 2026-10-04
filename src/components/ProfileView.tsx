@@ -27,7 +27,9 @@ import {
   Video,
   Link2,
   Plus,
-  X
+  X,
+  Settings,
+  AlertTriangle,
 } from 'lucide-react';
 import { AlumniProfile, PostItem, PostComment, SPECIALTIES_LIST, DEGREES_LIST } from '../types';
 import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
@@ -63,6 +65,7 @@ interface ProfileViewProps {
   backLabel?: string;
   onOpenVerificationCenter?: (tab?: 'status' | 'vouch_classmates' | 'upload_id' | 'policy') => void;
   onNavigate?: (route: string) => void;
+  initialTab?: 'about' | 'posts' | 'edit' | 'blood' | 'settings';
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -71,8 +74,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   backLabel,
   onOpenVerificationCenter,
   onNavigate,
+  initialTab,
 }) => {
-  const { isLoggedIn, currentUser, updateProfile } = useAuth();
+  const { isLoggedIn, currentUser, updateProfile, deleteAccount } = useAuth();
 
   // All feed posts loaded from localStorage so we can display and manage this user's posts in the "Posts" tab
   const [allPosts, setAllPosts] = useState<PostItem[]>(() => {
@@ -136,7 +140,44 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     (profileId === currentUser.id || profileId === currentUser.userId) &&
     (profile.id === currentUser.id || profile.userId === currentUser.userId);
 
-  const [activeTab, setActiveTab] = useState<'about' | 'posts' | 'edit' | 'blood'>('about');
+  const [activeTab, setActiveTab] = useState<'about' | 'posts' | 'edit' | 'blood' | 'settings'>(
+    initialTab || 'about'
+  );
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  // Account & Profile Deletion State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [deletePasswordConfirm, setDeletePasswordConfirm] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDeleteProfile = async () => {
+    if (deleteConfirmationText.trim().toUpperCase() !== 'DELETE') {
+      setDeleteError('Please type "DELETE" in capital letters to confirm.');
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+      await deleteAccount(deletePasswordConfirm);
+      setIsDeleteModalOpen(false);
+      if (onNavigate) {
+        onNavigate('feed');
+      } else {
+        onBack();
+      }
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Failed to delete account. Please try again.');
+      setIsDeleting(false);
+    }
+  };
   const [donorRefreshTick, setDonorRefreshTick] = useState(0);
   const [isBloodCardClosed, setIsBloodCardClosed] = useState(false);
   const [isVerificationCardClosed, setIsVerificationCardClosed] = useState(false);
@@ -1212,6 +1253,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 >
                   <Edit className="w-3.5 h-3.5" />
                   <span>Edit Profile</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('settings')}
+                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'settings'
+                      ? 'border-red-600 text-red-600 dark:text-red-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Settings & Privacy</span>
                 </button>
               </>
             )}
@@ -2346,6 +2400,226 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 setProfile(resolveProfileById(profileId));
               }}
             />
+          </div>
+
+          {/* Quick link to Account Deletion Settings */}
+          <div className="p-4 rounded-2xl bg-red-50/50 dark:bg-red-950/20 border border-red-200/60 dark:border-red-900/40 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-xs text-red-700 dark:text-red-300">
+              <Trash2 className="w-4 h-4 text-red-500 shrink-0" />
+              <span>Looking to permanently delete your alumnus profile and account?</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('settings')}
+              className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer shrink-0"
+            >
+              Account Settings & Danger Zone →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 5: SETTINGS & PRIVACY (with Self-Service Account & Profile Deletion) */}
+      {activeTab === 'settings' && isMine && (
+        <div className="space-y-6">
+          {/* Account Privacy & Directory Preferences */}
+          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-5">
+            <div>
+              <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                <Settings className="w-4 h-4 text-blue-600" />
+                <span>Account &amp; Privacy Settings</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Manage your profile visibility, account status, and directory preferences.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                    Public Directory Visibility
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Show your profile in alumni directory &amp; search
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = !(profile.isPublic !== false);
+                    updateProfile({ isPublic: nextVal });
+                    setProfile((prev) => ({ ...prev, isPublic: nextVal }));
+                  }}
+                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    profile.isPublic !== false ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                  aria-label="Toggle directory visibility"
+                >
+                  <span
+                    className={`block w-4 h-4 rounded-full bg-white transition-transform ${
+                      profile.isPublic !== false ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                    Alumni Verification Status
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {profile.verificationStatus === 'verified'
+                      ? 'Verified Notredamian Alumnus'
+                      : 'Pending Peer Vouch or Admin Review'}
+                  </div>
+                </div>
+                {onOpenVerificationCenter && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenVerificationCenter()}
+                    className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-100 transition-colors cursor-pointer"
+                  >
+                    View Status
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Danger Zone: Permanent Profile Deletion */}
+          <div className="bg-red-50/40 dark:bg-red-950/20 backdrop-blur-xl rounded-3xl p-6 border border-red-200/80 dark:border-red-900/60 shadow-xs space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 dark:bg-red-900/40 border border-red-200 dark:border-red-800/60 flex items-center justify-center shrink-0 mt-0.5">
+                <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-red-700 dark:text-red-400 tracking-tight">
+                  Danger Zone: Delete Your Alumni Profile
+                </h3>
+                <p className="text-xs text-red-600/90 dark:text-red-300/80 leading-relaxed">
+                  Anyone can permanently delete their own alumnus profile at any time. Once deleted, your account credentials, directory listing, emergency blood donor profile, and all associated data will be completely and permanently removed.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-red-200/60 dark:border-red-900/40 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+              <div className="font-bold text-slate-900 dark:text-white">
+                What will happen when you delete your profile:
+              </div>
+              <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
+                <li>Your profile will immediately disappear from the public directory, search, and batch lists.</li>
+                <li>Your emergency blood donor registration and hospital corridor mapping will be removed.</li>
+                <li>You will be signed out on all devices and your authentication session terminated.</li>
+                <li>This action is irreversible. To return, you will have to register as a new alumnus.</li>
+              </ul>
+            </div>
+
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-[11px] text-red-600/80 dark:text-red-400/80 font-medium">
+                Irreversible account deletion
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteError(null);
+                  setDeleteConfirmationText('');
+                  setDeletePasswordConfirm('');
+                  setIsDeleteModalOpen(true);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-md shadow-red-600/20 inline-flex items-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete My Profile</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Profile Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-100 dark:bg-red-950/60 border border-red-200 dark:border-red-900 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                  Permanently Delete Profile?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Are you sure you want to delete <strong className="text-slate-800 dark:text-slate-200">{profile.fullName}</strong>? This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs font-semibold text-red-700 dark:text-red-300">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="space-y-3 pt-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Type <span className="text-red-600 font-black">DELETE</span> to confirm:
+                </label>
+                <input
+                  type="text"
+                  placeholder="DELETE"
+                  value={deleteConfirmationText}
+                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Account Password (optional if logged in via Google):
+                </label>
+                <input
+                  type="password"
+                  placeholder="Enter your password"
+                  value={deletePasswordConfirm}
+                  onChange={(e) => setDeletePasswordConfirm(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeleting || deleteConfirmationText.trim().toUpperCase() !== 'DELETE'}
+                onClick={handleDeleteProfile}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black inline-flex items-center gap-2 transition-all cursor-pointer ${
+                  deleteConfirmationText.trim().toUpperCase() === 'DELETE' && !isDeleting
+                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/25'
+                    : 'bg-red-300 dark:bg-red-950 text-red-100 dark:text-red-400 cursor-not-allowed opacity-60'
+                }`}
+              >
+                {isDeleting ? (
+                  <span>Deleting Profile...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Permanently Delete</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

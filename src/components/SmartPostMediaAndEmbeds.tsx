@@ -14,7 +14,14 @@ import {
   Check,
   Maximize2,
   AlertCircle,
+  X,
 } from 'lucide-react';
+import {
+  useFacebookOEmbed,
+  isFacebookUrl,
+  fetchFacebookOEmbed,
+  type FacebookOEmbedData,
+} from '../services/facebookOEmbedService';
 
 export type DetectedEmbedType =
   | 'youtube'
@@ -144,6 +151,28 @@ export function renderTextWithClickableLinks(text: string): React.ReactNode {
     }
     return <React.Fragment key={idx}>{part}</React.Fragment>;
   });
+}
+
+/**
+ * Decodes HTML entities commonly returned by Facebook/Open Graph tags (e.g. &#xb7; -> ·, &amp; -> &)
+ */
+export function decodeHtmlEntities(str?: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&#xb7;/gi, '·')
+    .replace(/&#183;/gi, '·')
+    .replace(/&middot;/gi, '·')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;/gi, "'")
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, '/')
+    .replace(/&nbsp;/gi, ' ')
+    .trim();
 }
 
 /**
@@ -883,40 +912,63 @@ const FacebookEmbedCard: React.FC<{
 }> = ({ info, autoPlayOnScroll }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isInView, setIsInView] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [copied, setCopied] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [showIframeEmbed, setShowIframeEmbed] = useState(false);
   const [iframeError, setIframeError] = useState(false);
 
-  // Unfurl the Facebook link to resolve redirects and retrieve OpenGraph image/text/video
+  // Custom OEmbed and Open Graph metadata fetcher
+  const { data: fbOEmbed, loading: fbOEmbedLoading } = useFacebookOEmbed(info.normalizedUrl, true);
+
+  // Unfurl fallback service
   const { data: unfurled, loading: unfurlLoading } = useLinkUnfurl(info.normalizedUrl, true);
 
-  // Re-evaluate embed info if backend or Microlink resolved a /share/ redirect to a canonical URL
+  // Re-evaluate embed info if backend or oembed resolved a /share/ redirect to a canonical URL
   const effectiveInfo: ParsedEmbedInfo = React.useMemo(() => {
+    const canonical = fbOEmbed?.resolvedUrl || unfurled?.resolvedUrl;
     if (
-      unfurled?.resolvedUrl &&
-      unfurled.resolvedUrl !== info.normalizedUrl &&
-      unfurled.resolvedUrl.includes('facebook.com') &&
-      !unfurled.resolvedUrl.includes('/login')
+      canonical &&
+      canonical !== info.normalizedUrl &&
+      canonical.includes('facebook.com') &&
+      !canonical.includes('/login')
     ) {
       try {
-        const resolvedParsed = new URL(unfurled.resolvedUrl);
+        const resolvedParsed = new URL(canonical);
         return buildFacebookPluginInfo(info.originalUrl, resolvedParsed);
       } catch {
         return info;
       }
     }
     return info;
-  }, [info, unfurled?.resolvedUrl]);
+  }, [info, fbOEmbed?.resolvedUrl, unfurled?.resolvedUrl]);
 
-  const isPhoto =
-    effectiveInfo.type === 'facebook-photo' ||
-    (Boolean(unfurled?.imageUrl) && !effectiveInfo.embedUrl && effectiveInfo.type !== 'facebook-video');
+  const previewImage = fbOEmbed?.imageUrl || unfurled?.imageUrl;
+  const videoStreamUrl = fbOEmbed?.videoUrl || unfurled?.videoUrl;
+  const postTitle = decodeHtmlEntities(fbOEmbed?.title || unfurled?.title || effectiveInfo.titleHint);
+  const postDescription = decodeHtmlEntities(fbOEmbed?.description || unfurled?.description);
+  const authorName = decodeHtmlEntities(
+    fbOEmbed?.authorName ||
+    unfurled?.author ||
+    (effectiveInfo.hostname === 'facebook.com' ? 'Facebook' : effectiveInfo.hostname)
+  );
 
   const isVideo =
-    effectiveInfo.type === 'facebook-video' || Boolean(unfurled?.videoUrl);
+    effectiveInfo.type === 'facebook-video' ||
+    Boolean(videoStreamUrl) ||
+    fbOEmbed?.mediaType === 'video' ||
+    fbOEmbed?.mediaType === 'reel';
 
-  const isReel = effectiveInfo.isShortsOrReel;
+  const isReel =
+    effectiveInfo.isShortsOrReel ||
+    fbOEmbed?.isShortsOrReel ||
+    fbOEmbed?.mediaType === 'reel';
+
+  const isPhoto =
+    !isVideo &&
+    (effectiveInfo.type === 'facebook-photo' ||
+      fbOEmbed?.mediaType === 'photo' ||
+      (Boolean(previewImage) && !effectiveInfo.embedUrl));
 
   useEffect(() => {
     if (!isVideo || !autoPlayOnScroll) {
@@ -954,49 +1006,49 @@ const FacebookEmbedCard: React.FC<{
     }
   };
 
-  const previewImage = unfurled?.imageUrl;
-  const postTitle = unfurled?.title || effectiveInfo.titleHint;
-  const postDescription = unfurled?.description;
-  const authorName = unfurled?.author || (effectiveInfo.hostname === 'facebook.com' ? 'Facebook' : effectiveInfo.hostname);
-
   return (
     <div
       ref={containerRef}
       className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs transition-all hover:shadow-sm"
     >
-      {/* Top Facebook Blue Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-[#1877F2] text-white text-xs">
+      {/* Sleek, Modern Facebook Header (Comfortable, Non-Jarring Theme) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-slate-900 text-white text-xs border-b border-slate-800">
         <div className="flex items-center gap-2 font-bold min-w-0">
-          <div className="w-5 h-5 rounded-full bg-white text-[#1877F2] flex items-center justify-center font-black text-xs shrink-0 select-none shadow-xs">
-            f
-          </div>
-          <span className="truncate max-w-[200px] sm:max-w-xs">{authorName}</span>
-          <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-bold shrink-0">
-            {isPhoto ? '● Photo' : isReel ? '● Reel' : isVideo ? '● Video' : '● Post'}
-          </span>
-          {isVideo && autoPlayOnScroll && (
-            <span className="hidden sm:inline-block px-1.5 py-0.5 rounded-full bg-emerald-400/30 text-emerald-100 text-[9px] font-bold">
-              {isInView ? 'Playing' : 'In View'}
+          <span className="px-2.5 py-0.5 rounded-full bg-[#1877F2] text-white font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-1.5 shadow-xs shrink-0">
+            <span className="w-3.5 h-3.5 rounded-full bg-white text-[#1877F2] flex items-center justify-center font-black text-[9px] select-none">
+              f
             </span>
-          )}
+            <span>
+              {isReel
+                ? 'Facebook Reel'
+                : isVideo
+                ? 'Facebook Video'
+                : isPhoto
+                ? 'Facebook Photo'
+                : 'Facebook'}
+            </span>
+          </span>
+          <span className="truncate max-w-[200px] sm:max-w-md font-semibold text-slate-200">
+            {postTitle || authorName}
+          </span>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={handleCopyLink}
-            className="inline-flex items-center gap-1 text-[11px] font-bold bg-white/15 hover:bg-white/25 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
             title="Copy Facebook link"
           >
-            {copied ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
             <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
           </button>
           <a
             href={effectiveInfo.normalizedUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-bold bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-            title="Open original post on Facebook"
+            className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#1877F2] hover:bg-blue-600 text-white px-3 py-1 rounded-lg transition-colors cursor-pointer shadow-xs"
+            title="Open on Facebook"
           >
             <span>Open on Facebook</span>
             <ExternalLink className="w-3 h-3" />
@@ -1005,17 +1057,110 @@ const FacebookEmbedCard: React.FC<{
       </div>
 
       {/* Main Body */}
-      {/* 1. Direct Playable Video Stream if OpenGraph provides direct video URL */}
-      {unfurled?.videoUrl ? (
-        <div className="bg-black">
+      {/* 1. Direct Playable Video Stream if OpenGraph provides direct MP4 */}
+      {videoStreamUrl ? (
+        <div className="aspect-video w-full bg-black">
           <AutoPlayVideoPlayer
-            src={unfurled.videoUrl}
-            poster={unfurled.imageUrl}
+            src={videoStreamUrl}
+            poster={previewImage}
             autoPlayOnScroll={autoPlayOnScroll}
           />
         </div>
+      ) : isVideo ? (
+        /* 2. Facebook Video / Reel Cinematic Card (Guaranteed 100% reliable, no broken black embed error) */
+        <div className="relative group bg-slate-950 aspect-video min-h-[300px] max-h-[500px] flex items-center justify-center overflow-hidden">
+          {showIframeEmbed && effectiveInfo.embedUrl && !iframeError ? (
+            <div className="relative w-full h-full bg-black flex flex-col items-center justify-center">
+              <iframe
+                src={`${effectiveInfo.embedUrl}${autoPlayOnScroll && isInView ? '&autoplay=true' : ''}`}
+                title={postTitle}
+                className="w-full h-full border-0"
+                scrolling="no"
+                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                allowFullScreen
+                onError={() => setIframeError(true)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowIframeEmbed(false)}
+                className="absolute top-3 right-3 px-2.5 py-1 bg-black/70 hover:bg-black/90 text-white text-[11px] font-bold rounded-lg backdrop-blur-xs transition-colors cursor-pointer z-10"
+              >
+                Close Embed
+              </button>
+            </div>
+          ) : (
+            <div
+              className="relative w-full h-full flex flex-col justify-between p-4 sm:p-6 cursor-pointer"
+              onClick={() => {
+                window.open(effectiveInfo.normalizedUrl, '_blank', 'noopener,noreferrer');
+              }}
+            >
+              {previewImage ? (
+                <img
+                  src={previewImage}
+                  alt={postTitle}
+                  className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500 opacity-90 group-hover:opacity-95"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-black" />
+              )}
+
+              {/* Gradient Scrim */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/45 pointer-events-none" />
+
+              {/* Top Row: Reel / Video Badge */}
+              <div className="relative z-10 flex items-center justify-between">
+                <span className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white font-bold text-[11px] flex items-center gap-1.5 border border-white/10 shadow-lg">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span>{isReel ? 'Facebook Reel' : 'Facebook Video'}</span>
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-[#1877F2]/90 backdrop-blur-md text-white font-bold text-[11px] flex items-center gap-1 shadow-md">
+                  <span>Watch on Facebook</span>
+                  <ExternalLink className="w-3 h-3" />
+                </span>
+              </div>
+
+              {/* Center: Glowing Frosted Play Button */}
+              <div className="relative z-10 flex items-center justify-center my-auto">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-[#1877F2] group-hover:bg-blue-500 text-white flex items-center justify-center shadow-2xl group-hover:scale-110 active:scale-95 transition-all ring-4 ring-white/30">
+                  <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-1" />
+                </div>
+              </div>
+
+              {/* Bottom: Title, Description, and Author Meta */}
+              <div className="relative z-10 space-y-1.5 max-w-xl">
+                <div className="text-sm sm:text-base font-bold text-white drop-shadow-md line-clamp-2 leading-snug">
+                  {postTitle}
+                </div>
+                {postDescription && postDescription !== postTitle && (
+                  <div className="text-xs text-slate-300 drop-shadow-xs line-clamp-2 leading-relaxed">
+                    {postDescription}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-300">
+                  <span className="font-semibold text-white">{authorName}</span>
+                  <span>•</span>
+                  <span>Click to watch full reel on Facebook</span>
+                  {effectiveInfo.embedUrl && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowIframeEmbed(true);
+                      }}
+                      className="ml-auto underline text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      Try Embed
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       ) : isPhoto ? (
-        /* 2. Facebook Photo / Picture Display */
+        /* 3. Facebook Photo / Picture Display */
         <div className="space-y-3 bg-slate-950/5 dark:bg-slate-950/40">
           {previewImage ? (
             <div
@@ -1074,81 +1219,6 @@ const FacebookEmbedCard: React.FC<{
             </div>
           )}
         </div>
-      ) : isVideo ? (
-        /* 3. Facebook Video / Reel Display */
-        <div className="bg-slate-950">
-          {showIframeEmbed && effectiveInfo.embedUrl && !iframeError ? (
-            <div className="w-full bg-black flex justify-center overflow-hidden">
-              <iframe
-                src={`${effectiveInfo.embedUrl}${autoPlayOnScroll && isInView ? '&autoplay=true' : ''}`}
-                title={postTitle}
-                className="w-full aspect-video min-h-[340px] max-h-[500px] border-0"
-                scrolling="no"
-                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                allowFullScreen
-                onError={() => setIframeError(true)}
-              />
-            </div>
-          ) : (
-            /* Rich Video Poster & Play Launcher (Protects against Facebook 3rd-party cookie blocking) */
-            <div className="relative group bg-black aspect-video min-h-[300px] max-h-[480px] flex items-center justify-center overflow-hidden">
-              {previewImage ? (
-                <img
-                  src={previewImage}
-                  alt={postTitle}
-                  className="w-full h-full object-cover opacity-85 group-hover:opacity-95 transition-opacity"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-black" />
-              )}
-
-              {/* Glowing Facebook Play Overlay */}
-              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-3 p-4 text-center">
-                <a
-                  href={effectiveInfo.normalizedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-16 h-16 rounded-full bg-[#1877F2] hover:bg-blue-500 text-white flex items-center justify-center shadow-2xl hover:scale-108 transition-all cursor-pointer ring-4 ring-white/30"
-                  title="Watch Video on Facebook"
-                >
-                  <Play className="w-8 h-8 fill-white ml-1" />
-                </a>
-                <div className="space-y-1 max-w-md">
-                  <div className="text-sm font-bold text-white drop-shadow-md line-clamp-2">
-                    {postTitle}
-                  </div>
-                  {postDescription && (
-                    <div className="text-xs text-slate-300 drop-shadow-xs line-clamp-2">
-                      {postDescription}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <a
-                    href={effectiveInfo.normalizedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1877F2] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-md"
-                  >
-                    <span>Watch Video on Facebook</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                  {effectiveInfo.embedUrl && !iframeError && (
-                    <button
-                      type="button"
-                      onClick={() => setShowIframeEmbed(true)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-medium backdrop-blur-xs transition-colors cursor-pointer"
-                    >
-                      Try Embed Player
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
       ) : (
         /* 4. Facebook Post / Shared Update Display */
         <div className="p-4 space-y-3 bg-slate-50/70 dark:bg-slate-900/40">
@@ -1177,41 +1247,50 @@ const FacebookEmbedCard: React.FC<{
             )}
           </div>
 
-          {/* Fallback to interactive iframe embed if enabled */}
-          {showIframeEmbed && effectiveInfo.embedUrl && !iframeError ? (
-            <div className="w-full bg-white dark:bg-slate-950 flex justify-center overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-              <iframe
-                src={effectiveInfo.embedUrl}
-                title={postTitle}
-                className="w-full max-w-[500px] min-h-[460px] border-0"
-                scrolling="no"
-                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                allowFullScreen
-                onError={() => setIframeError(true)}
-              />
-            </div>
-          ) : (
-            <div className="flex items-center justify-between pt-1">
-              <a
-                href={effectiveInfo.normalizedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1877F2] hover:underline"
-              >
-                <span>Read full post on Facebook</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-              {effectiveInfo.embedUrl && !iframeError && (
-                <button
-                  type="button"
-                  onClick={() => setShowIframeEmbed(true)}
-                  className="text-[11px] text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 underline cursor-pointer"
-                >
-                  Load Official Facebook Widget
-                </button>
-              )}
-            </div>
-          )}
+          <div className="flex items-center justify-between pt-1">
+            <a
+              href={effectiveInfo.normalizedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1877F2] hover:underline"
+            >
+              <span>Read full post on Facebook</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal for Photo viewing */}
+      {isLightboxOpen && previewImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setIsLightboxOpen(false)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setIsLightboxOpen(false)}
+              className="absolute -top-12 right-0 p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer"
+              title="Close full picture"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={previewImage}
+              alt={postTitle}
+              className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
+              referrerPolicy="no-referrer"
+            />
+            {postTitle && (
+              <div className="mt-3 text-center text-sm font-semibold text-white/90 max-w-2xl px-4">
+                {postTitle}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1230,43 +1309,6 @@ const FacebookEmbedCard: React.FC<{
           <ExternalLink className="w-3 h-3" />
         </a>
       </div>
-
-      {/* Lightbox Modal for Full View */}
-      {isLightboxOpen && previewImage && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
-          onClick={() => setIsLightboxOpen(false)}
-        >
-          <div
-            className="relative max-w-4xl max-h-[90vh] flex flex-col items-center gap-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={previewImage}
-              alt={postTitle}
-              className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
-            />
-            <div className="flex items-center gap-3 text-white">
-              <span className="text-xs font-medium max-w-md truncate">{postTitle}</span>
-              <a
-                href={effectiveInfo.normalizedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-1 rounded-lg bg-[#1877F2] text-xs font-bold hover:bg-blue-600 transition-colors"
-              >
-                Open on Facebook
-              </a>
-              <button
-                type="button"
-                onClick={() => setIsLightboxOpen(false)}
-                className="px-3 py-1 rounded-lg bg-white/20 text-xs font-bold hover:bg-white/30 transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

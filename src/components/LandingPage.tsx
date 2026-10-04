@@ -20,7 +20,6 @@ import {
   ChevronRight,
   MessageSquare
 } from 'lucide-react';
-import { ThemeToggle } from './ThemeToggle';
 import { NDCLogo } from './NDCLogo';
 import { BATCH_LIST, ALUMNI_PROFILES } from '../data/mockData';
 import { AlumniProfile, BatchSummary } from '../types';
@@ -75,44 +74,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* Global Cursor-Following Institutional Spotlight */}
       <CursorSpotlight />
 
-      {/* 1. Top Community Pulse Bar */}
-      <div className="bg-slate-900 text-slate-300 text-[11px] border-b border-slate-800 py-1.5 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          {/* Left: Community Status */}
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-1.5 font-bold text-slate-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>The Digital Quad • Notre Dame College Alumni Network</span>
-            </div>
-            <div className="hidden md:flex items-center gap-1.5 text-slate-400">
-              <MapPin className="w-3.5 h-3.5 text-blue-400" />
-              <span>Motijheel, Dhaka-1000 • Est. 1949</span>
-            </div>
-          </div>
-
-          {/* Right: Quick Links */}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setIsVerificationModalOpen(true)}
-              className="hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-1 font-semibold text-emerald-400"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>How We Verify Real Students</span>
-            </button>
-            <span className="text-slate-700">|</span>
-            <button
-              type="button"
-              onClick={onOpenLogin}
-              className="hover:text-white transition-colors cursor-pointer font-bold text-amber-400"
-            >
-              Sign In to Your Batch
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Main Institutional Brand Header */}
+      {/* Main Institutional Brand Header */}
       <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
           {/* Brand Logo & Bilingual Title */}
@@ -134,7 +96,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden xl:flex items-center gap-6 text-xs font-bold text-slate-600 dark:text-slate-300">
+          <nav className="hidden lg:flex items-center gap-3 xl:gap-5 text-xs font-bold text-slate-600 dark:text-slate-300">
             <button
               type="button"
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -147,7 +109,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               onClick={() => scrollToSection('feed-preview-section')}
               className="nav-link-animated hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
             >
-              The Quad Feed
+              The Quad
             </button>
             <button
               type="button"
@@ -161,43 +123,41 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               onClick={() => scrollToSection('featured-alumni-section')}
               className="nav-link-animated hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
             >
-              Mentors & Leaders
+              Mentors &amp; Leaders
             </button>
             <button
               type="button"
               onClick={() => onNavigate('map')}
               className="nav-link-animated hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
             >
-              Global Chapters
+              Chapters
             </button>
             <button
               type="button"
               onClick={() => onNavigate('gallery')}
               className="nav-link-animated hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
             >
-              Nostalgia Gallery
+              Campus Gallery
             </button>
           </nav>
 
           {/* Right Action Buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={() => setIsVerificationModalOpen(true)}
-              className="btn-interactive hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+              className="btn-interactive hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100/90 hover:bg-slate-200/90 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer border border-slate-200/70 dark:border-slate-700/60"
               title="How We Verify Real Students"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
               <span>Verification</span>
             </button>
 
-            {/* Dark / Light Mode Toggle */}
-            <ThemeToggle />
-
+            {/* Sign In & Join Buttons */}
             <button
               type="button"
               onClick={onOpenLogin}
-              className="btn-interactive px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              className="btn-interactive px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
             >
               Sign In
             </button>
@@ -206,54 +166,53 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <button
                 type="button"
                 onClick={onOpenRegister}
-                className="btn-interactive px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs shadow-blue-600/20 transition-all cursor-pointer whitespace-nowrap"
+                className="btn-interactive px-3.5 py-1.5 sm:px-5 sm:py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-600/25 transition-all cursor-pointer whitespace-nowrap"
               >
-                Join Batch
+                Join Your Batch
               </button>
             </MagneticWrap>
           </div>
         </div>
 
-        {/* Mobile Horizontal Quick-Jump Bar */}
-        <div className="xl:hidden flex items-center gap-1 overflow-x-auto px-3 py-1.5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-900/60 no-scrollbar text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+        {/* Mobile Horizontal Quick-Jump Bar (Clean pills for compact screens) */}
+        <div className="lg:hidden flex items-center justify-between gap-1 overflow-x-auto px-3 py-1.5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/90 dark:bg-slate-900/80 no-scrollbar text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => scrollToSection('feed-preview-section')}
+              className="px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800/70 hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors shrink-0 whitespace-nowrap shadow-2xs border border-slate-200/50 dark:border-slate-700/50"
+            >
+              The Quad
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('batches-section')}
+              className="px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800/70 hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors shrink-0 whitespace-nowrap shadow-2xs border border-slate-200/50 dark:border-slate-700/50"
+            >
+              Batches 01–76
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('featured-alumni-section')}
+              className="px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800/70 hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors shrink-0 whitespace-nowrap shadow-2xs border border-slate-200/50 dark:border-slate-700/50"
+            >
+              Leaders
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('gallery')}
+              className="px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-800/70 hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors shrink-0 whitespace-nowrap shadow-2xs border border-slate-200/50 dark:border-slate-700/50"
+            >
+              Gallery
+            </button>
+          </div>
           <button
             type="button"
-            onClick={() => scrollToSection('feed-preview-section')}
-            className="px-2.5 py-1 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap"
+            onClick={() => setIsVerificationModalOpen(true)}
+            className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 shrink-0 ml-2"
           >
-            Quad Feed
-          </button>
-          <span className="text-slate-300 dark:text-slate-700">·</span>
-          <button
-            type="button"
-            onClick={() => scrollToSection('batches-section')}
-            className="px-2.5 py-1 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap"
-          >
-            Batches (01–76)
-          </button>
-          <span className="text-slate-300 dark:text-slate-700">·</span>
-          <button
-            type="button"
-            onClick={() => scrollToSection('featured-alumni-section')}
-            className="px-2.5 py-1 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap"
-          >
-            Leaders
-          </button>
-          <span className="text-slate-300 dark:text-slate-700">·</span>
-          <button
-            type="button"
-            onClick={() => onNavigate('gallery')}
-            className="px-2.5 py-1 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap"
-          >
-            Gallery
-          </button>
-          <span className="text-slate-300 dark:text-slate-700">·</span>
-          <button
-            type="button"
-            onClick={onOpenLogin}
-            className="px-2.5 py-1 rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap text-amber-600 dark:text-amber-400 font-bold"
-          >
-            Sign In
+            <ShieldCheck className="w-3 h-3" />
+            <span>Verify</span>
           </button>
         </div>
       </header>
@@ -332,9 +291,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-3">
                 The private social &amp; professional network for Notre Dame College.
               </p>
-              <p className="font-serif italic text-xs font-semibold text-amber-700 dark:text-amber-300/90 mt-1.5">
-                &ldquo;Once a Notre Damian, Always a Notre Damian.&rdquo;
-              </p>
+              <div className="mt-3.5 p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent border-l-2 border-amber-500/60 dark:border-amber-400/70">
+                <p className="font-serif italic text-xs sm:text-sm font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-700 via-amber-600 to-amber-800 dark:from-amber-200 dark:via-yellow-300 dark:to-amber-200">
+                  &ldquo;Once a Notre Damian, Always a Notre Damian.&rdquo;
+                </p>
+                <p className="text-[10px] text-amber-800/80 dark:text-amber-300/80 font-medium mt-0.5">
+                  Diligite Lumen Sapientiae • Motijheel, Dhaka
+                </p>
+              </div>
               <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-1">
                 Toyenbee Circular Road, Motijheel, Dhaka-1000, Bangladesh
               </p>

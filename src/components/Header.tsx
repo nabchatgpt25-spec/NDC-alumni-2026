@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, Search, Bell, Mail, ChevronDown, CheckCheck, User, LogOut, ShieldCheck, Clock, X } from 'lucide-react';
+import { Menu, Search, Bell, Mail, ChevronDown, CheckCheck, User, LogOut, ShieldCheck, Clock, X, Settings } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { NDCLogo } from './NDCLogo';
 import { NotificationItem } from '../types';
@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 h-18 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-colors duration-200">
+    <header className="sticky top-0 z-40 h-18 bg-white/75 dark:bg-slate-900/75 backdrop-blur-xl border-b border-slate-200/60 dark:border-white/10 shadow-xs transition-colors duration-200">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-3 max-w-[1600px] mx-auto">
         {/* Left: Mobile Toggle, Mobile Brand & Search */}
         <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 max-w-2xl">
@@ -135,35 +135,8 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Actions: Verification Center, Theme Toggle, Notifications, Messages, Profile */}
+        {/* Right Actions: Theme Toggle, Notifications, Messages, Profile */}
         <div className="flex items-center gap-2 sm:gap-2.5">
-          {onOpenVerificationCenter && (
-            <button
-              type="button"
-              onClick={() => onOpenVerificationCenter(isUserVerified ? 'vouch_classmates' : 'status')}
-              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                isUserVerified
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
-                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100 animate-pulse'
-              }`}
-              title="Open Notredamian Verification Center"
-            >
-              {isUserVerified ? (
-                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              ) : (
-                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              )}
-              <span className="hidden sm:inline">
-                {isUserVerified ? 'Verified' : `Verify (${userVouchesCount}/2)`}
-              </span>
-              {pendingVouchRequestsCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-black leading-none">
-                  {pendingVouchRequestsCount}
-                </span>
-              )}
-            </button>
-          )}
-
           <div className="flex items-center">
             <ThemeToggle />
           </div>
@@ -324,6 +297,18 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <User className="w-4 h-4 text-slate-400" />
                     My Profile
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onNavigate('profile-settings');
+                      setShowProfileMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-left"
+                  >
+                    <Settings className="w-4 h-4 text-slate-400" />
+                    Account Settings
                   </button>
 
                   {onOpenVerificationCenter && (

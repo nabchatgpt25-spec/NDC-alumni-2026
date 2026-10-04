@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Download, Share2, X, Smartphone, Check } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
-export const PWAInstallButton: React.FC<{ variant?: 'header' | 'sidebar' | 'banner' }> = ({
+export const PWAInstallButton: React.FC<{ variant?: 'header' | 'sidebar' | 'banner'; className?: string }> = ({
   variant = 'header',
+  className = '',
 }) => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
@@ -28,7 +29,7 @@ export const PWAInstallButton: React.FC<{ variant?: 'header' | 'sidebar' | 'bann
         <button
           type="button"
           onClick={handleInstallClick}
-          className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-md shadow-blue-600/20 hover:from-blue-700 hover:to-indigo-700 transition-all cursor-pointer"
+          className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-600/20 transition-all cursor-pointer ${className}`}
         >
           <div className="flex items-center gap-2">
             <Download className="w-4 h-4" />

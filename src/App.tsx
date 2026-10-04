@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -26,6 +26,7 @@ import { VerificationCenterModal } from './components/verification/VerificationC
 import { BloodNetworkView } from './components/BloodNetworkView';
 import { ensureVouchRequestFromUrlParams } from './utils/verificationService';
 import { CursorSpotlight } from './components/motion/CinematicMotion';
+import { NDCLogo } from './components/NDCLogo';
 
 function AlumniAppContent() {
   const { isLoggedIn, currentUser } = useAuth();
@@ -40,12 +41,28 @@ function AlumniAppContent() {
       }
       if (window.location.hash) {
         const h = window.location.hash.replace('#', '');
-        if (h.startsWith('post-')) return 'feed';
+        if (h.startsWith('post-') || h === 'dashboard' || h === 'feed') return 'feed';
+        // When logged in, always prioritize social media feed over stale profile/directory hash
+        if (isLoggedIn && (h === 'profile' || h === 'alumni' || h === 'directory')) {
+          return 'feed';
+        }
         if (h) return h;
       }
     }
     return isLoggedIn ? 'feed' : 'landing';
   });
+
+  // Whenever user logs in, ALWAYS take them to the central social media feed / dashboard
+  const wasLoggedInRef = useRef(isLoggedIn);
+  useEffect(() => {
+    if (!wasLoggedInRef.current && isLoggedIn) {
+      // User just logged in — clear any stale #profile/#alumni hash and always default to feed/dashboard
+      setRoute('feed');
+      window.location.hash = 'feed';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    wasLoggedInRef.current = isLoggedIn;
+  }, [isLoggedIn]);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<number>(currentUser.id);
@@ -151,9 +168,9 @@ function AlumniAppContent() {
           <AuthModal
             initialMode={authModalMode}
             onClose={() => setAuthModalMode(null)}
-            onSuccess={(completedMode) => {
+            onSuccess={() => {
               setAuthModalMode(null);
-              navigateTo(completedMode === 'register' ? 'profile' : 'feed');
+              navigateTo('feed');
             }}
           />
         )}
@@ -163,7 +180,16 @@ function AlumniAppContent() {
 
   // Logged-in application shell (Notre Dame Alumni Network portal)
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex transition-colors duration-200 font-sans antialiased selection:bg-blue-500 selection:text-white relative">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex transition-colors duration-200 font-sans antialiased selection:bg-blue-500 selection:text-white relative overflow-hidden">
+      {/* Smooth Liquid Transparent Glass Ambient Canvas */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none">
+        <div className="absolute -top-32 -left-32 w-[500px] h-[500px] rounded-full bg-gradient-to-tr from-blue-500/20 via-indigo-500/18 to-teal-400/20 blur-[120px] animate-liquid-blob-1 dark:from-blue-600/22 dark:via-cyan-500/15 dark:to-teal-500/15" />
+        <div className="absolute top-1/4 -right-28 w-[460px] h-[460px] rounded-full bg-gradient-to-br from-purple-500/18 via-rose-500/16 to-blue-500/20 blur-[130px] animate-liquid-blob-2 dark:from-purple-600/15 dark:via-rose-600/12 dark:to-blue-600/18" />
+        <div className="absolute -bottom-36 left-1/3 w-[520px] h-[520px] rounded-full bg-gradient-to-tr from-teal-500/16 via-emerald-500/14 to-indigo-500/18 blur-[130px] animate-liquid-blob-3 dark:from-cyan-600/12 dark:via-emerald-600/10 dark:to-indigo-600/15" />
+        {/* Liquid glass light sheen */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.12),rgba(255,255,255,0))] dark:bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.16),rgba(0,0,0,0))] pointer-events-none" />
+      </div>
+
       {/* Global Cursor-Following Institutional Spotlight */}
       <CursorSpotlight />
 
@@ -281,9 +307,10 @@ function AlumniAppContent() {
                 <SavedPostsView onNavigate={navigateTo} />
               )}
 
-              {route === 'profile' && (
+              {(route === 'profile' || route === 'settings' || route === 'profile-settings') && (
                 <ProfileView
-                  profileId={selectedProfileId}
+                  profileId={selectedProfileId || currentUser.id}
+                  initialTab={route === 'settings' || route === 'profile-settings' ? 'settings' : undefined}
                   onBack={() => navigateTo(previousRoute || 'alumni')}
                   backLabel={getBackLabel()}
                   onOpenVerificationCenter={openVerificationCenter}
@@ -294,25 +321,48 @@ function AlumniAppContent() {
           </AnimatePresence>
         </main>
 
-        {/* Portal Footer */}
-        <footer className="border-t border-slate-200/80 dark:border-slate-800/80 py-4 px-4 sm:px-6 lg:px-8 text-[11px] text-slate-500 dark:text-slate-400 bg-white/50 dark:bg-slate-900/50">
-          <div className="max-w-[1500px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span>© {new Date().getFullYear()} Notre Dame College Alumni Network. All rights reserved.</span>
-              <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
-              <span className="font-serif italic text-amber-700 dark:text-amber-300/90 font-medium">
+        {/* Heritage Monument Portal Footer */}
+        <footer className="border-t border-slate-200/80 dark:border-slate-800/80 pt-8 pb-5 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white/40 via-white/70 to-slate-100/60 dark:from-slate-900/40 dark:via-slate-900/80 dark:to-slate-950/90 backdrop-blur-md">
+          <div className="max-w-[1500px] mx-auto">
+            {/* Centerpiece Emotional Tribute */}
+            <div className="flex flex-col items-center justify-center text-center mb-6">
+              {/* Dual engraved hairline divider with emblem */}
+              <div className="w-full flex items-center justify-center gap-3 sm:gap-4 max-w-xl mb-3">
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-300/40 dark:via-amber-400/30 to-amber-400/70" />
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 dark:bg-amber-400/15 border border-amber-400/30 p-1 flex items-center justify-center shadow-xs">
+                  <NDCLogo className="w-full h-full" />
+                </div>
+                <div className="h-px flex-1 bg-gradient-to-l from-transparent via-amber-300/40 dark:via-amber-400/30 to-amber-400/70" />
+              </div>
+
+              {/* Outstanding Emotional Motto */}
+              <blockquote className="font-serif italic text-base sm:text-lg md:text-xl font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-700 via-amber-600 to-amber-800 dark:from-amber-200 dark:via-yellow-300 dark:to-amber-200 drop-shadow-xs">
                 &ldquo;Once a Notre Damian, Always a Notre Damian.&rdquo;
-              </span>
+              </blockquote>
+
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tracking-wider uppercase mt-1">
+                75+ Batches • One Lifelong Brotherhood • Motijheel, Dhaka
+              </p>
             </div>
-            <div>
-              <a
-                href="http://nurulanambashir.gt.tc/?i=1"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-semibold text-blue-600 dark:text-blue-400 hover:underline transition-colors"
-              >
-                Designed &amp; Developed by Bashir
-              </a>
+
+            {/* Bottom Row: Centered Copyright, Latin Motto & Developer Credit */}
+            <div className="pt-4 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-col items-center justify-center text-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span>© {new Date().getFullYear()} Notre Dame College Alumni Network. All rights reserved.</span>
+                <span className="inline text-slate-300 dark:text-slate-700">•</span>
+                <span className="font-serif italic font-semibold text-amber-700 dark:text-amber-300/90">
+                  Diligite Lumen Sapientiae
+                </span>
+                <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
+                <a
+                  href="http://nurulanambashir.gt.tc/?i=1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-blue-600 dark:text-blue-400 hover:underline transition-colors"
+                >
+                  Designed &amp; Developed by Bashir
+                </a>
+              </div>
             </div>
           </div>
         </footer>

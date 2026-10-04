@@ -23,6 +23,7 @@ import {
   reviewVerificationSubmission,
   toggleAcademicStreamGroupActive,
   updateAlumniPassword,
+  deleteAlumniProfile,
 } from './src/db/adminRepository.ts';
 
 dotenv.config();
@@ -340,6 +341,22 @@ app.post('/api/auth/reset-password', rateLimitGuard(15, 60_000), async (req: Req
   }
 });
 
+// Self-Service Profile / Account Deletion Endpoint
+app.post('/api/auth/delete-account', rateLimitGuard(15, 60_000), async (req: Request, res: Response) => {
+  try {
+    const { profileId } = req.body;
+    if (!profileId) {
+      return res.status(400).json({ error: 'Profile ID is required for deletion.' });
+    }
+
+    await deleteAlumniProfile(Number(profileId));
+    res.json({ success: true, message: 'Profile and associated account deleted successfully.' });
+  } catch (error: any) {
+    console.error('Account deletion error:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete account.' });
+  }
+});
+
 // Get synchronized users (Protected by Firebase Auth)
 app.get('/api/users', requireAuth, async (_req: AuthRequest, res: Response) => {
   try {
@@ -363,6 +380,14 @@ function decodeHtmlEntities(raw: string): string {
     .replace(/&apos;/g, "'")
     .replace(/&#x2F;/gi, '/')
     .replace(/&#x3D;/gi, '=')
+    .replace(/&middot;/gi, '·')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      try {
+        return String.fromCharCode(parseInt(hex, 16));
+      } catch {
+        return _;
+      }
+    })
     .replace(/&#(\d+);/g, (_, dec) => {
       try {
         return String.fromCharCode(Number(dec));
@@ -442,10 +467,25 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
 
     let title = getMeta('og:title') || getMeta('twitter:title') || htmlTitle;
     let description = getMeta('og:description') || getMeta('twitter:description') || getMeta('description');
-    let imageUrl = getMeta('og:image:secure_url') || getMeta('og:image') || getMeta('twitter:image');
-    let videoUrl = getMeta('og:video:secure_url') || getMeta('og:video:url') || getMeta('og:video');
-    const siteName = getMeta('og:site_name') || getMeta('publisher');
+    let imageUrl =
+      getMeta('og:image:secure_url') ||
+      getMeta('og:image') ||
+      getMeta('twitter:image');
+    let videoUrl =
+      getMeta('og:video:secure_url') ||
+      getMeta('og:video:url') ||
+      getMeta('og:video') ||
+      getMeta('twitter:player:stream');
+    let siteName = getMeta('og:site_name') || getMeta('publisher');
     const ogType = getMeta('og:type');
+
+    // Extract link[rel="image_src"] fallback
+    if (!imageUrl) {
+      const linkImgMatch = rawHtml.match(/<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']*)["']/i);
+      if (linkImgMatch && linkImgMatch[1]) {
+        imageUrl = decodeHtmlEntities(linkImgMatch[1].trim());
+      }
+    }
 
     if (isFacebook) {
       if (title && /^(Log into Facebook|Facebook|Log in to Facebook)/i.test(title)) {
@@ -454,12 +494,41 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
       if (description && /^(Log into Facebook|Facebook helps you connect)/i.test(description)) {
         description = undefined;
       }
+
+      // If Facebook direct scrape was thin on metadata, enrich via public oEmbed endpoint
+      if (!imageUrl || !title) {
+        try {
+          const oembedResp = await fetch(
+            `https://noembed.com/embed?url=${encodeURIComponent(finalResolvedUrl)}`,
+            { signal: AbortSignal.timeout(3000) }
+          );
+          if (oembedResp.ok) {
+            const oeJson = await oembedResp.json();
+            if (oeJson && !oeJson.error) {
+              if (!title && oeJson.title) title = oeJson.title;
+              if (!imageUrl && oeJson.thumbnail_url) imageUrl = oeJson.thumbnail_url;
+              if (!siteName && oeJson.author_name) siteName = oeJson.author_name;
+            }
+          }
+        } catch {
+          // graceful fallback
+        }
+      }
     }
 
     let mediaType: 'photo' | 'video' | 'post' | 'article' | 'website' = 'website';
-    if (videoUrl || ogType?.includes('video') || /(?:videos\/|reel\/|watch|\/share\/v\/|\/share\/r\/|fb\.watch)/i.test(finalResolvedUrl)) {
+    if (
+      videoUrl ||
+      ogType?.includes('video') ||
+      /(?:videos\/|reel\/|reels\/|watch|\/share\/v\/|\/share\/r\/|fb\.watch)/i.test(
+        finalResolvedUrl
+      )
+    ) {
       mediaType = 'video';
-    } else if (imageUrl && (/(?:photo\.php|photos\/|\/photo\/)/i.test(finalResolvedUrl) || ogType?.includes('image'))) {
+    } else if (
+      imageUrl &&
+      (/(?:photo\.php|photos\/|\/photo\/)/i.test(finalResolvedUrl) || ogType?.includes('image'))
+    ) {
       mediaType = 'photo';
     } else if (isFacebook) {
       mediaType = 'post';

@@ -1075,6 +1075,24 @@ export async function updateAlumniPassword(profileId: number, passwordHash: stri
   return p || null;
 }
 
+export async function deleteAlumniProfile(profileId: number) {
+  if (isDbConfigured) {
+    try {
+      await db.delete(alumniProfiles).where(eq(alumniProfiles.id, profileId));
+      return true;
+    } catch (error) {
+      console.warn('Database delete profile failed, removing from in-memory:', error);
+    }
+  }
+
+  const idx = inMemoryProfiles.findIndex((item) => item.id === profileId);
+  if (idx > -1) {
+    inMemoryProfiles.splice(idx, 1);
+    return true;
+  }
+  return false;
+}
+
 export async function adminUpdateAlumniGovernance(params: {
   profileId: number;
   verificationStatus?: string;

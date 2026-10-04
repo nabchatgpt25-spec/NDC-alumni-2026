@@ -83,6 +83,89 @@ html {
   animation: subtleGradientShift 10s ease infinite;
 }
 
+/* ==========================================================================
+   AURORA BOREALIS COLOR WAVE SYSTEM
+   ========================================================================== */
+
+@keyframes auroraWave {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes auroraPulse {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(1) translateY(0);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.06) translateY(-4px);
+  }
+}
+
+.aurora-text-gradient {
+  background: linear-gradient(
+    135deg,
+    #1d4ed8 0%,
+    #0284c7 20%,
+    #0d9488 40%,
+    #10b981 60%,
+    #f59e0b 80%,
+    #2563eb 100%
+  );
+  background-size: 300% 300%;
+  animation: auroraWave 8s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark .aurora-text-gradient {
+  background: linear-gradient(
+    135deg,
+    #60a5fa 0%,
+    #38bdf8 20%,
+    #2dd4bf 40%,
+    #34d399 60%,
+    #fbbf24 80%,
+    #818cf8 100%
+  );
+  background-size: 300% 300%;
+  animation: auroraWave 8s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.aurora-ambient-glow {
+  background: radial-gradient(
+    ellipse 85% 60% at 50% 50%,
+    rgba(6, 182, 212, 0.28),
+    rgba(16, 185, 129, 0.2),
+    rgba(59, 130, 246, 0.22),
+    transparent 72%
+  );
+  filter: blur(42px);
+  animation: auroraPulse 6s ease-in-out infinite;
+}
+
+.dark .aurora-ambient-glow {
+  background: radial-gradient(
+    ellipse 85% 60% at 50% 50%,
+    rgba(56, 189, 248, 0.32),
+    rgba(52, 211, 153, 0.26),
+    rgba(129, 140, 248, 0.28),
+    transparent 70%
+  );
+  filter: blur(48px);
+  animation: auroraPulse 6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -591,5 +674,75 @@ html[data-theme="vintage-parchment"] .text-blue-700 {
 
 .animate-marquee:hover {
   animation-play-state: paused;
+}
+
+/* ==========================================================================
+   SMOOTH LIQUID TRANSPARENT GLASS SYSTEM
+   ========================================================================== */
+@keyframes liquidFlow1 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate3d(50px, -60px, 0) scale(1.12) rotate(18deg);
+  }
+  66% {
+    transform: translate3d(-40px, 50px, 0) scale(0.92) rotate(-14deg);
+  }
+}
+
+@keyframes liquidFlow2 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate3d(-60px, 40px, 0) scale(1.08) rotate(-15deg);
+  }
+  66% {
+    transform: translate3d(45px, -50px, 0) scale(0.95) rotate(20deg);
+  }
+}
+
+@keyframes liquidFlow3 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate3d(40px, 50px, 0) scale(1.06) rotate(12deg);
+  }
+  66% {
+    transform: translate3d(-50px, -40px, 0) scale(0.96) rotate(-16deg);
+  }
+}
+
+.animate-liquid-blob-1 {
+  animation: liquidFlow1 22s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.animate-liquid-blob-2 {
+  animation: liquidFlow2 26s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.animate-liquid-blob-3 {
+  animation: liquidFlow3 30s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.liquid-glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 10px 30px 0 rgba(30, 41, 59, 0.05);
+}
+
+.dark .liquid-glass-panel {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px 0 rgba(0, 0, 0, 0.35);
 }
 
