@@ -25,132 +25,20 @@ interface BatchesViewProps {
   onViewProfile?: (profileId: number) => void;
 }
 
-const FIRST_NAMES = [
-  'Tanvir', 'Tahmid', 'Nafis', 'Zubair', 'Fahim', 'Shafayat', 'Mahir', 'Arib',
-  'Adib', 'Rashedul', 'Sajid', 'Abrar', 'Shuvro', 'Mehedi', 'Asifur', 'Syed',
-  'Tariqul', 'Masud', 'Farhan', 'Kamrul', 'Ashfaq', 'galib', 'Sadman', 'Rafid',
-  'Tawsif', 'Muntasir', 'Hasibul', 'Nazmul', 'Imtiaz', 'Soumya', 'Debashish', 'Anindya',
-  'Shahriar', 'Rizwan', 'salman', 'Arman', 'Fardin', 'Ishraq', 'Nabil', 'Raiyan',
-];
-
-const LAST_NAMES = [
-  'Rahman', 'Hossain', 'Ahmed', 'Karim', 'Chowdhury', 'Islam', 'Alam', 'Sadik',
-  'Jamil', 'Faysal', 'Ahsan', 'Mahbub', 'Zahin', 'Hasan', 'Paul', 'Dev',
-  'Siddiqui', 'Khan', 'Talukder', 'Bhuiyan', 'Majumder', 'kabir', 'Uddin', 'Sarker',
-];
-
-const SCIENCE_ROLES = [
-  { pos: 'Senior Software Engineer', inst: 'Google', deg: ['HSC', 'BSc Engineering', 'MSc'], spec: 'Computer Science & Software', city: 'Mountain View', country: 'USA' },
-  { pos: 'Consultant Cardiologist', inst: 'Dhaka Medical College Hospital', deg: ['HSC', 'MBBS', 'FCPS'], spec: 'Medicine, Surgery & Healthcare', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'AI Research Scientist', inst: 'Microsoft Research', deg: ['HSC', 'BSc Engineering', 'PhD'], spec: 'Artificial Intelligence & Data', city: 'Seattle', country: 'USA' },
-  { pos: 'Professor of Electrical Engineering', inst: 'BUET', deg: ['HSC', 'BSc Engineering', 'PhD'], spec: 'Electrical & Electronic Engineering', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Lead Structural Engineer', inst: 'AECOM', deg: ['HSC', 'BSc Engineering', 'MSc'], spec: 'Civil & Structural Engineering', city: 'London', country: 'UK' },
-  { pos: 'Associate Professor of Medicine', inst: 'BSMMU', deg: ['HSC', 'MBBS', 'MD'], spec: 'Medicine, Surgery & Healthcare', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Principal Cloud Architect', inst: 'Amazon Web Services', deg: ['HSC', 'BSc Engineering'], spec: 'Cybersecurity & Cloud', city: 'Toronto', country: 'Canada' },
-  { pos: 'Chief Architect', inst: 'Vitti Sthapati Brindo', deg: ['HSC', 'B.Arch', 'M.Arch'], spec: 'Architecture & Urban Planning', city: 'Dhaka', country: 'Bangladesh' },
-];
-
-const HUMANITIES_ROLES = [
-  { pos: 'Additional Foreign Secretary', inst: 'Ministry of Foreign Affairs', deg: ['HSC', 'BSS', 'MSS'], spec: 'Foreign Affairs & Diplomacy', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Barrister-at-Law & Senior Counsel', inst: 'Supreme Court of Bangladesh', deg: ['HSC', 'LLB', 'LLM', 'Barrister-at-Law'], spec: 'Constitutional & Corporate Law', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Professor of Economics', inst: 'University of Dhaka', deg: ['HSC', 'BSS', 'MSS', 'PhD'], spec: 'Economics & Development Policy', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Senior Policy Advisor', inst: 'United Nations Development Programme', deg: ['HSC', 'BA', 'MA'], spec: 'Economics & Development Policy', city: 'Geneva', country: 'Switzerland' },
-  { pos: 'Executive Editor', inst: 'The Daily Star', deg: ['HSC', 'BSS', 'MSS'], spec: 'Journalism & Media Communications', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Deputy Secretary', inst: 'Government of Bangladesh', deg: ['HSC', 'BSS', 'MSS', 'BCS'], spec: 'Civil Service & Administration (BCS)', city: 'Dhaka', country: 'Bangladesh' },
-];
-
-const COMMERCE_ROLES = [
-  { pos: 'Managing Director & Partner', inst: 'Standard Chartered Bank', deg: ['HSC', 'BBA', 'MBA', 'CFA'], spec: 'Finance, Banking & Investment', city: 'Singapore', country: 'Singapore' },
-  { pos: 'Senior Partner & Fellow Chartered Accountant', inst: 'Hoda Vasi Chowdhury & Co', deg: ['HSC', 'BBA', 'CA / ACA', 'FCA'], spec: 'Chartered Accountancy & Audit', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Chief Marketing Officer', inst: 'Grameenphone Ltd.', deg: ['HSC', 'BBA', 'MBA'], spec: 'Marketing & Brand Strategy', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Vice President, Investment Banking', inst: 'Goldman Sachs', deg: ['HSC', 'BBA', 'MBA', 'CFA'], spec: 'Finance, Banking & Investment', city: 'New York', country: 'USA' },
-  { pos: 'Director of Supply Chain', inst: 'Unilever Bangladesh', deg: ['HSC', 'BBA', 'EMBA'], spec: 'Supply Chain & Operations', city: 'Dhaka', country: 'Bangladesh' },
-  { pos: 'Founder & CEO', inst: 'NextGen FinTech BD', deg: ['HSC', 'BBA', 'MBA'], spec: 'Entrepreneurship & Startups', city: 'Dhaka', country: 'Bangladesh' },
-];
-
-const AVATAR_POOL = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80',
-];
-
-function generateGroupAlumniList(
+function getGroupAlumniList(
   batch: BatchSummary,
-  groupValue: string,
-  targetCount: number
+  groupValue: string
 ): AlumniProfile[] {
   const stored = loadStoredAlumniProfiles();
   const allReal = [...stored, ...ALUMNI_PROFILES].filter(
     (v, i, a) => a.findIndex((t) => t.id === v.id) === i
   );
 
-  const realMatches = allReal.filter(
+  return allReal.filter(
     (p) =>
       (p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear) &&
       p.group?.toLowerCase() === groupValue.toLowerCase()
   );
-
-  const [category, code] = groupValue.split(' ');
-  const isScience = category === 'Science';
-  const isHumanities = category === 'Humanities' || category === 'Arts';
-  const rolePool = isScience ? SCIENCE_ROLES : isHumanities ? HUMANITIES_ROLES : COMMERCE_ROLES;
-  const deptPrefix = isScience ? '1' : isHumanities ? '2' : '3';
-  const hscShort = String(1950 + batch.batchYear).slice(-2);
-  const groupNumCode = isScience
-    ? code
-    : String((code.charCodeAt(0) - 64)).padStart(2, '0');
-
-  const generatedCount = Math.max(0, targetCount - realMatches.length);
-  const seedBase =
-    batch.batchYear * 1000 +
-    groupValue.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) * 13;
-
-  const generated: AlumniProfile[] = Array.from({ length: generatedCount }, (_, idx) => {
-    const seed = seedBase + idx * 17;
-    const fName = FIRST_NAMES[seed % FIRST_NAMES.length];
-    const mName = FIRST_NAMES[(seed * 3 + 7) % FIRST_NAMES.length];
-    const lName = LAST_NAMES[(seed * 5 + 11) % LAST_NAMES.length];
-    const fullName =
-      fName.toLowerCase() === mName.toLowerCase()
-        ? `Md. ${fName.charAt(0).toUpperCase() + fName.slice(1)} ${lName}`
-        : `${fName.charAt(0).toUpperCase() + fName.slice(1)} ${mName.charAt(0).toUpperCase() + mName.slice(1)} ${lName}`;
-
-    const role = rolePool[seed % rolePool.length];
-    const rollSeq = String(idx + 1).padStart(2, '0');
-    const collegeRoll = `${deptPrefix}${hscShort}${groupNumCode}${rollSeq}`;
-
-    return {
-      id: 900000 + batch.batchYear * 1000 + idx + 1,
-      userId: 900000 + batch.batchYear * 1000 + idx + 1,
-      fullName,
-      avatarUrl: AVATAR_POOL[seed % AVATAR_POOL.length],
-      batchYear: batch.batchYear,
-      session: batch.session,
-      group: groupValue,
-      collegeRoll,
-      profession: role.pos,
-      position: role.pos,
-      institution: role.inst,
-      specialty: [role.spec],
-      degree: role.deg,
-      city: role.city,
-      country: role.country,
-      phone: `+88017${String((seed * 12345) % 90000000 + 10000000).slice(0, 8)}`,
-      whatsapp: `+88017${String((seed * 12345) % 90000000 + 10000000).slice(0, 8)}`,
-      email: `${fName.toLowerCase()}.${lName.toLowerCase()}${batch.batchYear}@ndcalumni.org`,
-      isPublic: true,
-      online: idx % 3 === 0,
-      lastSeen: idx % 3 === 0 ? 'Online' : '2h ago',
-      postsCount: (seed % 8) + 1,
-      badges: ['Verified Notredamian'],
-      bio: `Notredamian from Batch ${batch.batchYear} ${batch.session}, ${groupValue}. Currently serving as ${role.pos} at ${role.inst}.`,
-    };
-  });
-
-  return [...realMatches, ...generated];
 }
 
 const SCIENCE_GROUPS = Array.from({ length: 17 }, (_, i) =>
@@ -284,17 +172,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
 
   const selectedGroupAlumni = useMemo(() => {
     if (!activeBatch || !activeBatchGroupStats || !selectedGroup) return [];
-    let count = 0;
-    if (selectedGroup.startsWith('Science ')) {
-      count = activeBatchGroupStats.scienceCounts[selectedGroup.replace('Science ', '')] || 0;
-    } else if (selectedGroup.startsWith('Humanities ') || selectedGroup.startsWith('Arts ')) {
-      const code = selectedGroup.replace('Humanities ', '').replace('Arts ', '');
-      count = activeBatchGroupStats.humanitiesCounts[code] || 0;
-    } else if (selectedGroup.startsWith('Commerce ') || selectedGroup.startsWith('Business Studies ')) {
-      const code = selectedGroup.replace('Commerce ', '').replace('Business Studies ', '');
-      count = activeBatchGroupStats.commerceCounts[code] || 0;
-    }
-    const list = generateGroupAlumniList(activeBatch, selectedGroup, count);
+    const list = getGroupAlumniList(activeBatch, selectedGroup);
     if (!groupSearch.trim()) return list;
     const q = groupSearch.toLowerCase().trim();
     return list.filter(
@@ -822,58 +700,70 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                   </div>
 
                   {/* Alumni Cards Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[540px] overflow-y-auto pr-1">
-                    {selectedGroupAlumni.map((alumnus) => (
-                      <div
-                        key={alumnus.id}
-                        onClick={() => {
-                          if (alumnus.id < 900000 && onViewProfile) {
-                            onViewProfile(alumnus.id);
-                          } else {
-                            setPreviewAlumnus(alumnus);
-                          }
-                        }}
-                        className="group bg-white dark:bg-slate-800/90 rounded-2xl p-3.5 border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs hover:shadow-sm transition-all cursor-pointer flex items-start gap-3"
-                      >
-                        <div className="relative shrink-0">
-                          <img
-                            src={alumnus.avatarUrl}
-                            alt={alumnus.fullName}
-                            className="w-11 h-11 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
-                          />
-                          {alumnus.online && (
-                            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-800" />
-                          )}
+                  {selectedGroupAlumni.length === 0 ? (
+                    <div className="p-8 text-center bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                      <Users className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        No registered alumni in this section yet
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Notredamians from Batch {activeBatch.batchYear} ({selectedGroup}) will appear here as they register on the portal.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[540px] overflow-y-auto pr-1">
+                      {selectedGroupAlumni.map((alumnus) => (
+                        <div
+                          key={alumnus.id}
+                          onClick={() => {
+                            if (alumnus.id < 900000 && onViewProfile) {
+                              onViewProfile(alumnus.id);
+                            } else {
+                              setPreviewAlumnus(alumnus);
+                            }
+                          }}
+                          className="group bg-white dark:bg-slate-800/90 rounded-2xl p-3.5 border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-400 dark:hover:border-blue-500 shadow-2xs hover:shadow-sm transition-all cursor-pointer flex items-start gap-3"
+                        >
+                          <div className="relative shrink-0">
+                            <img
+                              src={alumnus.avatarUrl}
+                              alt={alumnus.fullName}
+                              className="w-11 h-11 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
+                            />
+                            {alumnus.online && (
+                              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-800" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <h5 className="text-xs font-extrabold text-slate-900 dark:text-slate-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                                {alumnus.fullName}
+                              </h5>
+                              <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                            </div>
+
+                            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
+                              <span>Roll: {alumnus.collegeRoll || 'N/A'}</span>
+                              <span>•</span>
+                              <span>{alumnus.group}</span>
+                            </div>
+
+                            <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate mt-1">
+                              {alumnus.position}
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                              <span className="truncate">{alumnus.institution}</span>
+                              <span className="shrink-0">
+                                {alumnus.city}, {alumnus.country}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <h5 className="text-xs font-extrabold text-slate-900 dark:text-slate-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                              {alumnus.fullName}
-                            </h5>
-                            <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                          </div>
-
-                          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
-                            <span>Roll: {alumnus.collegeRoll || 'N/A'}</span>
-                            <span>•</span>
-                            <span>{alumnus.group}</span>
-                          </div>
-
-                          <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate mt-1">
-                            {alumnus.position}
-                          </div>
-
-                          <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-                            <span className="truncate">{alumnus.institution}</span>
-                            <span className="shrink-0">
-                              {alumnus.city}, {alumnus.country}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

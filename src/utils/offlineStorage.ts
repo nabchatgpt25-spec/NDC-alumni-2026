@@ -1,7 +1,5 @@
 import { AlumniProfile, PostItem } from '../types';
-import { SEED_ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
-import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
-import reunionCelebrationImg from '../assets/images/ndc_reunion_celebration_1790233384454.jpg';
+import { loadStoredAlumniProfiles } from '../data/mockData';
 
 export const CACHED_DIRECTORY_KEY = 'ndc_cached_directory';
 export const CACHED_DIRECTORY_TIMESTAMP_KEY = 'ndc_cached_directory_timestamp';
@@ -108,7 +106,7 @@ export function saveSavedPosts(posts: PostItem[]) {
 }
 
 export function getSavedPostIds(): number[] {
-  if (typeof window === 'undefined') return [9001, 9002];
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(SAVED_POST_IDS_KEY);
     if (raw) {
@@ -118,7 +116,7 @@ export function getSavedPostIds(): number[] {
   } catch (e) {
     console.warn('Failed to parse saved post ids', e);
   }
-  return [9001, 9002];
+  return [];
 }
 
 export function toggleSavedPostId(postId: number): boolean {

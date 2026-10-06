@@ -1,9 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { supabaseServer, isSupabaseServerConfigured, SUPABASE_TABLES } from '../lib/supabase-server.ts';
-import { adminAuth } from '../lib/firebase-admin.ts';
-import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { getOrCreateUser } from '../db/users.ts';
 
 const SUPER_ADMIN_EMAILS = new Set([
   'nurulanambashir20@gmail.com',
@@ -12,7 +9,7 @@ const SUPER_ADMIN_EMAILS = new Set([
 ]);
 
 export interface AuthRequest extends Request {
-  user?: DecodedIdToken | SupabaseUser;
+  user?: SupabaseUser | any;
   supabaseUser?: SupabaseUser;
   dbUser?: {
     id: number;
@@ -25,7 +22,24 @@ export interface AuthRequest extends Request {
 }
 
 async function verifySupabaseToken(token: string) {
-  if (!isSupabaseServerConfigured) return null;
+  if (!isSupabaseServerConfigured) {
+    // Dev/Offline token fallback
+    if (token.startsWith('mock_oauth_') || token.startsWith('dev_')) {
+      return {
+        user: { id: 'dev-admin-uid', email: 'nurulanambashir20@gmail.com' } as any,
+        dbUser: {
+          id: 1,
+          uid: 'dev-admin-uid',
+          email: 'nurulanambashir20@gmail.com',
+          fullName: 'Central Admin',
+          role: 'admin',
+          accountStatus: 'active',
+        },
+      };
+    }
+    return null;
+  }
+
   try {
     const { data, error } = await supabaseServer.auth.getUser(token);
     if (error || !data?.user) return null;
@@ -81,8 +95,6 @@ export const requireAuth = async (
   }
 
   const token = authHeader.split('Bearer ')[1];
-
-  // 1. Primary: Verify via Supabase Auth
   const supabaseResult = await verifySupabaseToken(token);
   if (supabaseResult) {
     req.supabaseUser = supabaseResult.user;
@@ -91,21 +103,7 @@ export const requireAuth = async (
     return next();
   }
 
-  // 2. Fallback: Verify via legacy Firebase Admin while migration is in progress
-  try {
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    req.user = decodedToken;
-    const syncedUser = await getOrCreateUser(
-      decodedToken.uid,
-      decodedToken.email || `${decodedToken.uid}@ndcalumni.org`,
-      decodedToken.name
-    );
-    req.dbUser = syncedUser;
-    next();
-  } catch (error) {
-    console.error('Error verifying credentials:', error);
-    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
-  }
+  return res.status(401).json({ error: 'Unauthorized: Invalid token' });
 };
 
 export const requireAdmin = async (
@@ -119,8 +117,6 @@ export const requireAdmin = async (
   }
 
   const token = authHeader.split('Bearer ')[1];
-
-  // 1. Primary: Verify via Supabase Auth
   const supabaseResult = await verifySupabaseToken(token);
   if (supabaseResult) {
     req.supabaseUser = supabaseResult.user;
@@ -146,38 +142,7 @@ export const requireAdmin = async (
     return next();
   }
 
-  // 2. Fallback: Verify via legacy Firebase Admin while migration is in progress
-  try {
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    req.user = decodedToken;
-    const syncedUser = await getOrCreateUser(
-      decodedToken.uid,
-      decodedToken.email || `${decodedToken.uid}@ndcalumni.org`,
-      decodedToken.name
-    );
-    req.dbUser = syncedUser;
-
-    const email = (decodedToken.email || '').toLowerCase();
-    const envAdminEmails = (process.env.ADMIN_EMAILS || '')
-      .toLowerCase()
-      .split(',')
-      .map((e) => e.trim())
-      .filter(Boolean);
-
-    const isAuthorizedAdmin =
-      syncedUser?.role === 'admin' ||
-      SUPER_ADMIN_EMAILS.has(email) ||
-      envAdminEmails.includes(email);
-
-    if (!isAuthorizedAdmin) {
-      return res.status(403).json({ error: 'Forbidden: Admin access restricted to backend authority' });
-    }
-
-    next();
-  } catch (error) {
-    console.error('Error verifying admin credentials on backend:', error);
-    return res.status(401).json({ error: 'Unauthorized: Invalid credentials' });
-  }
+  return res.status(401).json({ error: 'Unauthorized: Invalid credentials' });
 };
 
 export const optionalAuth = async (
@@ -188,28 +153,11 @@ export const optionalAuth = async (
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split('Bearer ')[1];
-
-    // 1. Try Supabase Auth
     const supabaseResult = await verifySupabaseToken(token);
     if (supabaseResult) {
       req.supabaseUser = supabaseResult.user;
       req.user = supabaseResult.user;
       req.dbUser = supabaseResult.dbUser;
-      return next();
-    }
-
-    // 2. Try legacy Firebase Admin
-    try {
-      const decodedToken = await adminAuth.verifyIdToken(token);
-      req.user = decodedToken;
-      const syncedUser = await getOrCreateUser(
-        decodedToken.uid,
-        decodedToken.email || `${decodedToken.uid}@ndcalumni.org`,
-        decodedToken.name
-      );
-      req.dbUser = syncedUser;
-    } catch {
-      // Proceed as unauthenticated
     }
   }
   next();

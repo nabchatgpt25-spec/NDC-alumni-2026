@@ -165,7 +165,7 @@ interface AdminCommandCenterViewProps {
 export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({
   onViewProfile,
 }) => {
-  const { currentUser, firebaseToken, loginWithGoogle, getAuthHeaders } = useAuth();
+  const { currentUser, loginWithGoogle, getAuthHeaders, isAdminUser, supabaseToken } = useAuth();
 
   const [activeSection, setActiveSection] = useState<
     'overview' | 'directory' | 'verifications' | 'streams' | 'blood_notices' | 'domain_export'
@@ -710,7 +710,7 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {!firebaseToken ? (
+            {!isAdminUser && !supabaseToken ? (
               <button
                 type="button"
                 onClick={async () => {

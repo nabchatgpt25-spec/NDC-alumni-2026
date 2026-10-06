@@ -13,7 +13,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { NDCLogo } from '../NDCLogo';
-import { ALUMNI_PROFILES } from '../../data/mockData';
+import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../../data/mockData';
+import { getCachedDirectory } from '../../utils/offlineStorage';
 import { AlumniProfile } from '../../types';
 
 interface MembershipVerifyModalProps {
@@ -40,7 +41,13 @@ export const MembershipVerifyModal: React.FC<MembershipVerifyModalProps> = ({
     setHasSearched(true);
     const term = searchTerm.trim().toLowerCase();
 
-    const match = ALUMNI_PROFILES.find(
+    const stored = loadStoredAlumniProfiles();
+    const cached = getCachedDirectory();
+    const allAlumni = [...stored, ...cached, ...ALUMNI_PROFILES].filter(
+      (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+    );
+
+    const match = allAlumni.find(
       (a) =>
         a.fullName.toLowerCase().includes(term) ||
         a.collegeRoll?.toLowerCase().includes(term) ||

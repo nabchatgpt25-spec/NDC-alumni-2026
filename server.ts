@@ -15,7 +15,6 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import * as dotenv from 'dotenv';
 import { requireAuth, requireAdmin, optionalAuth, type AuthRequest } from './src/middleware/auth.ts';
-import { getUsers } from './src/db/users.ts';
 import {
   adminUpdateAlumniGovernance,
   createOrRegisterAlumniProfile,
@@ -364,17 +363,6 @@ app.post('/api/auth/delete-account', rateLimitGuard(15, 60_000), async (req: Req
   } catch (error: any) {
     console.error('Account deletion error:', error);
     res.status(500).json({ error: error.message || 'Failed to delete account.' });
-  }
-});
-
-// Get synchronized users (Protected by Firebase Auth)
-app.get('/api/users', requireAuth, async (_req: AuthRequest, res: Response) => {
-  try {
-    const allUsers = await getUsers();
-    res.json(allUsers);
-  } catch (error: any) {
-    console.error('Failed to fetch users:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch users' });
   }
 });
 
@@ -944,6 +932,7 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
+        allowedHosts: true,
       },
       appType: 'spa',
     });

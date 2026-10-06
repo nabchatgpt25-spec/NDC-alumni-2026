@@ -24,7 +24,6 @@ import { AlumniProfile, VouchRequest } from '../../types';
 import {
   loadVouchRequests,
   submitPeerVouch,
-  simulateDemoVouchForUser,
   getVouchShareLink,
   getWhatsAppVouchShareUrl,
   registerUserVouchRequest,
@@ -122,34 +121,6 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
     navigator.clipboard?.writeText(link);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
-  };
-
-  const handleSimulateClassmateVouch = () => {
-    simulateDemoVouchForUser(currentUser, (updated) => {
-      updateProfile(updated);
-      setVouchSuccessMsg(
-        updated.verificationStatus === 'verified'
-          ? '2/2 Vouches Complete! Your profile is now officially Verified Notredamian.'
-          : `1 Classmate Vouch received (${updated.vouchesCount}/2)! Need 1 more vouch to complete verification.`
-      );
-      setTimeout(() => setVouchSuccessMsg(''), 4000);
-    });
-  };
-
-  const handleResetToPendingForDemo = () => {
-    const resetProfile: Partial<AlumniProfile> = {
-      verificationStatus: 'pending_vouch',
-      verificationMethod: 'two_vouches',
-      vouchesCount: 0,
-      vouchTargetCount: 2,
-      verifiedBy: [],
-      badges: (currentUser.badges || []).filter((b) => b !== 'Verified Notredamian'),
-    };
-    updateProfile(resetProfile);
-    registerUserVouchRequest({ ...currentUser, ...resetProfile });
-    setDocVerifiedSuccess(false);
-    setVouchSuccessMsg('Verification status set to Pending (0/2 Vouches) so you can test the Peer Vouch or ID Upload flow.');
-    setTimeout(() => setVouchSuccessMsg(''), 4000);
   };
 
   const handleConfirmVouch = (request: VouchRequest) => {
@@ -472,17 +443,6 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
                           <span>WhatsApp</span>
                         </a>
                       </div>
-
-                      {/* Demo Quick Test Button */}
-                      <button
-                        type="button"
-                        onClick={handleSimulateClassmateVouch}
-                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 text-xs font-bold text-blue-700 dark:text-blue-300 transition-colors"
-                        title="Simulate a batchmate vouching for you"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                        <span>⚡ Test Vouch (Simulate Classmate Endorsement)</span>
-                      </button>
                     </div>
                   </div>
 
@@ -548,16 +508,6 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
                     >
                       <Users className="w-3.5 h-3.5" />
                       <span>Vouch for Classmates ({allPendingCount} Pending)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleResetToPendingForDemo}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-                      title="Switch status to Pending (0/2 Vouches) to test peer vouching or ID upload"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Test Pending Verification Flow</span>
                     </button>
                   </div>
                 </div>

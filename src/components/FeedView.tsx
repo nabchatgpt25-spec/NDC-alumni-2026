@@ -120,7 +120,17 @@ export const FeedView: React.FC<FeedViewProps> = ({
       const raw = localStorage.getItem('ndc_alumni_posts');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter(
+            (p) =>
+              p &&
+              p.id &&
+              p.id !== 9001 &&
+              p.id !== 9002 &&
+              !String(p.id).startsWith('demo-') &&
+              !String(p.id).startsWith('mock-')
+          );
+        }
       }
     } catch (e) {
       console.warn('Failed to load posts', e);

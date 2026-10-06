@@ -1,12 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import {
-  setPersistence,
-  browserLocalPersistence,
-  signInWithPopup,
-  onAuthStateChanged,
-  signOut
-} from 'firebase/auth';
-import { auth, googleAuthProvider } from '../lib/firebase';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import {
   getOrCreateSupabaseProfile,

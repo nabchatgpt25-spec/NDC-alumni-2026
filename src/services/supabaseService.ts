@@ -14,18 +14,9 @@ import {
   VouchRequest,
 } from '../types';
 import {
-  ALUMNI_PROFILES,
   BATCH_LIST,
-  NOTIFICATIONS_LIST,
-  saveStoredAlumniProfiles,
+  loadStoredAlumniProfiles,
 } from '../data/mockData';
-import { INITIAL_OFFLINE_SAVED_POSTS } from '../utils/offlineStorage';
-import { INITIAL_ALBUMS } from '../data/galleryData';
-import { OFFICIAL_NOTICES } from '../data/noticesData';
-import {
-  INITIAL_BLOOD_DONORS,
-  INITIAL_BLOOD_REQUESTS,
-} from '../utils/bloodDonationService';
 
 // =============================================================================
 // 1. ALUMNI DIRECTORY & BATCHES

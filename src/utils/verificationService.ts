@@ -73,186 +73,32 @@ export const getWhatsAppVouchShareUrl = (user: AlumniProfile): string => {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 };
 
-// Initial seed requests from real batch cohorts needing peer vouches or admin review
-const INITIAL_VOUCH_REQUESTS: VouchRequest[] = [
-  {
-    id: 'vouch-req-101',
-    requesterId: 2001,
-    requesterName: 'Raihan Kabir',
-    requesterAvatar:
-      'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&auto=format&fit=crop&q=80',
-    batchYear: 68,
-    collegeRoll: '118105',
-    group: 'Science',
-    section: 'Group 4 (Day Shift)',
-    profession: 'Software Engineer at Shohoz',
-    city: 'Dhaka',
-    createdAt: '2 hours ago',
-    status: 'pending',
-    targetVouches: 2,
-    idProofUrl:
-      'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80',
-    idDocType: 'id_card',
-    vouches: [
-      {
-        id: 'v-1',
-        voucherId: 1002,
-        voucherName: 'Tanvir Ahmed Chowdhury',
-        voucherAvatar:
-          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-        voucherBatch: 58,
-        date: '1 hour ago',
-        comment: 'I know Raihan from NDSC programming club. Genuine Notredamian!',
-      },
-    ],
-    message:
-      'Hello brothers of Batch 68! Room 304, Father Timm building memories. Uploaded my College ID card as well for Admin verification.',
-  },
-  {
-    id: 'vouch-req-102',
-    requesterId: 2002,
-    requesterName: 'Samiul Alim',
-    requesterAvatar:
-      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80',
-    batchYear: 68,
-    collegeRoll: '118240',
-    group: 'Business Studies',
-    section: 'Group 8 (Morning Shift)',
-    profession: 'Financial Analyst at IDLC',
-    city: 'Dhaka',
-    createdAt: '5 hours ago',
-    status: 'pending',
-    targetVouches: 2,
-    idProofUrl:
-      'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&auto=format&fit=crop&q=80',
-    idDocType: 'nid_card',
-    vouches: [],
-    message:
-      'Commerce Batch 68. Uploaded my National ID (NID) & HSC Registration slip for Admin verification.',
-  },
-  {
-    id: 'vouch-req-103',
-    requesterId: 2003,
-    requesterName: 'Shahriar Nafis',
-    requesterAvatar:
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
-    batchYear: 60,
-    collegeRoll: '110052',
-    group: 'Science',
-    section: 'Group 1',
-    profession: 'Senior Software Engineer at Pathao',
-    city: 'Dhaka',
-    createdAt: '1 day ago',
-    status: 'pending',
-    targetVouches: 2,
-    vouches: [
-      {
-        id: 'v-2',
-        voucherId: 1003,
-        voucherName: 'Tariqul Islam',
-        voucherAvatar:
-          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-        voucherBatch: 52,
-        date: '18 hours ago',
-        comment:
-          'Studied together at NDC in Science Group. Dedicated Notredamian brother and tech lead.',
-      },
-    ],
-    message: 'Batch 60 brother here. Need 1 more vouch or Admin approval to complete verification.',
-  },
-  {
-    id: 'vouch-req-104',
-    requesterId: 2004,
-    requesterName: 'Adnan Sami Chowdhury',
-    requesterAvatar:
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
-    batchYear: 72,
-    collegeRoll: '122019',
-    group: 'Science',
-    section: 'Group 3',
-    profession: 'BUET CSE Student (Batch 22)',
-    city: 'Dhaka',
-    createdAt: '3 days ago',
-    status: 'pending',
-    targetVouches: 2,
-    idProofUrl:
-      'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&auto=format&fit=crop&q=80',
-    idDocType: 'hsc_slip',
-    vouches: [],
-    message: 'NDC Batch 72. Attached my HSC Admit Card & College ID for Admin review.',
-  },
-];
+// Initial seed requests (starts empty; populated only by real user submissions)
+const INITIAL_VOUCH_REQUESTS: VouchRequest[] = [];
 
-// Initial seed ID / NID Document Submissions for Admin to review and verify
-const INITIAL_ADMIN_DOC_SUBMISSIONS: AdminDocSubmission[] = [
-  {
-    id: 'doc-sub-101',
-    userId: 2001,
-    fullName: 'Raihan Kabir',
-    avatarUrl:
-      'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&auto=format&fit=crop&q=80',
-    batchYear: 68,
-    collegeRoll: '118105',
-    group: 'Science',
-    phone: '+8801711223344',
-    email: 'raihan.b68@ndcalumni.org',
-    docType: 'id_card',
-    docTypeLabel: 'Notre Dame College ID Card',
-    documentUrl:
-      'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80',
-    submittedAt: '2 hours ago',
-    status: 'pending',
-  },
-  {
-    id: 'doc-sub-102',
-    userId: 2002,
-    fullName: 'Samiul Alim',
-    avatarUrl:
-      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80',
-    batchYear: 68,
-    collegeRoll: '118240',
-    group: 'Business Studies',
-    phone: '+8801819556677',
-    email: 'samiul.b68@ndcalumni.org',
-    docType: 'nid_card',
-    docTypeLabel: 'National ID Card (NID) + Roll Match',
-    documentUrl:
-      'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&auto=format&fit=crop&q=80',
-    submittedAt: '5 hours ago',
-    status: 'pending',
-  },
-  {
-    id: 'doc-sub-104',
-    userId: 2004,
-    fullName: 'Adnan Sami Chowdhury',
-    avatarUrl:
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
-    batchYear: 72,
-    collegeRoll: '122019',
-    group: 'Science',
-    phone: '+8801911887766',
-    email: 'adnan.b72@buet.ac.bd',
-    docType: 'hsc_slip',
-    docTypeLabel: 'HSC Admit / Registration Card',
-    documentUrl:
-      'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&auto=format&fit=crop&q=80',
-    submittedAt: '1 day ago',
-    status: 'pending',
-  },
-];
+// Initial ID / NID Document Submissions (starts empty; populated only by real user submissions)
+const INITIAL_ADMIN_DOC_SUBMISSIONS: AdminDocSubmission[] = [];
 
 export const loadVouchRequests = (): VouchRequest[] => {
-  if (typeof window === 'undefined') return INITIAL_VOUCH_REQUESTS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(VOUCH_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter(
+          (r: VouchRequest) =>
+            r &&
+            r.id &&
+            !r.id.startsWith('vouch-req-10') &&
+            !r.id.startsWith('demo-')
+        );
+      }
     }
   } catch (e) {
     console.warn('Failed to load vouch requests from storage', e);
   }
-  return INITIAL_VOUCH_REQUESTS;
+  return [];
 };
 
 export const saveVouchRequests = (requests: VouchRequest[]) => {
@@ -267,17 +113,25 @@ export const saveVouchRequests = (requests: VouchRequest[]) => {
 };
 
 export const loadAdminDocSubmissions = (): AdminDocSubmission[] => {
-  if (typeof window === 'undefined') return INITIAL_ADMIN_DOC_SUBMISSIONS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(ADMIN_DOCS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter(
+          (d: AdminDocSubmission) =>
+            d &&
+            d.id &&
+            !d.id.startsWith('doc-sub-10') &&
+            !d.id.startsWith('demo-')
+        );
+      }
     }
   } catch (e) {
     console.warn('Failed to load admin document submissions', e);
   }
-  return INITIAL_ADMIN_DOC_SUBMISSIONS;
+  return [];
 };
 
 export const saveAdminDocSubmissions = (submissions: AdminDocSubmission[]) => {

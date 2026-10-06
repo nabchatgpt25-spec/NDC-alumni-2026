@@ -74,193 +74,32 @@ export function sanitizeInputText(value: string, maxLength = 300): string {
  */
 export const INITIAL_BLOOD_DONORS: BloodDonorProfile[] = [];
 
-export const INITIAL_BLOOD_REQUESTS: BloodEmergencyRequest[] = [
-  {
-    id: 'blood-req-1001',
-    bloodGroup: 'O-',
-    unitsRequired: 2,
-    unitsFulfilled: 0,
-    hospitalName: 'Dhaka Medical College Hospital (DMCH) — Cardiac Surgery ICU',
-    hospitalArea: 'Shahbagh / Motijheel / Ramna (DMCH, BSMMU, BIRDEM)',
-    city: 'Dhaka',
-    requiredDateTime: 'Today, within 4 hours',
-    emergencyLevel: 'critical',
-    contactMethod: 'Portal Secure Coordination',
-    coordinationRef: 'DMCH Transfusion Medicine Counter #2 (Ref: NDC-B52-Cardiac)',
-    description:
-      'Urgent 2 units of O-Negative whole blood needed for emergency bypass surgery of Batch 48 alumnus father. Cross-matching desk is ready at DMCH Transfusion Medicine Dept.',
-    patientRelation: 'Father of Batch 48 Alumnus',
-    requesterId: 101,
-    requesterName: 'Dr. Tariqul Islam Chowdhury',
-    requesterAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    requesterBatch: 52,
-    requesterVerified: true,
-    status: 'Active',
-    createdAt: '35 mins ago',
-    updatedAt: '10 mins ago',
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    responses: [],
-    verifiedByAdmin: 'NDC Emergency Welfare Desk',
-  },
-  {
-    id: 'blood-req-1002',
-    bloodGroup: 'B+',
-    unitsRequired: 2,
-    unitsFulfilled: 1,
-    hospitalName: 'Square Hospital Limited — Level 4 Blood Bank',
-    hospitalArea: 'Dhanmondi / Panthapath / Green Road (Square, Labaid)',
-    city: 'Dhaka',
-    requiredDateTime: 'Today by 8:00 PM',
-    emergencyLevel: 'urgent',
-    contactMethod: 'Hospital Blood Bank Desk',
-    coordinationRef: 'Square Blood Bank Counter, Patient File #SQ-88412',
-    description:
-      '1 more unit of B+ blood required for scheduled orthopedic reconstruction of a Batch 64 brother following a road accident. 1 unit already pledged by a batchmate.',
-    patientRelation: 'Batch 64 Alumnus',
-    requesterId: 1005,
-    requesterName: 'Barrister Nabeel Hasan',
-    requesterAvatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=200&auto=format&fit=crop&q=80',
-    requesterBatch: 64,
-    requesterVerified: true,
-    status: 'Donor Found',
-    createdAt: '2 hours ago',
-    updatedAt: '45 mins ago',
-    expiresAt: new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString(),
-    responses: [
-      {
-        id: 'resp-201',
-        requestId: 'blood-req-1002',
-        donorUserId: 1003,
-        donorName: 'Tariqul Islam',
-        donorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-        donorBatchYear: 52,
-        donorBloodGroup: 'B+',
-        donorPreferredArea: 'Dhanmondi / Panthapath / Green Road (Square, Labaid)',
-        respondedAt: '1 hour ago',
-        status: 'accepted',
-        note: 'I am 15 minutes from Panthapath. Heading to Square Blood Bank for cross-matching.',
-      },
-    ],
-    verifiedByAdmin: 'NDC Emergency Welfare Desk',
-  },
-  {
-    id: 'blood-req-1003',
-    bloodGroup: 'A+',
-    unitsRequired: 1,
-    unitsFulfilled: 0,
-    hospitalName: 'BSMMU (PG Hospital) — Cabin Block Blood Bank',
-    hospitalArea: 'Shahbagh / Motijheel / Ramna (DMCH, BSMMU, BIRDEM)',
-    city: 'Dhaka',
-    requiredDateTime: 'Tomorrow Morning, 9:30 AM',
-    emergencyLevel: 'urgent',
-    contactMethod: 'Batch Coordinator Relay',
-    coordinationRef: 'BSMMU Block C, Transfusion Unit',
-    description:
-      'Need 1 unit A+ blood for thalassemia support & surgical prep for a Batch 58 alumnus family member at BSMMU Shahbagh.',
-    patientRelation: 'Family Member of Batch 58 Alumnus',
-    requesterId: 103,
-    requesterName: 'Dr. Zubair Al-Mahmud',
-    requesterAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
-    requesterBatch: 58,
-    requesterVerified: true,
-    status: 'Active',
-    createdAt: '4 hours ago',
-    updatedAt: '2 hours ago',
-    expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-    responses: [],
-    verifiedByAdmin: 'NDC Emergency Welfare Desk',
-  },
-  {
-    id: 'blood-req-1004',
-    bloodGroup: 'AB+',
-    unitsRequired: 2,
-    unitsFulfilled: 0,
-    hospitalName: 'National Heart Foundation Hospital & Research Institute',
-    hospitalArea: 'Mirpur / Agargaon / Shyamoli (NICVD, NIKDU, Heart Foundation)',
-    city: 'Dhaka',
-    requiredDateTime: 'Tomorrow, 2:00 PM',
-    emergencyLevel: 'standard',
-    contactMethod: 'Portal Secure Coordination',
-    coordinationRef: 'Heart Foundation Blood Transfusion Wing, Mirpur-2',
-    description:
-      'Seeking 2 standby AB+ donors for planned valve replacement procedure of a senior Batch 38 Notredamian.',
-    patientRelation: 'Batch 38 Senior Alumnus',
-    requesterId: 900002,
-    requesterName: 'Dr. Ashraful Alam Chowdhury',
-    requesterAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    requesterBatch: 60,
-    requesterVerified: true,
-    status: 'Pending Verification',
-    createdAt: '1 hour ago',
-    updatedAt: '1 hour ago',
-    expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
-    responses: [],
-  },
-  {
-    id: 'blood-req-1005',
-    bloodGroup: 'O+',
-    unitsRequired: 2,
-    unitsFulfilled: 2,
-    hospitalName: 'Evercare Hospital Dhaka',
-    hospitalArea: 'Gulshan / Banani / Bashundhara (Evercare, United)',
-    city: 'Dhaka',
-    requiredDateTime: 'Completed Yesterday',
-    emergencyLevel: 'critical',
-    contactMethod: 'Hospital Blood Bank Desk',
-    coordinationRef: 'Evercare Transfusion Center',
-    description:
-      '2 units of O+ blood successfully donated by Batch 60 & Batch 66 brothers for emergency neuro-trauma surgery. Alhamdulillah, patient is stable.',
-    patientRelation: 'Batch 66 Alumnus',
-    requesterId: 102,
-    requesterName: 'Engr. Tanvir Ahmed Siddiqui',
-    requesterAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-    requesterBatch: 66,
-    requesterVerified: true,
-    status: 'Fulfilled',
-    createdAt: 'Yesterday',
-    updatedAt: 'Yesterday',
-    responses: [
-      {
-        id: 'resp-202',
-        requestId: 'blood-req-1005',
-        donorUserId: 2003,
-        donorName: 'Shahriar Nafis',
-        donorAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
-        donorBatchYear: 60,
-        donorBloodGroup: 'O+',
-        donorPreferredArea: 'Gulshan / Banani / Bashundhara (Evercare, United)',
-        respondedAt: 'Yesterday',
-        status: 'confirmed_donated',
-        note: 'Cross-matched and completed donation at Evercare Blood Bank.',
-      },
-    ],
-    verifiedByAdmin: 'NDC Emergency Welfare Desk',
-  },
-];
+export const INITIAL_BLOOD_REQUESTS: BloodEmergencyRequest[] = [];
 
 /**
  * Load all blood donors from localStorage merged with INITIAL_BLOOD_DONORS.
  */
 export function loadBloodDonors(): BloodDonorProfile[] {
-  if (typeof window === 'undefined') return [...INITIAL_BLOOD_DONORS];
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(BLOOD_DONORS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const merged = [...parsed];
-        for (const seed of INITIAL_BLOOD_DONORS) {
-          if (!merged.some((d) => d.userId === seed.userId)) {
-            merged.push(seed);
-          }
-        }
-        return merged;
+        return parsed.filter(
+          (d: BloodDonorProfile) =>
+            d &&
+            d.userId &&
+            !(d.userId >= 101 && d.userId <= 120) &&
+            !(d.userId >= 1001 && d.userId <= 1006) &&
+            !(d.userId >= 800000 && d.userId <= 999999)
+        );
       }
     }
   } catch (e) {
     console.warn('Failed to load blood donors from storage', e);
   }
-  return [...INITIAL_BLOOD_DONORS];
+  return [];
 }
 
 export function saveBloodDonors(donors: BloodDonorProfile[]): void {
@@ -353,23 +192,22 @@ export function upsertBloodDonorProfile(
  * Load all emergency blood requests, automatically marking expired requests if past their expiresAt timestamp.
  */
 export function loadBloodRequests(): BloodEmergencyRequest[] {
-  if (typeof window === 'undefined') return [...INITIAL_BLOOD_REQUESTS];
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(BLOOD_REQUESTS_STORAGE_KEY);
     let list: BloodEmergencyRequest[] = [];
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        list = [...parsed];
-        for (const seed of INITIAL_BLOOD_REQUESTS) {
-          if (!list.some((r) => r.id === seed.id)) {
-            list.push(seed);
-          }
-        }
+        list = parsed.filter(
+          (r: BloodEmergencyRequest) =>
+            r &&
+            r.id &&
+            !r.id.startsWith('blood-req-100') &&
+            !r.id.startsWith('mock-') &&
+            !r.id.startsWith('demo-')
+        );
       }
-    }
-    if (list.length === 0) {
-      list = [...INITIAL_BLOOD_REQUESTS];
     }
 
     // Check if any active/pending request has passed its expiresAt date
@@ -395,7 +233,7 @@ export function loadBloodRequests(): BloodEmergencyRequest[] {
   } catch (e) {
     console.warn('Failed to load blood requests from storage', e);
   }
-  return [...INITIAL_BLOOD_REQUESTS];
+  return [];
 }
 
 export function saveBloodRequests(requests: BloodEmergencyRequest[]): void {
