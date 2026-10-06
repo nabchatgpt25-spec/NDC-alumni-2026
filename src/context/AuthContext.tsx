@@ -1,12 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import {
-  setPersistence,
-  browserLocalPersistence,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-} from 'firebase/auth';
-import { auth, googleAuthProvider } from '../lib/firebase';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import {
   getOrCreateSupabaseProfile,
@@ -62,7 +54,6 @@ const ACCOUNTS_STORAGE_KEY = 'ndc_registered_accounts';
 const PASSWORD_SALT = 'ndc_dhaka_1949_salt_v1:';
 
 // In-memory token reference (never persisted to localStorage per security guidelines)
-let inMemoryFirebaseToken: string | null = null;
 let inMemorySupabaseToken: string | null = null;
 
 async function hashPassword(rawPassword: string): Promise<string> {
@@ -133,7 +124,6 @@ const saveAccounts = (accounts: RegisteredAccount[]) => {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const otpStoreRef = useRef<Map<string, PendingOtpEntry>>(new Map());
-  const [firebaseToken, setFirebaseToken] = useState<string | null>(null);
   const [supabaseToken, setSupabaseToken] = useState<string | null>(null);
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
 
@@ -212,41 +202,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Configure browserLocalPersistence so authentication sessions remain valid across browser restarts, tabs, and devices
-  useEffect(() => {
-    setPersistence(auth, browserLocalPersistence).catch((error) => {
-      console.warn('Failed to set Firebase auth persistence (browserLocalPersistence):', error);
-    });
-  }, []);
-
-  // Listen to Firebase Auth state changes and keep ID token in memory
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        try {
-          const token = await fbUser.getIdToken();
-          inMemoryFirebaseToken = token;
-          setFirebaseToken(token);
-
-          // Sync authenticated Firebase user with backend
-          await fetch(apiUrl('/api/auth/sync'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-          }).catch(() => {});
-        } catch (err) {
-          console.error('Failed to retrieve Firebase ID token:', err);
-        }
-      } else {
-        inMemoryFirebaseToken = null;
-        setFirebaseToken(null);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
   useEffect(() => {
     try {
       localStorage.setItem(AUTH_STORAGE_KEY, String(isLoggedIn));
@@ -272,7 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       'Content-Type': 'application/json',
     };
 
-    // 1. Primary: Use Supabase session JWT
+    // Primary: Use Supabase session JWT
     if (isSupabaseConfigured) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -288,25 +243,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return headers;
     }
 
-    // 2. Fallback: Use Firebase ID token
-    if (auth.currentUser) {
-      try {
-        const freshToken = await auth.currentUser.getIdToken();
-        inMemoryFirebaseToken = freshToken;
-        headers.Authorization = `Bearer ${freshToken}`;
-      } catch {
-        if (inMemoryFirebaseToken) {
-          headers.Authorization = `Bearer ${inMemoryFirebaseToken}`;
-        }
-      }
-    } else if (inMemoryFirebaseToken) {
-      headers.Authorization = `Bearer ${inMemoryFirebaseToken}`;
-    }
     return headers;
   };
 
   const loginWithGoogle = async (): Promise<boolean> => {
-    // 1. Primary: Try Supabase Google OAuth
+    // 1. Primary: Supabase Google OAuth
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.auth.signInWithOAuth({
@@ -315,245 +256,132 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
           },
         });
-        if (!error && data?.url) {
+        if (error) {
+          console.error('Supabase Google OAuth error:', error);
+          throw error;
+        }
+        if (data?.url) {
           return true;
         }
       } catch (sbOAuthErr) {
-        console.warn('Supabase Google OAuth fallback:', sbOAuthErr);
+        console.warn('Supabase Google OAuth error:', sbOAuthErr);
+        throw sbOAuthErr;
       }
     }
 
-    // 2. Fallback: Seamless Firebase / Demo flow
-    try {
-      try {
-        await setPersistence(auth, browserLocalPersistence);
-      } catch (err) {
-        console.warn('Firebase setPersistence warning:', err);
-      }
+    // 2. Fallback when Supabase is unconfigured (offline demo mode)
+    const currentEmail = currentUser.email || 'nabchatgpt25@gmail.com';
+    const currentName = currentUser.fullName && currentUser.fullName !== 'Guest Alumnus'
+      ? currentUser.fullName
+      : 'Nurul Anam Bashir';
 
-      let fbUser: { displayName?: string | null; email?: string | null; photoURL?: string | null } | null = null;
-      let token = '';
-
-      try {
-        const credential = await signInWithPopup(auth, googleAuthProvider);
-        fbUser = credential.user;
-        token = await credential.user.getIdToken();
-      } catch (popupErr: any) {
-        console.warn('Google signInWithPopup error, activating seamless fallback:', popupErr);
-        // Fallback for iframe preview, unauthorized domain, or blocked popups
-        const currentEmail = currentUser.email || 'nabchatgpt25@gmail.com';
-        const currentName = currentUser.fullName && currentUser.fullName !== 'Guest Alumnus'
-          ? currentUser.fullName
-          : 'Nurul Anam Bashir';
-
-        fbUser = {
-          displayName: currentName,
-          email: currentEmail,
-          photoURL: currentUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-        };
-        token = `mock_oauth_token_${Date.now()}`;
-      }
-
-      if (token) {
-        inMemoryFirebaseToken = token;
-        setFirebaseToken(token);
-      }
-
-      // Sync user to backend
-      let serverRole = 'member';
-      try {
-        const syncRes = await fetch(apiUrl('/api/auth/sync'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (syncRes.ok) {
-          const syncData = await syncRes.json();
-          serverRole = syncData?.user?.role || 'member';
-        }
-      } catch {
-        // offline fallback
-      }
-
-      const cleanEmail = (fbUser?.email || '').toLowerCase();
-      const existingProfile = ALUMNI_PROFILES.find(
-        (p) => p.email && p.email.toLowerCase() === cleanEmail
-      );
-
-      if (existingProfile) {
-        setCurrentUser(existingProfile);
-        setIsAdminUser(existingProfile.role === 'admin' || existingProfile.email === 'nurulanambashir20@gmail.com');
-      } else {
-        const googleProfile: AlumniProfile = {
-          ...DEFAULT_BLANK_USER,
-          id: Date.now(),
-          userId: Math.floor(Math.random() * 10000) + 1000,
-          fullName: fbUser?.displayName || 'Notredamian Alumnus',
-          email: fbUser?.email || '',
-          avatarUrl: fbUser?.photoURL || DEFAULT_BLANK_USER.avatarUrl,
-          verificationStatus: 'verified',
-          verificationMethod: 'admin_verified',
-          badges: ['Verified Alumnus'],
-        };
-        setCurrentUser(googleProfile);
-        setIsAdminUser(serverRole === 'admin' || cleanEmail.includes('bashir') || cleanEmail.includes('admin'));
-      }
-
-      setIsLoggedIn(true);
-      return true;
-    } catch (err: any) {
-      console.error('loginWithGoogle failed:', err);
-      throw err;
-    }
+    const googleProfile: AlumniProfile = {
+      ...DEFAULT_BLANK_USER,
+      id: Date.now(),
+      userId: Math.floor(Math.random() * 10000) + 1000,
+      fullName: currentName,
+      email: currentEmail,
+      avatarUrl: currentUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+      verificationStatus: 'verified',
+      verificationMethod: 'admin_verified',
+      badges: ['Verified Alumnus'],
+    };
+    setCurrentUser(googleProfile);
+    setIsAdminUser(currentEmail.includes('bashir') || currentEmail.includes('admin'));
+    setIsLoggedIn(true);
+    return true;
   };
 
   const login = async (phoneOrEmail: string, pass: string): Promise<boolean> => {
     if (!phoneOrEmail?.trim() || !pass) {
-      throw new Error('Please enter your mobile number or email and password.');
+      throw new Error('Please enter your email and password.');
     }
 
     const cleanId = phoneOrEmail.trim().toLowerCase();
 
-    // 1. Primary: Verify via Supabase Auth when email is provided
-    if (isSupabaseConfigured && cleanId.includes('@')) {
-      try {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: cleanId,
-          password: pass,
-        });
-
-        if (!authError && authData.user) {
-          inMemorySupabaseToken = authData.session?.access_token || null;
-          setSupabaseToken(inMemorySupabaseToken);
-          const profile = await getOrCreateSupabaseProfile(authData.user);
-          if (profile) {
-            setCurrentUser(profile);
-            setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
-            setIsLoggedIn(true);
-            return true;
-          }
-        }
-      } catch (sbErr) {
-        console.warn('Supabase email login attempt failed, falling back to server credentials:', sbErr);
-      }
+    if (!cleanId.includes('@')) {
+      throw new Error('Please sign in using your registered email address (e.g. name@example.com).');
     }
 
-    // 2. Verify credentials against backend database (works across all devices and phone numbers)
-    try {
-      const res = await fetch(apiUrl('/api/auth/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          identifier: cleanId,
-          password: pass,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data?.success && data?.profile) {
-        const serverProfile: AlumniProfile = data.profile;
-        setCurrentUser(serverProfile);
-        setIsAdminUser(serverProfile.role === 'admin' || serverProfile.email === 'nurulanambashir20@gmail.com');
-        setIsLoggedIn(true);
-
-        // Cache locally for offline resiliency
-        const accounts = loadAccounts();
-        const existingIdx = accounts.findIndex(
-          (a) =>
-            a.identifier.toLowerCase() === cleanId ||
-            isPhoneMatch(a.profile.phone, cleanId) ||
-            (a.profile.email && a.profile.email.toLowerCase() === cleanId)
-        );
-        const hashedPass = await hashPassword(pass);
-        if (existingIdx > -1) {
-          accounts[existingIdx] = {
-            identifier: cleanId,
-            password: hashedPass,
-            profile: serverProfile,
-          };
-        } else {
-          accounts.push({
-            identifier: cleanId,
-            password: hashedPass,
-            profile: serverProfile,
-          });
-        }
-        saveAccounts(accounts);
-
-        // Update in-memory ALUMNI_PROFILES
-        const profileIdx = ALUMNI_PROFILES.findIndex((p) => p.id === serverProfile.id);
-        if (profileIdx > -1) {
-          ALUMNI_PROFILES[profileIdx] = serverProfile;
-        } else {
-          ALUMNI_PROFILES.unshift(serverProfile);
-        }
-        saveStoredAlumniProfiles(ALUMNI_PROFILES);
-
-        return true;
-      }
-
-      // If backend returned a credential validation error
-      if (res.status === 401 || res.status === 403) {
-        throw new Error(data.error || 'Incorrect password. Please try again.');
-      }
-    } catch (netErr: any) {
-      if (netErr?.message && (netErr.message.includes('password') || netErr.message.includes('suspended'))) {
-        throw netErr;
-      }
-      // If offline, continue to local device cache fallback below
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured. Please check environment variables.');
     }
 
-    // 3. Offline / Local fallback: Check local device cache
-    const accounts = loadAccounts();
-    const accountIdx = accounts.findIndex(
-      (a) =>
-        a.identifier.toLowerCase() === cleanId ||
-        isPhoneMatch(a.profile.phone, cleanId) ||
-        (a.profile.email && a.profile.email.toLowerCase() === cleanId)
-    );
+    // Direct Supabase Auth login from the browser (works across all hosting platforms, including static cPanel)
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: cleanId,
+      password: pass,
+    });
 
-    if (accountIdx > -1) {
-      const account = accounts[accountIdx];
-      const isValid = await verifyPassword(account.password, pass);
-      if (!isValid) {
-        throw new Error('Incorrect password. Please try again.');
+    if (authError) {
+      const msg = authError.message.toLowerCase();
+      if (msg.includes('invalid login credentials')) {
+        throw new Error('Invalid email or password. Please verify your credentials and try again.');
       }
-      if (account.password && !account.password.startsWith('sha256:')) {
-        accounts[accountIdx].password = await hashPassword(pass);
-        saveAccounts(accounts);
+      if (msg.includes('email not confirmed')) {
+        throw new Error('Your email address has not been confirmed yet. Please check your inbox or spam folder for the Supabase confirmation link.');
       }
-      setCurrentUser(account.profile);
+      throw new Error(authError.message || 'Login failed. Please check your credentials.');
+    }
+
+    if (!authData?.user) {
+      throw new Error('Unable to authenticate with Supabase. Please check your credentials.');
+    }
+
+    if (authData.session?.access_token) {
+      inMemorySupabaseToken = authData.session.access_token;
+      setSupabaseToken(authData.session.access_token);
+    }
+
+    const profile = await getOrCreateSupabaseProfile(authData.user);
+    if (profile) {
+      setCurrentUser(profile);
+      setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
       setIsLoggedIn(true);
       return true;
     }
 
-    const existingProfile = ALUMNI_PROFILES.find(
-      (p) =>
-        isPhoneMatch(p.phone, cleanId) ||
-        (p.email && p.email.toLowerCase() === cleanId)
-    );
-
-    if (existingProfile) {
-      setCurrentUser(existingProfile);
-      setIsLoggedIn(true);
-      return true;
-    }
-
-    throw new Error('No registered account found with this phone number or email. Please register your verified profile first.');
+    // Direct profile construction from authenticated user metadata if table query had transient delay
+    const fallbackProfile: AlumniProfile = {
+      id: Number(authData.user.id.replace(/[^0-9]/g, '').slice(0, 10)) || Date.now(),
+      userId: Number(authData.user.id.replace(/[^0-9]/g, '').slice(0, 10)) || Date.now(),
+      authUserId: authData.user.id,
+      fullName:
+        (authData.user.user_metadata as any)?.full_name ||
+        (authData.user.user_metadata as any)?.name ||
+        cleanId.split('@')[0],
+      avatarUrl: (authData.user.user_metadata as any)?.avatar_url || '/ndc-logo.png',
+      batchYear: Number((authData.user.user_metadata as any)?.batch_year) || 68,
+      academicStream: 'Science',
+      academicGroup: null,
+      section: 'Group 4',
+      verificationStatus: 'unverified',
+      vouchesCount: 0,
+      vouchTargetCount: 2,
+      profession: '',
+      position: '',
+      institution: '',
+      specialty: [],
+      degree: ['HSC'],
+      city: 'Dhaka',
+      country: 'Bangladesh',
+      email: cleanId,
+      role: isSuperAdminEmail(cleanId) ? 'admin' : 'member',
+      badges: [],
+    };
+    setCurrentUser(fallbackProfile);
+    setIsAdminUser(fallbackProfile.role === 'admin');
+    setIsLoggedIn(true);
+    return true;
   };
 
   const logout = () => {
     setIsLoggedIn(false);
-    inMemoryFirebaseToken = null;
     inMemorySupabaseToken = null;
-    setFirebaseToken(null);
     setSupabaseToken(null);
     if (isSupabaseConfigured) {
       supabase.auth.signOut().catch(() => {});
     }
-    signOut(auth).catch(() => {});
   };
 
   const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
@@ -565,6 +393,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const verificationStatus = profileData.verificationStatus || 'pending_vouch';
 
     let registeredProfile: AlumniProfile | null = null;
+    let authUserUid: string | null = null;
 
     // 1. Primary: Register in Supabase Auth & create alumni_profiles record
     if (isSupabaseConfigured && cleanEmail && profileData.password) {
@@ -576,13 +405,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             data: {
               full_name: profileData.fullName?.trim(),
               batch_year: rawBatch,
+              phone: cleanPhone,
             },
           },
         });
 
         if (!signUpErr && signUpData.user) {
-          inMemorySupabaseToken = signUpData.session?.access_token || null;
-          setSupabaseToken(inMemorySupabaseToken);
+          authUserUid = signUpData.user.id;
+          if (signUpData.session?.access_token) {
+            inMemorySupabaseToken = signUpData.session.access_token;
+            setSupabaseToken(inMemorySupabaseToken);
+          }
           const profile = await getOrCreateSupabaseProfile(signUpData.user, profileData);
           if (profile) {
             registeredProfile = profile;
@@ -593,12 +426,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // 2. Register account and credentials on backend
+    // 2. Register account and credentials on backend (persists into alumni_profiles with service_role and auto-confirms email)
     try {
       const registerRes = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userUid: authUserUid,
           fullName: profileData.fullName?.trim(),
           avatarUrl: profileData.avatarUrl,
           coverUrl: campusHeroImg,
@@ -609,7 +443,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             profileData.group === 'Humanities' || profileData.group === 'Business Studies'
               ? profileData.group
               : 'Science',
-          academicGroup: profileData.academicGroup || null,
+          academicGroup: profileData.group === 'Science' ? null : (profileData.academicGroup || null),
           section: profileData.section || 'Group 4',
           profession: profileData.profession ?? '',
           position: profileData.position ?? '',
@@ -632,7 +466,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(registerData.error || 'Registration failed. Please check your information and try again.');
       }
 
-      if (registerData.profile && !registeredProfile) {
+      if (registerData.session?.access_token) {
+        inMemorySupabaseToken = registerData.session.access_token;
+        setSupabaseToken(registerData.session.access_token);
+      }
+
+      if (registerData.profile) {
         registeredProfile = registerData.profile;
       }
     } catch (err: any) {
@@ -796,10 +635,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     sessionStorage.removeItem(PROFILE_STORAGE_KEY);
 
-    // 6. Sign out Firebase Auth
-    inMemoryFirebaseToken = null;
-    setFirebaseToken(null);
-    signOut(auth).catch(() => {});
+    // 6. Sign out Supabase Auth
+    inMemorySupabaseToken = null;
+    setSupabaseToken(null);
+    if (isSupabaseConfigured) {
+      supabase.auth.signOut().catch(() => {});
+    }
 
     // 7. Reset state to blank logged-out user
     setCurrentUser(DEFAULT_BLANK_USER);
@@ -879,7 +720,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         isLoggedIn,
         currentUser,
-        firebaseToken,
+        firebaseToken: null,
+        supabaseToken,
         isAdminUser,
         login,
         loginWithGoogle,

@@ -7,6 +7,7 @@ if (typeof (globalThis as any).__filename !== 'undefined') {
   delete (globalThis as any).__filename;
 }
 
+import 'dotenv/config';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { createServer as createHttpServer } from 'http';
 import { readFile } from 'fs/promises';
@@ -14,6 +15,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import * as dotenv from 'dotenv';
+import { supabaseServer, isSupabaseServerConfigured } from './src/lib/supabase-server.ts';
 import { requireAuth, requireAdmin, optionalAuth, type AuthRequest } from './src/middleware/auth.ts';
 import {
   adminUpdateAlumniGovernance,
@@ -251,6 +253,8 @@ app.post('/api/auth/register', rateLimitGuard(25, 60_000), async (req: Request, 
     const hashedPassword = hashPasswordServer(password);
 
     const created = await createOrRegisterAlumniProfile({
+      userUid: req.body.userUid,
+      rawPassword: password,
       fullName: fullName.trim(),
       avatarUrl,
       batchYear: Number(batchYear) || 68,
@@ -287,7 +291,7 @@ app.post('/api/auth/register', rateLimitGuard(25, 60_000), async (req: Request, 
   }
 });
 
-// Global Cross-Device Login Endpoint (verifies credentials against Cloud SQL)
+// Global Cross-Device Login Endpoint (verifies credentials against Supabase Auth & Database)
 app.post('/api/auth/login', rateLimitGuard(40, 60_000), async (req: Request, res: Response) => {
   try {
     const { identifier, password } = req.body;
@@ -295,7 +299,51 @@ app.post('/api/auth/login', rateLimitGuard(40, 60_000), async (req: Request, res
       return res.status(400).json({ error: 'Please enter your mobile number or email and password.' });
     }
 
-    const alumnus = await findAlumniByCredential(identifier.trim());
+    const cleanId = identifier.trim().toLowerCase();
+
+    // 1. Primary: Verify against Supabase Auth for email logins
+    if (isSupabaseServerConfigured && cleanId.includes('@')) {
+      try {
+        // Ensure email is confirmed so login across devices is never blocked
+        const { data: uData } = await supabaseServer.auth.admin.listUsers();
+        const existingU = (uData?.users as any[])?.find((u: any) => u.email?.toLowerCase() === cleanId);
+        if (existingU && !existingU.email_confirmed_at) {
+          await supabaseServer.auth.admin.updateUserById(existingU.id, { email_confirm: true });
+        }
+      } catch (confirmErr) {
+        console.warn('Auto-confirm check failed:', confirmErr);
+      }
+
+      const { data: signInData, error: signInError } = await supabaseServer.auth.signInWithPassword({
+        email: cleanId,
+        password,
+      });
+
+      if (!signInError && signInData?.user) {
+        let alumnus = await findAlumniByCredential(cleanId);
+        if (!alumnus) {
+          alumnus = await createOrRegisterAlumniProfile({
+            userUid: signInData.user.id,
+            rawPassword: password,
+            fullName:
+              (signInData.user.user_metadata as any)?.full_name ||
+              (signInData.user.user_metadata as any)?.name ||
+              cleanId.split('@')[0],
+            batchYear: Number((signInData.user.user_metadata as any)?.batch_year) || 68,
+            email: cleanId,
+            passwordHash: hashPasswordServer(password),
+          });
+        }
+
+        return res.json({
+          success: true,
+          session: signInData.session,
+          profile: formatAlumniRowToProfile(alumnus),
+        });
+      }
+    }
+
+    const alumnus = await findAlumniByCredential(cleanId);
     if (!alumnus) {
       return res.status(404).json({
         error: 'No registered account found with this phone number or email. Please register your verified profile first.',
@@ -574,7 +622,9 @@ app.get(
       const isAdminView =
         req.query.adminView === 'true' &&
         (req.dbUser?.role === 'admin' ||
-          (req.user?.email && req.user.email === 'nurulanambashir20@gmail.com'));
+          (req.user?.email &&
+            (req.user.email === 'nurulanambashirdamian@gmail.com' ||
+              req.user.email === 'nurulanambashir20@gmail.com')));
 
       const result = await queryPaginatedAlumniProfiles({
         page: Number(req.query.page) || 1,

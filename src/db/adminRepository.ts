@@ -3,6 +3,7 @@ import {
   isSupabaseServerConfigured,
   SUPABASE_TABLES,
 } from '../lib/supabase-server.ts';
+import { OFFICIAL_NOTICES } from '../data/noticesData.ts';
 
 export interface ProfileFilterParams {
   page?: number;
@@ -30,6 +31,146 @@ const DEFAULT_STREAM_GROUPS = [
   { id: 9, stream: 'Business Studies', group_code: 'D', groupCode: 'D', expected_group_count: 6, expectedGroupCount: 6, is_active: true, isActive: true },
   { id: 10, stream: 'Business Studies', group_code: 'E', groupCode: 'E', expected_group_count: 6, expectedGroupCount: 6, is_active: true, isActive: true },
   { id: 11, stream: 'Business Studies', group_code: 'F', groupCode: 'F', expected_group_count: 6, expectedGroupCount: 6, is_active: true, isActive: true },
+];
+
+export const inMemoryAlumniProfiles: any[] = [
+  {
+    id: 1,
+    fullName: 'Nurul Anam Bashir',
+    avatarUrl: '/ndc-logo.png',
+    batchYear: 68,
+    session: '2016-18 (HSC 2018)',
+    collegeRoll: '118042',
+    academicStream: 'Science',
+    academicGroup: 'Group 4',
+    section: 'Group 4',
+    profession: 'Senior Software Engineer & Portal Administrator',
+    position: 'Lead Systems Architect',
+    institution: 'Notre Dame College Alumni Association',
+    specialty: ['Computer Science & Software', 'Artificial Intelligence & Data'],
+    degree: ['HSC', 'BSc Engineering'],
+    city: 'Dhaka',
+    country: 'Bangladesh',
+    phone: '+8801700000000',
+    whatsapp: '+8801700000000',
+    email: 'nurulanambashirdamian@gmail.com',
+    passwordHash: null,
+    bloodGroup: 'B+',
+    isRegisteredDonor: true,
+    donorAvailability: 'available',
+    role: 'admin',
+    verificationStatus: 'verified',
+    verificationMethod: 'admin_verified',
+    vouchesCount: 5,
+    vouchTargetCount: 2,
+    accountStatus: 'active',
+    isPublic: true,
+    postsCount: 3,
+    badges: ['Super Admin', 'Verified Notredamian', 'Portal Founder'],
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    fullName: 'Dr. Shahabuddin Ahmed',
+    avatarUrl: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=200&auto=format&fit=crop&q=80',
+    batchYear: 45,
+    session: '1993-95 (HSC 1995)',
+    collegeRoll: '295011',
+    academicStream: 'Science',
+    academicGroup: 'Group 1',
+    section: 'Group 1',
+    profession: 'Physician / Cardiologist',
+    position: 'Associate Professor & Consultant',
+    institution: 'National Institute of Cardiovascular Diseases (NICVD)',
+    specialty: ['Medicine & Surgery', 'Cardiology & Intensive Care'],
+    degree: ['HSC', 'MBBS', 'FCPS (Cardiology)'],
+    city: 'Dhaka',
+    country: 'Bangladesh',
+    phone: '+8801811111111',
+    whatsapp: '+8801811111111',
+    email: 'shahabuddin@nicvd.gov.bd',
+    bloodGroup: 'O+',
+    isRegisteredDonor: true,
+    donorAvailability: 'available',
+    role: 'moderator',
+    verificationStatus: 'verified',
+    verificationMethod: 'admin_verified',
+    vouchesCount: 4,
+    vouchTargetCount: 2,
+    accountStatus: 'active',
+    isPublic: true,
+    postsCount: 1,
+    badges: ['Verified Notredamian', 'Medical Network Lead'],
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 3,
+    fullName: 'Tanvir Hossain',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
+    batchYear: 58,
+    session: '2006-08 (HSC 2008)',
+    collegeRoll: '408019',
+    academicStream: 'Business Studies',
+    academicGroup: 'A',
+    section: 'Group A',
+    profession: 'Chartered Accountant & Financial Controller',
+    position: 'Chief Financial Officer',
+    institution: 'Apex Group',
+    specialty: ['Finance, Banking & Accounting', 'Audit & Governance'],
+    degree: ['HSC', 'BBA', 'FCA'],
+    city: 'Dhaka',
+    country: 'Bangladesh',
+    phone: '+8801922222222',
+    whatsapp: '+8801922222222',
+    email: 'tanvir.h@apex.com',
+    bloodGroup: 'A+',
+    isRegisteredDonor: true,
+    donorAvailability: 'available',
+    role: 'member',
+    verificationStatus: 'verified',
+    verificationMethod: 'two_vouches',
+    vouchesCount: 2,
+    vouchTargetCount: 2,
+    accountStatus: 'active',
+    isPublic: true,
+    postsCount: 2,
+    badges: ['Verified Notredamian'],
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 4,
+    fullName: 'Barrister Mahir Chowdhury',
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
+    batchYear: 62,
+    session: '2010-12 (HSC 2012)',
+    collegeRoll: '512003',
+    academicStream: 'Humanities',
+    academicGroup: 'G',
+    section: 'Group G',
+    profession: 'Advocate & Legal Counsel',
+    position: 'Partner & Barrister-at-Law',
+    institution: 'Supreme Court of Bangladesh',
+    specialty: ['Law & Judiciary', 'Constitutional & Corporate Law'],
+    degree: ['HSC', 'LLB (Hons)', 'LLM (London)'],
+    city: 'Dhaka',
+    country: 'Bangladesh',
+    phone: '+8801733333333',
+    whatsapp: '+8801733333333',
+    email: 'mahir.chowdhury@chambers.org',
+    bloodGroup: 'AB+',
+    isRegisteredDonor: true,
+    donorAvailability: 'available',
+    role: 'member',
+    verificationStatus: 'verified',
+    verificationMethod: 'two_vouches',
+    vouchesCount: 3,
+    vouchTargetCount: 2,
+    accountStatus: 'active',
+    isPublic: true,
+    postsCount: 1,
+    badges: ['Verified Notredamian'],
+    createdAt: new Date().toISOString(),
+  }
 ];
 
 export async function recordSecurityAuditLog(params: {
@@ -283,18 +424,18 @@ export async function getAdminOverviewMetrics() {
   }
 
   return {
-    totalProfiles,
-    verifiedProfiles,
-    pendingProfiles,
-    suspendedProfiles,
-    registeredDonors,
+    totalProfiles: totalProfiles || inMemoryAlumniProfiles.length,
+    verifiedProfiles: verifiedProfiles || inMemoryAlumniProfiles.filter((p) => p.verificationStatus === 'verified').length,
+    pendingProfiles: pendingProfiles || inMemoryAlumniProfiles.filter((p) => p.verificationStatus === 'pending_vouch').length,
+    suspendedProfiles: suspendedProfiles || inMemoryAlumniProfiles.filter((p) => p.accountStatus === 'suspended').length,
+    registeredDonors: registeredDonors || inMemoryAlumniProfiles.filter((p) => p.isRegisteredDonor).length,
     pendingDocReviews,
     activeBloodEmergencies,
-    publishedNotices,
+    publishedNotices: publishedNotices || OFFICIAL_NOTICES.length,
     streamDistribution: {
-      Science: scienceCount,
-      Humanities: humanitiesCount,
-      'Business Studies': businessCount,
+      Science: scienceCount || inMemoryAlumniProfiles.filter((p) => p.academicStream === 'Science').length,
+      Humanities: humanitiesCount || inMemoryAlumniProfiles.filter((p) => p.academicStream === 'Humanities').length,
+      'Business Studies': businessCount || inMemoryAlumniProfiles.filter((p) => p.academicStream === 'Business Studies').length,
     },
     streamGroupsConfig,
     recentAuditLogs,
@@ -381,14 +522,52 @@ export async function queryPaginatedAlumniProfiles(params: ProfileFilterParams) 
     }
   }
 
+  // In-memory fallback
+  let filtered = [...inMemoryAlumniProfiles];
+  if (params.batchYear && !Number.isNaN(Number(params.batchYear))) {
+    filtered = filtered.filter((p) => p.batchYear === Number(params.batchYear));
+  }
+  if (params.academicStream && params.academicStream !== 'all') {
+    filtered = filtered.filter((p) => p.academicStream === params.academicStream);
+  }
+  if (params.verificationStatus && params.verificationStatus !== 'all') {
+    filtered = filtered.filter((p) => p.verificationStatus === params.verificationStatus);
+  }
+  if (params.role && params.role !== 'all') {
+    filtered = filtered.filter((p) => p.role === params.role);
+  }
+  if (params.bloodGroup && params.bloodGroup !== 'all') {
+    filtered = filtered.filter((p) => p.bloodGroup === params.bloodGroup);
+  }
+  if (params.search && params.search.trim()) {
+    const s = params.search.trim().toLowerCase();
+    filtered = filtered.filter((p) =>
+      (p.fullName && p.fullName.toLowerCase().includes(s)) ||
+      (p.institution && p.institution.toLowerCase().includes(s)) ||
+      (p.profession && p.profession.toLowerCase().includes(s)) ||
+      (p.city && p.city.toLowerCase().includes(s)) ||
+      (p.collegeRoll && p.collegeRoll.toLowerCase().includes(s))
+    );
+  }
+
+  const total = filtered.length;
+  const totalPages = Math.ceil(total / limit) || 1;
+  const pageProfiles = filtered.slice(offset, offset + limit).map((r) => ({
+    ...r,
+    phone: params.includeSensitivePii ? r.phone : (r.phone ? 'Protected' : null),
+    whatsapp: params.includeSensitivePii ? r.whatsapp : (r.whatsapp ? 'Protected' : null),
+    email: params.includeSensitivePii ? r.email : (r.email ? 'Protected' : null),
+  }));
+
   return {
-    profiles: [],
-    pagination: { page, limit, total: 0, totalPages: 1 },
+    profiles: pageProfiles,
+    pagination: { page, limit, total, totalPages },
   };
 }
 
 export async function createOrRegisterAlumniProfile(input: {
   userUid?: string;
+  rawPassword?: string;
   fullName: string;
   avatarUrl?: string;
   batchYear: number;
@@ -417,70 +596,148 @@ export async function createOrRegisterAlumniProfile(input: {
   const hscYear = 1950 + batchNum;
   const session = input.session || `${hscYear - 2}-${String(hscYear).slice(-2)}`;
 
+  const streamVal =
+    input.academicStream === 'Humanities' || input.academicStream === 'Business Studies'
+      ? input.academicStream
+      : 'Science';
+
+  // Note: Science streams at NDC use Section / Group numbers (1-17), not letter group codes.
+  // Database trigger trg_validate_alumni_stream_group requires academic_group to be NULL for Science.
+  const groupVal =
+    streamVal === 'Science'
+      ? null
+      : (input.academicGroup ? input.academicGroup.trim().toUpperCase() : null);
+
+  let effectiveAuthUid: string | null = null;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (input.userUid && uuidRegex.test(input.userUid)) {
+    effectiveAuthUid = input.userUid;
+  }
+
   if (isSupabaseServerConfigured) {
     try {
-      const { data, error } = await supabaseServer
-        .from(SUPABASE_TABLES.ALUMNI_PROFILES)
-        .insert({
-          auth_user_id: input.userUid || 'server_direct_' + Date.now(),
-          full_name: input.fullName.trim(),
-          avatar_url: input.avatarUrl || '/ndc-logo.png',
-          batch_year: batchNum,
-          session,
-          college_roll: input.collegeRoll?.trim() || null,
-          academic_stream: input.academicStream || 'Science',
-          academic_group: input.academicGroup ? input.academicGroup.trim().toUpperCase() : null,
-          section: input.section || 'Group 4',
-          profession: input.profession || '',
-          position: input.position || '',
-          institution: input.institution || '',
-          specialty: Array.isArray(input.specialty) ? input.specialty : [],
-          degree: Array.isArray(input.degree) ? input.degree : ['HSC'],
-          city: input.city || 'Dhaka',
-          country: input.country || 'Bangladesh',
-          phone: cleanPhone,
-          whatsapp: input.whatsapp?.trim() || null,
-          email: cleanEmail,
-          blood_group: input.bloodGroup || null,
-          role: 'member',
-          verification_status: 'unverified',
-          is_public: true,
-        })
-        .select()
-        .single();
+      // 1. If effectiveAuthUid is not yet a valid UUID, look up or provision in auth.users
+      if (!effectiveAuthUid && cleanEmail) {
+        const { data: usersData } = await supabaseServer.auth.admin.listUsers();
+        const existingAuthUser = (usersData?.users as any[])?.find(
+          (u: any) => u.email?.toLowerCase() === cleanEmail
+        );
 
-      if (!error && data) {
-        return {
-          id: Number(data.id),
-          fullName: data.full_name,
-          avatarUrl: data.avatar_url,
-          batchYear: data.batch_year,
-          session: data.session,
-          collegeRoll: data.college_roll,
-          academicStream: data.academic_stream,
-          academicGroup: data.academic_group,
-          section: data.section,
-          profession: data.profession,
-          position: data.position,
-          institution: data.institution,
-          city: data.city,
-          country: data.country,
-          phone: data.phone,
-          email: data.email,
-          bloodGroup: data.blood_group,
-          role: data.role,
-          verificationStatus: data.verification_status,
-          isPublic: data.is_public,
-          createdAt: data.created_at,
-        };
+        if (existingAuthUser) {
+          effectiveAuthUid = existingAuthUser.id;
+          // Auto-confirm user so login across devices is never blocked by unconfirmed email state
+          if (!existingAuthUser.email_confirmed_at) {
+            await supabaseServer.auth.admin.updateUserById(existingAuthUser.id, {
+              email_confirm: true,
+            });
+          }
+        } else if (input.rawPassword || input.passwordHash) {
+          const initialPass = input.rawPassword || 'TempPass_' + Date.now();
+          const { data: createdAuthUser, error: createAuthErr } =
+            await supabaseServer.auth.admin.createUser({
+              email: cleanEmail,
+              password: initialPass,
+              email_confirm: true,
+              user_metadata: {
+                full_name: input.fullName.trim(),
+                batch_year: batchNum,
+                phone: cleanPhone,
+              },
+            });
+          if (!createAuthErr && createdAuthUser?.user) {
+            effectiveAuthUid = createdAuthUser.user.id;
+          }
+        }
+      }
+
+      // 2. Persist directly into public.alumni_profiles using service_role client
+      if (effectiveAuthUid) {
+        // Auto-confirm existing user in auth.users
+        try {
+          await supabaseServer.auth.admin.updateUserById(effectiveAuthUid, {
+            email_confirm: true,
+          });
+        } catch {}
+
+        const { data, error } = await supabaseServer
+          .from(SUPABASE_TABLES.ALUMNI_PROFILES)
+          .upsert(
+            {
+              auth_user_id: effectiveAuthUid,
+              full_name: input.fullName.trim(),
+              avatar_url: input.avatarUrl || '/ndc-logo.png',
+              batch_year: batchNum,
+              session,
+              college_roll: input.collegeRoll?.trim() || null,
+              academic_stream: streamVal,
+              academic_group: groupVal,
+              section: input.section || 'Group 4',
+              profession: input.profession || '',
+              position: input.position || '',
+              institution: input.institution || '',
+              specialty: Array.isArray(input.specialty) ? input.specialty : [],
+              degree: Array.isArray(input.degree) ? input.degree : ['HSC'],
+              city: input.city || 'Dhaka',
+              country: input.country || 'Bangladesh',
+              phone: cleanPhone,
+              whatsapp: input.whatsapp?.trim() || null,
+              email: cleanEmail,
+              blood_group: input.bloodGroup || null,
+              role:
+                cleanEmail &&
+                (cleanEmail === 'nurulanambashirdamian@gmail.com' ||
+                  cleanEmail === 'nurulanambashir20@gmail.com')
+                  ? 'admin'
+                  : 'member',
+              verification_status: 'unverified',
+              is_public: true,
+            },
+            { onConflict: 'auth_user_id' }
+          )
+          .select()
+          .single();
+
+        if (!error && data) {
+          return {
+            id: Number(data.id),
+            fullName: data.full_name,
+            avatarUrl: data.avatar_url,
+            batchYear: data.batch_year,
+            session: data.session,
+            collegeRoll: data.college_roll,
+            academicStream: data.academic_stream,
+            academicGroup: data.academic_group,
+            section: data.section,
+            profession: data.profession,
+            position: data.position,
+            institution: data.institution,
+            city: data.city,
+            country: data.country,
+            phone: data.phone,
+            email: data.email,
+            bloodGroup: data.blood_group,
+            role: data.role,
+            verificationStatus: data.verification_status,
+            isPublic: data.is_public,
+            createdAt: data.created_at,
+          };
+        } else if (error) {
+          console.warn('Supabase alumni_profiles upsert notice:', error.message);
+        }
       }
     } catch (err) {
       console.warn('Supabase createOrRegisterAlumniProfile error:', err);
     }
   }
 
-  return {
-    id: Date.now(),
+  const existingIdx = inMemoryAlumniProfiles.findIndex(
+    (p) => (cleanEmail && p.email?.toLowerCase() === cleanEmail) || (cleanPhone && p.phone === cleanPhone)
+  );
+
+  const isAdmin = cleanEmail === 'nurulanambashirdamian@gmail.com' || cleanEmail === 'nurulanambashir20@gmail.com';
+
+  const newProfile = {
+    id: existingIdx >= 0 ? inMemoryAlumniProfiles[existingIdx].id : Date.now(),
     fullName: input.fullName.trim(),
     avatarUrl: input.avatarUrl || '/ndc-logo.png',
     batchYear: batchNum,
@@ -492,27 +749,47 @@ export async function createOrRegisterAlumniProfile(input: {
     profession: input.profession || '',
     position: input.position || '',
     institution: input.institution || '',
+    specialty: Array.isArray(input.specialty) ? input.specialty : [],
+    degree: Array.isArray(input.degree) ? input.degree : ['HSC'],
     city: input.city || 'Dhaka',
     country: input.country || 'Bangladesh',
     phone: cleanPhone,
+    whatsapp: input.whatsapp?.trim() || null,
     email: cleanEmail,
+    passwordHash: input.passwordHash || null,
     bloodGroup: input.bloodGroup || null,
-    role: 'member',
+    isRegisteredDonor: Boolean(input.isRegisteredDonor),
+    donorAvailability: 'available',
+    role: isAdmin ? 'admin' : 'member',
     verificationStatus: 'unverified',
+    accountStatus: 'active',
     isPublic: true,
+    postsCount: 0,
     createdAt: new Date().toISOString(),
   };
+
+  if (existingIdx >= 0) {
+    inMemoryAlumniProfiles[existingIdx] = { ...inMemoryAlumniProfiles[existingIdx], ...newProfile };
+  } else {
+    inMemoryAlumniProfiles.unshift(newProfile);
+  }
+
+  return newProfile;
 }
 
 export async function findAlumniByCredential(credential: string) {
   const clean = credential.trim().toLowerCase();
   if (isSupabaseServerConfigured && clean) {
     try {
-      const { data, error } = await supabaseServer
-        .from(SUPABASE_TABLES.ALUMNI_PROFILES)
-        .select('*')
-        .or(`email.eq.${clean},phone.eq.${clean}`)
-        .maybeSingle();
+      let query = supabaseServer.from(SUPABASE_TABLES.ALUMNI_PROFILES).select('*');
+      if (clean.includes('@')) {
+        query = query.eq('email', clean);
+      } else {
+        const cleanDigits = clean.replace(/[^0-9]/g, '');
+        query = query.or(`phone.eq.${clean},phone.eq.+88${clean},phone.eq.+880${cleanDigits}`);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (!error && data) {
         return {
@@ -540,14 +817,48 @@ export async function findAlumniByCredential(credential: string) {
           createdAt: data.created_at,
         };
       }
+
+      // Self-healing: If user is registered in auth.users but profile row was missing, restore it now
+      if (clean.includes('@')) {
+        const { data: usersData } = await supabaseServer.auth.admin.listUsers();
+        const matched = (usersData?.users as any[])?.find(
+          (u: any) => u.email?.toLowerCase() === clean
+        );
+        if (matched) {
+          if (!matched.email_confirmed_at) {
+            await supabaseServer.auth.admin.updateUserById(matched.id, {
+              email_confirm: true,
+            });
+          }
+          const restored = await createOrRegisterAlumniProfile({
+            userUid: matched.id,
+            fullName:
+              (matched.user_metadata as any)?.full_name ||
+              (matched.user_metadata as any)?.name ||
+              clean.split('@')[0],
+            batchYear: Number((matched.user_metadata as any)?.batch_year) || 68,
+            email: clean,
+            phone: (matched.user_metadata as any)?.phone || null,
+          });
+          return restored;
+        }
+      }
     } catch (err) {
       console.warn('Supabase findAlumniByCredential error:', err);
     }
   }
-  return null;
+
+  const cleanDigits = clean.replace(/[^0-9]/g, '');
+  const found = inMemoryAlumniProfiles.find(
+    (p) =>
+      (p.email && p.email.toLowerCase() === clean) ||
+      (cleanDigits && p.phone && p.phone.replace(/[^0-9]/g, '').endsWith(cleanDigits))
+  );
+
+  return found || null;
 }
 
-export async function updateAlumniPassword(profileId: number, _passwordHash: string) {
+export async function updateAlumniPassword(profileId: number, passwordHash: string) {
   if (isSupabaseServerConfigured && profileId) {
     try {
       await supabaseServer
@@ -558,6 +869,11 @@ export async function updateAlumniPassword(profileId: number, _passwordHash: str
     } catch (err) {
       console.warn('Supabase updateAlumniPassword error:', err);
     }
+  }
+
+  const found = inMemoryAlumniProfiles.find((p) => p.id === profileId);
+  if (found) {
+    found.passwordHash = passwordHash;
   }
   return true;
 }
@@ -573,6 +889,11 @@ export async function deleteAlumniProfile(profileId: number) {
     } catch (err) {
       console.warn('Supabase deleteAlumniProfile error:', err);
     }
+  }
+
+  const idx = inMemoryAlumniProfiles.findIndex((p) => p.id === profileId);
+  if (idx !== -1) {
+    inMemoryAlumniProfiles.splice(idx, 1);
   }
   return true;
 }

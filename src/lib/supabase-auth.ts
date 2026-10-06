@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured, ALUMNI_PUBLIC_COLUMNS } from './supabas
 import { AlumniProfile, UserRole } from '../types.ts';
 
 const SUPER_ADMIN_EMAILS = new Set([
+  'nurulanambashirdamian@gmail.com',
   'nurulanambashir20@gmail.com',
   'admin@ndcalumni.org',
   'bashir@ndcalumni.org',
@@ -111,46 +112,8 @@ export async function getOrCreateSupabaseProfile(
       return mapSupabaseRowToAlumniProfile(existing);
     }
 
-    // 2. If not found by auth_user_id, check if a profile exists by email to link (guarded against column SELECT restrictions)
+    // 2. Otherwise, insert a new record for the authenticated user
     const cleanEmail = (authUser.email || extraData?.email || '').toLowerCase().trim();
-    if (cleanEmail) {
-      try {
-        const { data: byEmail, error: emailErr } = await supabase
-          .from('alumni_profiles')
-          .select(ALUMNI_PUBLIC_COLUMNS)
-          .eq('email', cleanEmail)
-          .maybeSingle();
-
-        if (byEmail && !emailErr) {
-          // Link existing profile to this Supabase auth account
-          const { data: updated } = await supabase
-            .from('alumni_profiles')
-            .update({
-              auth_user_id: authUser.id,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', (byEmail as any).id)
-            .select(ALUMNI_PUBLIC_COLUMNS)
-            .single();
-
-          if (updated) {
-            try {
-              const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
-                p_profile_id: (updated as any).id,
-              });
-              if (contacts && contacts[0]) {
-                Object.assign(updated, contacts[0]);
-              }
-            } catch {}
-            return mapSupabaseRowToAlumniProfile(updated);
-          }
-        }
-      } catch {
-        // Fall through gracefully if column-level SELECT on email is restricted
-      }
-    }
-
-    // 3. Otherwise, insert a new record for the authenticated user
     const batchYear = Number(extraData?.batchYear) || 68;
     const normalizedBatch = batchYear > 1900 ? batchYear - 1950 : (batchYear > 0 ? batchYear : 68);
 
@@ -175,7 +138,10 @@ export async function getOrCreateSupabaseProfile(
         extraData?.academicStream === 'Humanities' || extraData?.academicStream === 'Business Studies'
           ? extraData.academicStream
           : 'Science',
-      academic_group: extraData?.academicGroup || null,
+      academic_group:
+        (extraData?.academicStream === 'Humanities' || extraData?.academicStream === 'Business Studies')
+          ? (extraData?.academicGroup || null)
+          : null,
       section: extraData?.section || 'Section A',
       profession: extraData?.profession || 'Alumnus',
       position: extraData?.position || '',
@@ -186,8 +152,6 @@ export async function getOrCreateSupabaseProfile(
       phone: extraData?.phone?.trim() || null,
       whatsapp: extraData?.whatsapp?.trim() || null,
       blood_group: extraData?.bloodGroup || null,
-      role: 'member' as const,
-      verification_status: 'unverified' as const,
     };
 
     const { data: inserted, error: insertErr } = await supabase
