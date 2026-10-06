@@ -111,38 +111,42 @@ export async function getOrCreateSupabaseProfile(
       return mapSupabaseRowToAlumniProfile(existing);
     }
 
-    // 2. If not found by auth_user_id, check if a profile exists by email to link
+    // 2. If not found by auth_user_id, check if a profile exists by email to link (guarded against column SELECT restrictions)
     const cleanEmail = (authUser.email || extraData?.email || '').toLowerCase().trim();
     if (cleanEmail) {
-      const { data: byEmail } = await supabase
-        .from('alumni_profiles')
-        .select(ALUMNI_PUBLIC_COLUMNS)
-        .eq('email', cleanEmail)
-        .maybeSingle();
-
-      if (byEmail) {
-        // Link existing profile to this Supabase auth account
-        const { data: updated } = await supabase
+      try {
+        const { data: byEmail, error: emailErr } = await supabase
           .from('alumni_profiles')
-          .update({
-            auth_user_id: authUser.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', (byEmail as any).id)
           .select(ALUMNI_PUBLIC_COLUMNS)
-          .single();
+          .eq('email', cleanEmail)
+          .maybeSingle();
 
-        if (updated) {
-          try {
-            const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
-              p_profile_id: (updated as any).id,
-            });
-            if (contacts && contacts[0]) {
-              Object.assign(updated, contacts[0]);
-            }
-          } catch {}
-          return mapSupabaseRowToAlumniProfile(updated);
+        if (byEmail && !emailErr) {
+          // Link existing profile to this Supabase auth account
+          const { data: updated } = await supabase
+            .from('alumni_profiles')
+            .update({
+              auth_user_id: authUser.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', (byEmail as any).id)
+            .select(ALUMNI_PUBLIC_COLUMNS)
+            .single();
+
+          if (updated) {
+            try {
+              const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
+                p_profile_id: (updated as any).id,
+              });
+              if (contacts && contacts[0]) {
+                Object.assign(updated, contacts[0]);
+              }
+            } catch {}
+            return mapSupabaseRowToAlumniProfile(updated);
+          }
         }
+      } catch {
+        // Fall through gracefully if column-level SELECT on email is restricted
       }
     }
 
@@ -150,6 +154,8 @@ export async function getOrCreateSupabaseProfile(
     const batchYear = Number(extraData?.batchYear) || 68;
     const normalizedBatch = batchYear > 1900 ? batchYear - 1950 : (batchYear > 0 ? batchYear : 68);
 
+    // Note: RLS policy "alumni_profiles_insert_own" strictly enforces role = 'member' and verification_status = 'unverified'.
+    // Admin elevation for super admin emails is resolved dynamically in mapSupabaseRowToAlumniProfile.
     const initialRecord = {
       auth_user_id: authUser.id,
       full_name:
@@ -180,8 +186,8 @@ export async function getOrCreateSupabaseProfile(
       phone: extraData?.phone?.trim() || null,
       whatsapp: extraData?.whatsapp?.trim() || null,
       blood_group: extraData?.bloodGroup || null,
-      role: isSuperAdminEmail(cleanEmail) ? 'admin' : 'member',
-      verification_status: 'unverified',
+      role: 'member' as const,
+      verification_status: 'unverified' as const,
     };
 
     const { data: inserted, error: insertErr } = await supabase

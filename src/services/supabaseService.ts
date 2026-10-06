@@ -39,7 +39,7 @@ export async function fetchAlumniProfilesFromDb(params?: {
   offset?: number;
 }): Promise<AlumniProfile[]> {
   if (!isSupabaseConfigured) {
-    return ALUMNI_PROFILES;
+    return loadStoredAlumniProfiles();
   }
 
   try {
@@ -69,14 +69,18 @@ export async function fetchAlumniProfilesFromDb(params?: {
     }
 
     const { data, error } = await query;
-    if (error || !data || data.length === 0) {
-      return ALUMNI_PROFILES;
+    if (error) {
+      console.warn('Supabase fetchAlumniProfiles error:', error.message);
+      return loadStoredAlumniProfiles();
+    }
+    if (!data || data.length === 0) {
+      return [];
     }
 
     return data.map(mapSupabaseRowToAlumniProfile);
   } catch (err) {
-    console.warn('Supabase fetchAlumniProfiles fallback to mock:', err);
-    return ALUMNI_PROFILES;
+    console.warn('Supabase fetchAlumniProfiles fallback:', err);
+    return loadStoredAlumniProfiles();
   }
 }
 
@@ -136,7 +140,7 @@ export async function fetchAcademicStreamGroupsFromDb(): Promise<any[]> {
 
 export async function fetchFeedPostsFromDb(limit = 30, currentUserId?: number): Promise<PostItem[]> {
   if (!isSupabaseConfigured) {
-    return INITIAL_OFFLINE_SAVED_POSTS;
+    return [];
   }
 
   try {
@@ -187,7 +191,7 @@ export async function fetchFeedPostsFromDb(limit = 30, currentUserId?: number): 
       .limit(limit);
 
     if (error || !data || data.length === 0) {
-      return INITIAL_OFFLINE_SAVED_POSTS;
+      return [];
     }
 
     return data.map((row: any) => {
@@ -241,8 +245,8 @@ export async function fetchFeedPostsFromDb(limit = 30, currentUserId?: number): 
       } as unknown as PostItem;
     });
   } catch (err) {
-    console.warn('Supabase fetchFeedPosts fallback:', err);
-    return INITIAL_OFFLINE_SAVED_POSTS;
+    console.warn('Supabase fetchFeedPosts error:', err);
+    return [];
   }
 }
 
@@ -355,7 +359,7 @@ export async function toggleSavePostInDb(
 
 export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[]> {
   if (!isSupabaseConfigured) {
-    return INITIAL_BLOOD_REQUESTS;
+    return [];
   }
 
   try {
@@ -390,7 +394,7 @@ export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return INITIAL_BLOOD_REQUESTS;
+      return [];
     }
 
     return data.map((r: any) => ({
@@ -431,8 +435,8 @@ export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[
       })),
     }));
   } catch (err) {
-    console.warn('Supabase fetchBloodRequests fallback:', err);
-    return INITIAL_BLOOD_REQUESTS;
+    console.warn('Supabase fetchBloodRequests error:', err);
+    return [];
   }
 }
 
@@ -462,7 +466,7 @@ export async function respondToBloodRequestInDb(params: {
 
 export async function fetchBloodDonorsFromDb(): Promise<BloodDonorProfile[]> {
   if (!isSupabaseConfigured) {
-    return INITIAL_BLOOD_DONORS;
+    return [];
   }
 
   try {
@@ -494,7 +498,7 @@ export async function fetchBloodDonorsFromDb(): Promise<BloodDonorProfile[]> {
       .eq('is_registered_donor', true);
 
     if (error || !data || data.length === 0) {
-      return INITIAL_BLOOD_DONORS;
+      return [];
     }
 
     return data.map((d: any) => ({
@@ -514,8 +518,8 @@ export async function fetchBloodDonorsFromDb(): Promise<BloodDonorProfile[]> {
       updatedAt: d.updated_at || new Date().toISOString(),
     }));
   } catch (err) {
-    console.warn('Supabase fetchBloodDonors fallback:', err);
-    return INITIAL_BLOOD_DONORS;
+    console.warn('Supabase fetchBloodDonors error:', err);
+    return [];
   }
 }
 
@@ -533,6 +537,20 @@ export async function createBloodRequestInDb(params: {
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
+  const validEmergencyLevels = ['critical', 'urgent', 'standard'];
+  const normalizedLevel = (params.emergencyLevel || 'urgent').toLowerCase();
+  const emergencyLevel = validEmergencyLevels.includes(normalizedLevel) ? normalizedLevel : 'urgent';
+
+  const validContactMethods = [
+    'Portal Secure Coordination',
+    'Hospital Blood Bank Desk',
+    'Batch Coordinator Relay',
+    'Attendant Emergency Line',
+  ];
+  const contactMethod = validContactMethods.includes(params.contactMethod)
+    ? params.contactMethod
+    : 'Portal Secure Coordination';
+
   try {
     const { error } = await supabase.from('blood_requests').insert({
       requester_id: params.requesterId,
@@ -542,8 +560,8 @@ export async function createBloodRequestInDb(params: {
       hospital_area: params.hospitalArea,
       city: params.city || 'Dhaka',
       required_datetime: params.requiredDateTime,
-      emergency_level: params.emergencyLevel,
-      contact_method: params.contactMethod,
+      emergency_level: emergencyLevel,
+      contact_method: contactMethod,
       description: params.description,
       status: 'Active',
     });
@@ -734,6 +752,10 @@ export async function submitAdminDocSubmissionInDb(params: {
 }): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
 
+  const validDocTypes = ['id_card', 'nid_card', 'hsc_slip', 'souvenir'];
+  const normalizedDocType = (params.docType || 'id_card').toLowerCase();
+  const docType = validDocTypes.includes(normalizedDocType) ? normalizedDocType : 'id_card';
+
   try {
     const { data, error } = await supabase
       .from('admin_doc_submissions')
@@ -743,7 +765,7 @@ export async function submitAdminDocSubmissionInDb(params: {
         college_roll: params.collegeRoll,
         academic_stream: params.academicStream,
         academic_group: params.academicGroup || null,
-        doc_type: params.docType,
+        doc_type: docType,
         doc_type_label: params.docTypeLabel,
         storage_object_path: params.storageObjectPath,
         status: 'pending',
@@ -806,7 +828,7 @@ export async function deleteFeedPostInDb(postId: number): Promise<boolean> {
 // =============================================================================
 
 export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
-  if (!isSupabaseConfigured) return OFFICIAL_NOTICES;
+  if (!isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase
@@ -816,7 +838,7 @@ export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
       .order('published_date', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return OFFICIAL_NOTICES;
+      return [];
     }
 
     return data.map((n: any) => ({
@@ -837,12 +859,12 @@ export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
       },
     }));
   } catch {
-    return OFFICIAL_NOTICES;
+    return [];
   }
 }
 
 export async function fetchGalleryAlbumsFromDb(): Promise<GalleryAlbum[]> {
-  if (!isSupabaseConfigured) return INITIAL_ALBUMS;
+  if (!isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase
@@ -852,7 +874,7 @@ export async function fetchGalleryAlbumsFromDb(): Promise<GalleryAlbum[]> {
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return INITIAL_ALBUMS;
+      return [];
     }
 
     return data.map((a: any) => {
@@ -885,7 +907,7 @@ export async function fetchGalleryAlbumsFromDb(): Promise<GalleryAlbum[]> {
       };
     });
   } catch {
-    return INITIAL_ALBUMS;
+    return [];
   }
 }
 
@@ -901,13 +923,17 @@ export async function createGalleryAlbumInDb(params: {
 }): Promise<number | null> {
   if (!isSupabaseConfigured) return null;
 
+  const validCategories = ['reunion', 'academic', 'campus', 'convocation', 'sports', 'cultural', 'all'];
+  const normalizedCategory = (params.category || 'campus').toLowerCase();
+  const category = validCategories.includes(normalizedCategory) ? normalizedCategory : 'campus';
+
   try {
     const { data, error } = await supabase
       .from('gallery_albums')
       .insert({
         title: params.title,
         description: params.description || null,
-        category: params.category,
+        category: category,
         event_date_label: params.eventDateLabel,
         location: params.location || null,
         batch_year: params.batchYear || null,
@@ -968,7 +994,7 @@ export async function addPhotoToGalleryAlbumInDb(params: {
 export async function fetchNotificationsFromDb(
   userId: number
 ): Promise<NotificationItem[]> {
-  if (!isSupabaseConfigured) return NOTIFICATIONS_LIST;
+  if (!isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase
@@ -978,7 +1004,7 @@ export async function fetchNotificationsFromDb(
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return NOTIFICATIONS_LIST;
+      return [];
     }
 
     return data.map((n: any) => ({
@@ -992,7 +1018,7 @@ export async function fetchNotificationsFromDb(
       bloodRequestId: n.blood_request_id || undefined,
     }));
   } catch {
-    return NOTIFICATIONS_LIST;
+    return [];
   }
 }
 
@@ -1018,11 +1044,15 @@ export async function createNotificationInDb(params: {
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
+  const validTypes = ['like', 'comment', 'post', 'system', 'blood', 'verification'];
+  const normalizedType = (params.type || 'system').toLowerCase();
+  const type = validTypes.includes(normalizedType) ? normalizedType : 'system';
+
   try {
     const { error } = await supabase.from('notifications').insert({
       recipient_id: params.recipientId,
       actor_id: params.actorId || null,
-      type: params.type || 'system',
+      type: type,
       title: params.title,
       message: params.message,
       target_route: params.targetRoute || null,

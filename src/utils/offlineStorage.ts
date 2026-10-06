@@ -9,241 +9,19 @@ export const SAVED_POSTS_KEY = 'ndc_cached_saved_posts';
 export const SAVED_POST_IDS_KEY = 'ndc_saved_post_ids';
 
 /**
- * Initial offline fallback directory dataset representing diverse Notre Dame College batches and professions.
- * Ensured available in offline mode so users can browse and verify offline search immediately.
+ * Initial offline fallback directory dataset.
+ * Production starts with empty list []; populated only with real registered alumni.
  */
-export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [
-  {
-    id: 1001,
-    userId: 1001,
-    fullName: 'Prof. Mahfuzur Rahman, PhD',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    coverUrl: campusHeroImg,
-    batchYear: 45,
-    session: '1993-95',
-    group: 'Science',
-    collegeRoll: '195012',
-    profession: 'Academic & Researcher',
-    position: 'Professor & Head of Computer Science',
-    institution: 'Bangladesh University of Engineering and Technology (BUET)',
-    specialty: ['Computer Science & Software', 'Artificial Intelligence & Data'],
-    degree: ['HSC', 'BSc Engineering', 'PhD'],
-    city: 'Dhaka',
-    country: 'Bangladesh',
-    latitude: 23.7275,
-    longitude: 90.3915,
-    phone: '+880 1711-234567',
-    email: 'mahfuz.ndc@gmail.com',
-    whatsapp: '8801711234567',
-    bio: 'Batch 45 (HSC 1995) Notredamian. Former NDSC Executive. Dedicated to advancing computer science education and AI research in Bangladesh.',
-    isPublic: true,
-    online: true,
-    lastSeen: 'Now',
-    postsCount: 14,
-    badges: ['Distinguished Alumnus', 'NDSC Fellow', 'BUET Faculty'],
-  },
-  {
-    id: 1002,
-    userId: 1002,
-    fullName: 'Tanvir Ahmed Chowdhury',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-    coverUrl: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=1200&auto=format&fit=crop&q=80',
-    batchYear: 58,
-    session: '2006-08',
-    group: 'Science',
-    collegeRoll: '108044',
-    profession: 'Engineer / Tech Executive',
-    position: 'Staff Engineering Lead',
-    institution: 'Google Cloud, Silicon Valley',
-    specialty: ['Computer Science & Software', 'Artificial Intelligence & Data'],
-    degree: ['HSC', 'BSc Engg (BUET)', 'MSc (Stanford)'],
-    city: 'Mountain View',
-    country: 'United States',
-    latitude: 37.391,
-    longitude: -122.078,
-    phone: '+1 (650) 555-0199',
-    email: 'tanvir.chowdhury@alumni.ndc.edu',
-    whatsapp: '16505550199',
-    bio: 'NDC Batch 58. Passionate about large-scale distributed cloud systems. Always open to mentoring young Notredamians aspiring for top tech careers and global grad school.',
-    isPublic: true,
-    online: true,
-    lastSeen: '15m ago',
-    postsCount: 12,
-    badges: ['Silicon Valley Chapter', 'Global Mentor'],
-  },
-  {
-    id: 1003,
-    userId: 1003,
-    fullName: 'Tariqul Islam',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-    coverUrl: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&auto=format&fit=crop&q=80',
-    batchYear: 52,
-    session: '2000-02',
-    group: 'Science',
-    collegeRoll: '102078',
-    profession: 'Engineer / Tech Executive',
-    position: 'Principal Cloud & Infrastructure Architect',
-    institution: 'Global Enterprise Systems Ltd',
-    specialty: ['Civil & Structural Engineering', 'Computer Science & Software'],
-    degree: ['HSC', 'BSc in EEE (BUET)', 'MSc in Systems Engineering'],
-    city: 'Dhaka',
-    country: 'Bangladesh',
-    latitude: 23.751,
-    longitude: 90.394,
-    phone: '+880 1713-456789',
-    email: 'tariqul.systems@gmail.com',
-    whatsapp: '8801713456789',
-    bio: 'Batch 52 Notredamian (BUET). Former NDDC debater. Passionate about mission-critical telecommunications, cloud architecture, and mentoring Notredamians.',
-    isPublic: true,
-    online: false,
-    lastSeen: '1h ago',
-    postsCount: 19,
-    badges: ['Verified Notredamian', 'NDDC Alumnus'],
-  },
-  {
-    id: 1004,
-    userId: 1004,
-    fullName: 'Syed Farhan Rezwan',
-    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
-    coverUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1200&auto=format&fit=crop&q=80',
-    batchYear: 60,
-    session: '2008-10',
-    group: 'Business Studies',
-    collegeRoll: '210015',
-    profession: 'Entrepreneur & Founder',
-    position: 'Managing Director & CEO',
-    institution: 'Apex Fintech & Ventures',
-    specialty: ['Business Administration & Management', 'Finance, Banking & Investment'],
-    degree: ['HSC', 'BBA (IBA, DU)', 'MBA (INSEAD)'],
-    city: 'Singapore',
-    country: 'Singapore',
-    latitude: 1.2895,
-    longitude: 103.85,
-    phone: '+65 9123 4567',
-    email: 'farhan.rezwan@apexfin.sg',
-    whatsapp: '6591234567',
-    bio: 'Batch 60 (Commerce stream). Active in venture building and financial technology. Active member of Notre Dame Alumni Singapore Chapter.',
-    isPublic: true,
-    online: true,
-    lastSeen: 'Now',
-    postsCount: 22,
-    badges: ['Commerce Batch 60', 'Singapore Chapter Lead'],
-  },
-  {
-    id: 1005,
-    userId: 1005,
-    fullName: 'Barrister Nabeel Hasan',
-    avatarUrl: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=200&auto=format&fit=crop&q=80',
-    coverUrl: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=1200&auto=format&fit=crop&q=80',
-    batchYear: 64,
-    session: '2012-14',
-    group: 'Humanities',
-    collegeRoll: '314008',
-    profession: 'Lawyer & Legal Counsel',
-    position: 'Advocate, Supreme Court of Bangladesh',
-    institution: 'Chambers of Law & Corporate Associates',
-    specialty: ['Constitutional & Corporate Law', 'Civil Service & Administration (BCS)'],
-    degree: ['HSC', 'LLB (Hons, London)', 'Barrister-at-Law (Lincoln’s Inn)'],
-    city: 'Dhaka',
-    country: 'Bangladesh',
-    latitude: 23.734,
-    longitude: 90.405,
-    phone: '+880 1715-998877',
-    email: 'nabeel.hasan@supremecourt.bd',
-    whatsapp: '8801715998877',
-    bio: 'Batch 64 Humanities. President of NDDC (2013-14). Practicing constitutional, commercial, and human rights law in Dhaka.',
-    isPublic: true,
-    online: false,
-    lastSeen: '2h ago',
-    postsCount: 16,
-    badges: ['Supreme Court Advocate', 'NDDC Former President'],
-  },
-  {
-    id: 1006,
-    userId: 1006,
-    fullName: 'Fahim Shahriar',
-    avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&auto=format&fit=crop&q=80',
-    coverUrl: campusHeroImg,
-    batchYear: 68,
-    session: '2016-18',
-    group: 'Science',
-    collegeRoll: '118088',
-    profession: 'Engineer / Tech Executive',
-    position: 'Robotics & Embedded Systems Engineer',
-    institution: 'Autonomous Mobility Labs',
-    specialty: ['Mechanical & Robotics', 'Artificial Intelligence & Data'],
-    degree: ['HSC', 'BSc Engg (EEE, BUET)'],
-    city: 'Dhaka',
-    country: 'Bangladesh',
-    latitude: 23.725,
-    longitude: 90.389,
-    phone: '+880 1718-223344',
-    email: 'fahim.shahriar@eee.buet.ac.bd',
-    whatsapp: '8801718223344',
-    bio: 'Batch 68 (HSC 2018). NDITC & NDSC project coordinator. Researching autonomous mobile robotics and edge AI hardware.',
-    isPublic: true,
-    online: true,
-    lastSeen: 'Now',
-    postsCount: 9,
-    badges: ['HSC 2018', 'Robotics Pioneer'],
-  },
-];
+export const INITIAL_OFFLINE_DIRECTORY: AlumniProfile[] = [];
 
 /**
  * Initial offline fallback saved posts for Notre Dame College.
+ * Production starts with empty list []; populated only with real posts.
  */
-export const INITIAL_OFFLINE_SAVED_POSTS: PostItem[] = [
-  {
-    id: 9001,
-    userId: 1001,
-    fullName: 'Prof. Mahfuzur Rahman, PhD',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    batchYear: 45,
-    content:
-      'Official Announcement: Notre Dame College Dhaka Platinum Jubilee & Grand Reunion 2026 is officially set for December at our beloved Motijheel campus! All Notredamians from early batches to HSC 2026 are cordially invited. Registration, batch coordinator directories, and souvenir article submission forms are now live on this portal. Diligite Lumen Sapientiae!',
-    images: [campusHeroImg],
-    likesCount: 142,
-    commentsCount: 38,
-    createdAt: '2 days ago',
-    likedByMe: true,
-    isSaved: true,
-    category: 'Reunion',
-    comments: [
-      {
-        id: 9101,
-        postId: 9001,
-        userId: 1002,
-        fullName: 'Tanvir Ahmed Chowdhury',
-        avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-        content: 'Our Silicon Valley and North America chapter is booking flights to Dhaka for the Grand Reunion! See you all at Ganguly Hall and the green field.',
-        likesCount: 24,
-        likedByMe: true,
-        createdAt: '1 day ago',
-      },
-    ],
-  },
-  {
-    id: 9002,
-    userId: 1003,
-    fullName: 'Tariqul Islam',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-    batchYear: 52,
-    content:
-      'Walking past the Father Harrington Building and the basketball ground this morning brought back twenty years of memories. The discipline, the quizzes, the club addas, and the timeless mentorship from our Fathers shaped who we are today. Proud to be a Notredamian forever.',
-    images: [reunionCelebrationImg],
-    likesCount: 98,
-    commentsCount: 17,
-    createdAt: '3 days ago',
-    likedByMe: false,
-    isSaved: true,
-    category: 'Achievement',
-    comments: [],
-  },
-];
+export const INITIAL_OFFLINE_SAVED_POSTS: PostItem[] = [];
 
 export function getCachedDirectory(): AlumniProfile[] {
-  const baseList = [...INITIAL_OFFLINE_DIRECTORY, ...SEED_ALUMNI_PROFILES];
-  if (typeof window === 'undefined') return baseList;
+  if (typeof window === 'undefined') return [];
   try {
     const stored = loadStoredAlumniProfiles();
     const raw = localStorage.getItem(CACHED_DIRECTORY_KEY);
@@ -252,20 +30,24 @@ export function getCachedDirectory(): AlumniProfile[] {
     const combined = [
       ...stored,
       ...(Array.isArray(parsedCached) ? parsedCached : []),
-      ...INITIAL_OFFLINE_DIRECTORY,
-      ...SEED_ALUMNI_PROFILES,
     ];
 
     const uniqueMap = new Map<number, AlumniProfile>();
     combined.forEach((p) => {
       if (!p || typeof p.id !== 'number') return;
-      const normalizedId = p.id >= 800001 && p.id <= 800016 ? p.id - 800000 + 100 : p.id;
+      if (
+        (p.id >= 101 && p.id <= 120) ||
+        (p.id >= 1001 && p.id <= 1006) ||
+        (p.id >= 800000 && p.id <= 999999)
+      ) {
+        return;
+      }
       const normalizedCity = p.city === 'Mountain View, CA' ? 'Mountain View' : p.city;
-      if (!uniqueMap.has(normalizedId)) {
-        uniqueMap.set(normalizedId, {
+      if (!uniqueMap.has(p.id)) {
+        uniqueMap.set(p.id, {
           ...p,
-          id: normalizedId,
-          userId: normalizedId,
+          id: p.id,
+          userId: p.userId || p.id,
           city: normalizedCity,
         });
       }
@@ -275,7 +57,7 @@ export function getCachedDirectory(): AlumniProfile[] {
   } catch (e) {
     console.warn('Failed to parse cached directory', e);
   }
-  return baseList;
+  return [];
 }
 
 export function saveCachedDirectory(profiles: AlumniProfile[]) {
