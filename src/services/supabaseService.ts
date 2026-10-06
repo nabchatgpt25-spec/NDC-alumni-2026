@@ -99,6 +99,7 @@ export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
       batchYear: b.batch_year,
       hscYear: b.hsc_year || (b.batch_year > 1900 ? b.batch_year : 1950 + b.batch_year),
       session: b.session || `${b.batch_year - 2}-${String(b.batch_year).slice(-2)}`,
+      total: b.estimated_total || 450,
       registeredCount: b.registered_count || 0,
       totalAlumni: b.estimated_total || 450,
       representative: b.representative_name || undefined,
@@ -405,7 +406,9 @@ export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[
       emergencyLevel: r.emergency_level,
       contactMethod: r.contact_method,
       description: r.description,
+      requesterId: Number(r.requester_profile_id || r.requester?.id || 1),
       requesterName: r.requester?.full_name || 'Notredamian Alumnus',
+      requesterAvatar: r.requester?.avatar_url || '/ndc-logo.png',
       requesterBatch: r.requester?.batch_year || 68,
       status: r.status,
       createdAt: r.created_at,
@@ -508,6 +511,7 @@ export async function fetchBloodDonorsFromDb(): Promise<BloodDonorProfile[]> {
       lastDonationDate: d.last_donation_date || undefined,
       emergencyAlertPreference: d.emergency_alert_preference,
       donationHistory: Array.isArray(d.donation_history) ? d.donation_history : [],
+      updatedAt: d.updated_at || new Date().toISOString(),
     }));
   } catch (err) {
     console.warn('Supabase fetchBloodDonors fallback:', err);
@@ -868,14 +872,15 @@ export async function fetchGalleryAlbumsFromDb(): Promise<GalleryAlbum[]> {
       }));
 
       return {
-        id: String(a.id),
+        id: Number(a.id),
         title: a.title,
         description: a.description || '',
         category: a.category,
-        date: a.event_date_label,
+        date: a.event_date_label || '2026',
         location: a.location || 'Motijheel Campus',
         batchYear: a.batch_year || undefined,
-        coverPhoto: a.cover_url,
+        photosCount: photos.length,
+        coverUrl: a.cover_url || (photos[0]?.url ?? '/ndc-logo.png'),
         photos,
       };
     });
@@ -977,15 +982,14 @@ export async function fetchNotificationsFromDb(
     }
 
     return data.map((n: any) => ({
-      id: String(n.id),
-      actorName: n.actor?.full_name || 'NDC Alumni Portal',
-      actorAvatar: n.actor?.avatar_url || '/ndc-logo.png',
-      action: n.message,
-      target: n.title,
-      time: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      id: Number(n.id),
+      title: n.title || 'Notification',
+      message: n.message || '',
+      timeAgo: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       unread: Boolean(n.unread),
-      type: n.type,
-      link: n.target_route || undefined,
+      type: n.type || 'system',
+      targetRoute: n.target_route || undefined,
+      bloodRequestId: n.blood_request_id || undefined,
     }));
   } catch {
     return NOTIFICATIONS_LIST;

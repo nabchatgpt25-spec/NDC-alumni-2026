@@ -68,6 +68,7 @@ import {
   toggleSavePostInDb,
   editFeedPostInDb,
   deleteFeedPostInDb,
+  createNotificationInDb,
 } from '../services/supabaseService';
 
 interface FeedViewProps {
@@ -620,6 +621,20 @@ export const FeedView: React.FC<FeedViewProps> = ({
     togglePostLikeInDb(postId, currentUser.id).catch((err) => {
       console.warn('togglePostLikeInDb error:', err);
     });
+
+    const targetPost = posts.find((p) => p.id === postId);
+    if (targetPost && !targetPost.likedByMe && targetPost.userId !== currentUser.id) {
+      createNotificationInDb({
+        recipientId: targetPost.userId,
+        actorId: currentUser.id,
+        type: 'like',
+        title: `${currentUser.fullName} liked your post`,
+        message: targetPost.content.slice(0, 80),
+        postId: targetPost.id,
+        targetRoute: 'feed',
+      }).catch(() => {});
+    }
+
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id === postId) {
@@ -821,6 +836,19 @@ export const FeedView: React.FC<FeedViewProps> = ({
     }).catch((err) => {
       console.warn('addPostCommentInDb fallback:', err);
     });
+
+    const targetPost = posts.find((p) => p.id === postId);
+    if (targetPost && targetPost.userId !== currentUser.id) {
+      createNotificationInDb({
+        recipientId: targetPost.userId,
+        actorId: currentUser.id,
+        type: 'comment',
+        title: `${currentUser.fullName} commented on your post`,
+        message: text.slice(0, 100),
+        postId: targetPost.id,
+        targetRoute: 'feed',
+      }).catch(() => {});
+    }
 
     const newComment: PostComment = {
       id: Date.now(),

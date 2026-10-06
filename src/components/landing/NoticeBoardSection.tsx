@@ -14,6 +14,7 @@ import {
   Users
 } from 'lucide-react';
 import { OFFICIAL_NOTICES, OfficialNotice } from '../../data/noticesData';
+import { fetchOfficialNoticesFromDb } from '../../services/supabaseService';
 
 interface NoticeBoardSectionProps {
   onSelectNotice: (notice: OfficialNotice) => void;
@@ -25,12 +26,29 @@ export const NoticeBoardSection: React.FC<NoticeBoardSectionProps> = ({
   onOpenRegister,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [notices, setNotices] = useState<OfficialNotice[]>(OFFICIAL_NOTICES);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    fetchOfficialNoticesFromDb()
+      .then((dbNotices) => {
+        if (isMounted && dbNotices && dbNotices.length > 0) {
+          setNotices(dbNotices);
+        }
+      })
+      .catch((err) => {
+        console.warn('NoticeBoardSection: Supabase live fetch fallback:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const categories = ['All', 'Reunion', 'Membership', 'Scholarship', 'AGM', 'General'];
 
   const filteredNotices = selectedCategory === 'All'
-    ? OFFICIAL_NOTICES
-    : OFFICIAL_NOTICES.filter((n) => n.category.toLowerCase() === selectedCategory.toLowerCase());
+    ? notices
+    : notices.filter((n) => n.category.toLowerCase() === selectedCategory.toLowerCase());
 
   return (
     <section id="notice-board-section" className="py-16 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">

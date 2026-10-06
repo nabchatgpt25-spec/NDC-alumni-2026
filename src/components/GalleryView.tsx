@@ -21,7 +21,11 @@ import { AlbumShowcaseView } from './gallery/AlbumShowcaseView';
 import { CreateAlbumModal } from './gallery/CreateAlbumModal';
 import { UploadPhotosModal } from './gallery/UploadPhotosModal';
 import { PhotoLightbox } from './gallery/PhotoLightbox';
-import { fetchGalleryAlbumsFromDb } from '../services/supabaseService';
+import {
+  fetchGalleryAlbumsFromDb,
+  createGalleryAlbumInDb,
+  addPhotoToGalleryAlbumInDb,
+} from '../services/supabaseService';
 
 const STORAGE_KEY = 'ndc_alumni_gallery_albums';
 
@@ -153,11 +157,37 @@ export const GalleryView: React.FC = () => {
 
   // Handlers
   const handleCreateAlbum = (newAlbum: GalleryAlbum) => {
+    createGalleryAlbumInDb({
+      title: newAlbum.title,
+      description: newAlbum.description,
+      category: newAlbum.category,
+      eventDateLabel: newAlbum.date,
+      location: newAlbum.location,
+      batchYear: newAlbum.batchYear,
+      coverUrl: newAlbum.coverUrl,
+    }).catch((err) => {
+      console.warn('createGalleryAlbumInDb fallback:', err);
+    });
+
     setAlbums((prev) => [newAlbum, ...prev]);
     setSelectedAlbumId(newAlbum.id); // immediately navigate into showcase
   };
 
   const handleUploadPhotos = (albumId: number, newPhotos: GalleryPhoto[]) => {
+    newPhotos.forEach((photo) => {
+      addPhotoToGalleryAlbumInDb({
+        albumId,
+        url: photo.url,
+        caption: photo.caption,
+        batchYear: photo.batchYear,
+        tags: photo.tags,
+        mediaType: photo.mediaType,
+        fileSize: photo.fileSize,
+      }).catch((err) => {
+        console.warn('addPhotoToGalleryAlbumInDb fallback:', err);
+      });
+    });
+
     setAlbums((prev) =>
       prev.map((alb) => {
         if (alb.id === albumId) {

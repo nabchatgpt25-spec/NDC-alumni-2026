@@ -339,3 +339,5 @@ export const DEGREES_LIST = [
   'CA / ACA', 'FCA', 'ACCA', 'CFA', 'CMA', 'CS',
   'BCS', 'PGD', 'Diploma', 'Others'
 ];
+
+export type { OfficialNotice } from './data/noticesData';

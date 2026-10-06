@@ -100,7 +100,7 @@ export async function getOrCreateSupabaseProfile(
       // Enrich with contact details via authorized RPC
       try {
         const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
-          p_profile_id: existing.id,
+          p_profile_id: (existing as any).id,
         });
         if (contacts && contacts[0]) {
           Object.assign(existing, contacts[0]);
@@ -128,14 +128,14 @@ export async function getOrCreateSupabaseProfile(
             auth_user_id: authUser.id,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', byEmail.id)
+          .eq('id', (byEmail as any).id)
           .select(ALUMNI_PUBLIC_COLUMNS)
           .single();
 
         if (updated) {
           try {
             const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
-              p_profile_id: updated.id,
+              p_profile_id: (updated as any).id,
             });
             if (contacts && contacts[0]) {
               Object.assign(updated, contacts[0]);
@@ -197,7 +197,7 @@ export async function getOrCreateSupabaseProfile(
 
     try {
       const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
-        p_profile_id: inserted.id,
+        p_profile_id: (inserted as any).id,
       });
       if (contacts && contacts[0]) {
         Object.assign(inserted, contacts[0]);
