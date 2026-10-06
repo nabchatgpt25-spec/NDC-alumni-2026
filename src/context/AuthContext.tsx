@@ -18,10 +18,16 @@ import {
 } from '../utils/verificationService';
 import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 
-interface RegisteredAccount {
-  identifier: string;
-  password?: string;
-  profile: AlumniProfile;
+export function formatToE164Phone(raw: string): string {
+  const cleaned = raw.trim();
+  if (cleaned.startsWith('+')) {
+    return cleaned.replace(/[^\d+]/g, '');
+  }
+  const digits = cleaned.replace(/\D/g, '');
+  if (digits.startsWith('880')) {
+    return `+${digits}`;
+  }
+  return `+880${digits.replace(/^0+/, '')}`;
 }
 
 interface PendingOtpEntry {
@@ -36,12 +42,14 @@ interface AuthContextType {
   supabaseToken: string | null;
   isAdminUser: boolean;
   login: (phoneOrEmail: string, pass: string) => Promise<boolean>;
+  loginWithPhoneOtp: (phone: string) => Promise<boolean>;
+  verifyPhoneOtp: (phone: string, token: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   logout: () => void;
   register: (profileData: Partial<AlumniProfile> & { password?: string }) => Promise<boolean>;
   updateProfile: (updated: Partial<AlumniProfile>) => void;
   deleteAccount: (confirmationPassword?: string) => Promise<boolean>;
-  requestOtp: (phone: string) => Promise<{ success: boolean; debugOtp?: string }>;
+  requestOtp: (phone: string) => Promise<{ success: boolean; emailSent?: boolean; debugOtp?: string }>;
   resetPasswordWithOtp: (phone: string, otp: string, newPass: string) => Promise<boolean>;
   getAuthHeaders: () => Promise<Record<string, string>>;
 }
@@ -50,77 +58,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AUTH_STORAGE_KEY = 'ndc_alumni_auth';
 const PROFILE_STORAGE_KEY = 'ndc_alumni_current_user';
-const ACCOUNTS_STORAGE_KEY = 'ndc_registered_accounts';
-const PASSWORD_SALT = 'ndc_dhaka_1949_salt_v1:';
 
 // In-memory token reference (never persisted to localStorage per security guidelines)
 let inMemorySupabaseToken: string | null = null;
-
-async function hashPassword(rawPassword: string): Promise<string> {
-  if (!rawPassword) return '';
-  if (rawPassword.startsWith('sha256:')) return rawPassword;
-  try {
-    if (typeof window !== 'undefined' && window.crypto?.subtle) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(PASSWORD_SALT + rawPassword);
-      const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-      return `sha256:${hashHex}`;
-    }
-  } catch {
-    // Fallback deterministic hash if Web Crypto is unavailable
-  }
-  let h = 2166136261;
-  const salted = PASSWORD_SALT + rawPassword;
-  for (let i = 0; i < salted.length; i++) {
-    h ^= salted.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return `sha256:fnv_${(h >>> 0).toString(16)}`;
-}
-
-async function verifyPassword(storedPassword: string | undefined, inputPassword: string): Promise<boolean> {
-  if (!storedPassword) return true;
-  if (storedPassword.startsWith('sha256:')) {
-    const hashedInput = await hashPassword(inputPassword);
-    return storedPassword === hashedInput;
-  }
-  return storedPassword === inputPassword;
-}
 
 function normalizePhoneDigits(phone?: string): string {
   if (!phone) return '';
   const digits = phone.replace(/[^0-9]/g, '');
   return digits.length >= 10 ? digits.slice(-10) : digits;
 }
-
-function isPhoneMatch(phoneA?: string, inputId?: string): boolean {
-  if (!phoneA || !inputId) return false;
-  const digitsA = normalizePhoneDigits(phoneA);
-  const digitsB = normalizePhoneDigits(inputId);
-  if (digitsA.length < 6 || digitsB.length < 6) return false;
-  return digitsA === digitsB || phoneA.replace(/[^0-9]/g, '').endsWith(digitsB);
-}
-
-const loadAccounts = (): RegisteredAccount[] => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {}
-  return [];
-};
-
-const saveAccounts = (accounts: RegisteredAccount[]) => {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
-  } catch {}
-};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const otpStoreRef = useRef<Map<string, PendingOtpEntry>>(new Map());
@@ -294,32 +240,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (phoneOrEmail: string, pass: string): Promise<boolean> => {
     if (!phoneOrEmail?.trim() || !pass) {
-      throw new Error('Please enter your email and password.');
-    }
-
-    const cleanId = phoneOrEmail.trim().toLowerCase();
-
-    if (!cleanId.includes('@')) {
-      throw new Error('Please sign in using your registered email address (e.g. name@example.com).');
+      throw new Error('Please enter your email or mobile number and password.');
     }
 
     if (!isSupabaseConfigured) {
       throw new Error('Supabase client is not configured. Please check environment variables.');
     }
 
-    // Direct Supabase Auth login from the browser (works across all hosting platforms, including static cPanel)
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: cleanId,
-      password: pass,
-    });
+    const cleanInput = phoneOrEmail.trim();
+    const isEmail = cleanInput.includes('@');
+
+    let authData: any = null;
+    let authError: any = null;
+
+    if (isEmail) {
+      const cleanEmail = cleanInput.toLowerCase();
+      const res = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: pass,
+      });
+      authData = res.data;
+      authError = res.error;
+    } else {
+      const formattedPhone = formatToE164Phone(cleanInput);
+      const res = await supabase.auth.signInWithPassword({
+        phone: formattedPhone,
+        password: pass,
+      });
+      authData = res.data;
+      authError = res.error;
+    }
 
     if (authError) {
       const msg = authError.message.toLowerCase();
-      if (msg.includes('invalid login credentials')) {
-        throw new Error('Invalid email or password. Please verify your credentials and try again.');
+      if (msg.includes('phone provider is disabled') || msg.includes('unsupported phone provider')) {
+        throw new Error(
+          'Phone provider is currently disabled in your Supabase project. To use Phone login, please enable the Phone Provider in Supabase Dashboard (Authentication > Providers > Phone) or sign in using your registered Email Address.'
+        );
+      }
+      if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
+        throw new Error(
+          isEmail
+            ? 'Invalid email or password. Please verify your credentials or reset your password.'
+            : 'Invalid phone or password. If your account was originally registered with an email address, please sign in using your email address, or verify your mobile number via SMS OTP.'
+        );
       }
       if (msg.includes('email not confirmed')) {
         throw new Error('Your email address has not been confirmed yet. Please check your inbox or spam folder for the Supabase confirmation link.');
+      }
+      if (msg.includes('phone not confirmed')) {
+        throw new Error('Your phone number has not been confirmed yet. Please verify your phone number via SMS code.');
       }
       throw new Error(authError.message || 'Login failed. Please check your credentials.');
     }
@@ -349,7 +319,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       fullName:
         (authData.user.user_metadata as any)?.full_name ||
         (authData.user.user_metadata as any)?.name ||
-        cleanId.split('@')[0],
+        (isEmail ? cleanInput.split('@')[0] : cleanInput),
       avatarUrl: (authData.user.user_metadata as any)?.avatar_url || '/ndc-logo.png',
       batchYear: Number((authData.user.user_metadata as any)?.batch_year) || 68,
       academicStream: 'Science',
@@ -365,12 +335,115 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       degree: ['HSC'],
       city: 'Dhaka',
       country: 'Bangladesh',
-      email: cleanId,
-      role: isSuperAdminEmail(cleanId) ? 'admin' : 'member',
+      email: isEmail ? cleanInput.toLowerCase() : (authData.user.email || undefined),
+      phone: !isEmail ? formatToE164Phone(cleanInput) : (authData.user.phone || undefined),
+      role: isSuperAdminEmail(authData.user.email) ? 'admin' : 'member',
+      isPublic: true,
+      online: true,
       badges: [],
     };
     setCurrentUser(fallbackProfile);
     setIsAdminUser(fallbackProfile.role === 'admin');
+    setIsLoggedIn(true);
+    return true;
+  };
+
+  const loginWithPhoneOtp = async (phone: string): Promise<boolean> => {
+    if (!phone?.trim()) {
+      throw new Error('Please enter your mobile number.');
+    }
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured.');
+    }
+
+    const formattedPhone = formatToE164Phone(phone);
+    const { error } = await supabase.auth.signInWithOtp({
+      phone: formattedPhone,
+    });
+
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('phone provider is disabled') || msg.includes('unsupported phone provider')) {
+        throw new Error(
+          'Supabase Phone Provider is not enabled. In Supabase Dashboard, go to Authentication > Providers > Phone and configure an SMS provider (e.g. Twilio, MessageBird, or Vonage). Alternatively, sign in using Email & Password.'
+        );
+      }
+      if (msg.includes('rate limit')) {
+        throw new Error('SMS verification rate limit reached. Please wait a few minutes before requesting another code.');
+      }
+      throw new Error(error.message);
+    }
+
+    return true;
+  };
+
+  const verifyPhoneOtp = async (phone: string, token: string): Promise<boolean> => {
+    if (!phone?.trim() || !token?.trim()) {
+      throw new Error('Please enter both your mobile number and the 6-digit SMS verification code.');
+    }
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured.');
+    }
+
+    const formattedPhone = formatToE164Phone(phone);
+    const { data: authData, error: authError } = await supabase.auth.verifyOtp({
+      phone: formattedPhone,
+      token: token.trim(),
+      type: 'sms',
+    });
+
+    if (authError) {
+      throw new Error(authError.message || 'Invalid or expired SMS code. Please try again.');
+    }
+
+    if (!authData?.user) {
+      throw new Error('Unable to verify phone number.');
+    }
+
+    if (authData.session?.access_token) {
+      inMemorySupabaseToken = authData.session.access_token;
+      setSupabaseToken(authData.session.access_token);
+    }
+
+    const profile = await getOrCreateSupabaseProfile(authData.user, {
+      phone: formattedPhone,
+    });
+
+    if (profile) {
+      setCurrentUser(profile);
+      setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+      setIsLoggedIn(true);
+      return true;
+    }
+
+    const fallbackProfile: AlumniProfile = {
+      id: Number(authData.user.id.replace(/[^0-9]/g, '').slice(0, 10)) || Date.now(),
+      userId: Number(authData.user.id.replace(/[^0-9]/g, '').slice(0, 10)) || Date.now(),
+      authUserId: authData.user.id,
+      fullName: (authData.user.user_metadata as any)?.full_name || 'Notredamian Alumnus',
+      avatarUrl: (authData.user.user_metadata as any)?.avatar_url || '/ndc-logo.png',
+      batchYear: Number((authData.user.user_metadata as any)?.batch_year) || 68,
+      academicStream: 'Science',
+      academicGroup: null,
+      section: 'Group 4',
+      verificationStatus: 'unverified',
+      vouchesCount: 0,
+      vouchTargetCount: 2,
+      profession: '',
+      position: '',
+      institution: '',
+      specialty: [],
+      degree: ['HSC'],
+      city: 'Dhaka',
+      country: 'Bangladesh',
+      phone: formattedPhone,
+      role: 'member',
+      isPublic: true,
+      online: true,
+      badges: [],
+    };
+    setCurrentUser(fallbackProfile);
+    setIsAdminUser(false);
     setIsLoggedIn(true);
     return true;
   };
@@ -388,274 +461,131 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const cleanEmail = (profileData.email || '').trim().toLowerCase();
     const cleanPhone = (profileData.phone || '').trim();
     const rawBatch = profileData.batchYear || 68;
-    const hscYear = rawBatch > 1900 ? rawBatch : 1950 + rawBatch;
-    const computedSession = `${hscYear - 2}-${String(hscYear).slice(-2)}`;
-    const verificationStatus = profileData.verificationStatus || 'pending_vouch';
+    const normalizedBatch = rawBatch > 1900 ? rawBatch - 1950 : (rawBatch > 0 ? rawBatch : 68);
 
-    let registeredProfile: AlumniProfile | null = null;
-    let authUserUid: string | null = null;
-
-    // 1. Primary: Register in Supabase Auth & create alumni_profiles record
-    if (isSupabaseConfigured && cleanEmail && profileData.password) {
-      try {
-        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password: profileData.password,
-          options: {
-            data: {
-              full_name: profileData.fullName?.trim(),
-              batch_year: rawBatch,
-              phone: cleanPhone,
-            },
-          },
-        });
-
-        if (!signUpErr && signUpData.user) {
-          authUserUid = signUpData.user.id;
-          if (signUpData.session?.access_token) {
-            inMemorySupabaseToken = signUpData.session.access_token;
-            setSupabaseToken(inMemorySupabaseToken);
-          }
-          const profile = await getOrCreateSupabaseProfile(signUpData.user, profileData);
-          if (profile) {
-            registeredProfile = profile;
-          }
-        }
-      } catch (sbRegisterErr) {
-        console.warn('Supabase registration attempt failed, continuing with backend sync:', sbRegisterErr);
-      }
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured.');
+    }
+    if (!cleanEmail || !profileData.password) {
+      throw new Error('Please provide your email address and a password.');
     }
 
-    // 2. Register account and credentials on backend (persists into alumni_profiles with service_role and auto-confirms email)
-    try {
-      const registerRes = await fetch(apiUrl('/api/auth/register'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userUid: authUserUid,
-          fullName: profileData.fullName?.trim(),
-          avatarUrl: profileData.avatarUrl,
-          coverUrl: campusHeroImg,
-          batchYear: rawBatch,
-          session: profileData.session || computedSession,
-          collegeRoll: profileData.collegeRoll ?? '',
-          academicStream:
-            profileData.group === 'Humanities' || profileData.group === 'Business Studies'
-              ? profileData.group
-              : 'Science',
-          academicGroup: profileData.group === 'Science' ? null : (profileData.academicGroup || null),
-          section: profileData.section || 'Group 4',
-          profession: profileData.profession ?? '',
-          position: profileData.position ?? '',
-          institution: profileData.institution ?? '',
-          specialty: profileData.specialty ?? [],
-          degree: profileData.degree ?? ['HSC'],
-          city: profileData.city ?? 'Dhaka',
-          country: profileData.country ?? 'Bangladesh',
+    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: profileData.password,
+      options: {
+        data: {
+          full_name: profileData.fullName?.trim(),
+          batch_year: normalizedBatch,
           phone: cleanPhone,
-          whatsapp: profileData.whatsapp ?? '',
-          email: cleanEmail,
-          password: profileData.password,
-          bloodGroup: profileData.bloodGroup,
-          isRegisteredDonor: Boolean((profileData as any).isRegisteredDonor || profileData.bloodDonorProfile?.isRegisteredDonor),
-        }),
+        },
+      },
+    });
+
+    if (signUpErr) {
+      const msg = signUpErr.message.toLowerCase();
+      if (msg.includes('rate limit')) {
+        throw new Error('Supabase email rate limit exceeded. If you are project admin, disable "Confirm email" in Supabase Authentication settings or use custom SMTP.');
+      }
+      if (msg.includes('already registered') || msg.includes('user already exists')) {
+        throw new Error('An account with this email already exists. Please sign in directly.');
+      }
+      throw new Error(signUpErr.message || 'Registration failed.');
+    }
+
+    if (!signUpData?.user) {
+      throw new Error('Failed to create account in Supabase. Please try again.');
+    }
+
+    if (signUpData.session?.access_token) {
+      inMemorySupabaseToken = signUpData.session.access_token;
+      setSupabaseToken(inMemorySupabaseToken);
+    }
+
+    // When session is active (or email auto-confirmed), sync profile row to Supabase
+    if (signUpData.session) {
+      const profile = await getOrCreateSupabaseProfile(signUpData.user, {
+        ...profileData,
+        email: cleanEmail,
+        phone: cleanPhone,
+        batchYear: normalizedBatch,
       });
 
-      const registerData = await registerRes.json();
-      if (!registerRes.ok && !registeredProfile) {
-        throw new Error(registerData.error || 'Registration failed. Please check your information and try again.');
+      if (profile) {
+        setCurrentUser(profile);
+        setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+        setIsLoggedIn(true);
+        return true;
       }
-
-      if (registerData.session?.access_token) {
-        inMemorySupabaseToken = registerData.session.access_token;
-        setSupabaseToken(registerData.session.access_token);
-      }
-
-      if (registerData.profile) {
-        registeredProfile = registerData.profile;
-      }
-    } catch (err: any) {
-      if (err.message && (err.message.includes('already registered') || err.message.includes('Password') || err.message.includes('Please'))) {
-        throw err;
-      }
-      console.warn('Backend registration failed, proceeding with local fallback:', err);
     }
 
-    // 2. Build profile object if server didn't return one
-    const newProfile: AlumniProfile = registeredProfile || {
-      id: Date.now(),
-      userId: Math.floor(Math.random() * 10000) + 1000,
-      fullName: (profileData.fullName || 'Notredamian Alumnus').trim(),
-      avatarUrl: profileData.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
-      coverUrl: campusHeroImg,
-      batchYear: rawBatch,
-      session: profileData.session || computedSession,
-      collegeRoll: profileData.collegeRoll ?? '',
-      group: profileData.group || 'Science',
-      section: profileData.section || 'Group 4',
-      verificationStatus: verificationStatus,
-      verificationMethod: profileData.verificationMethod || 'two_vouches',
-      verifiedBy: profileData.verifiedBy || [],
-      vouchesCount: profileData.vouchesCount ?? 0,
-      vouchTargetCount: 2,
-      idProofUrl: profileData.idProofUrl,
-      idDocType: profileData.idDocType || (profileData.idProofUrl ? 'id_card' : undefined),
-      idSubmissionStatus: profileData.idProofUrl ? 'pending' : undefined,
-      verificationDate: verificationStatus === 'verified' ? 'Today' : undefined,
-      profession: profileData.profession ?? '',
-      position: profileData.position ?? '',
-      institution: profileData.institution ?? '',
-      cadre: profileData.cadre ?? '',
-      specialty: profileData.specialty ?? [],
-      degree: profileData.degree ?? [],
-      city: profileData.city ?? '',
-      country: profileData.country ?? '',
-      whatsapp: profileData.whatsapp ?? '',
-      fbLink: profileData.fbLink ?? '',
-      phone: cleanPhone,
-      email: cleanEmail,
-      bio: profileData.bio ?? '',
-      careerHistory: profileData.careerHistory ?? [],
-      isPublic: true,
-      online: true,
-      postsCount: 0,
-      badges: profileData.badges ?? [],
-    };
-
-    registerUserVouchRequest(newProfile);
-
-    if (newProfile.idProofUrl) {
-      submitDocumentForAdminReview(
-        newProfile,
-        newProfile.idDocType || 'id_card',
-        newProfile.idProofUrl
-      );
-    }
-
-    setCurrentUser(newProfile);
-    ALUMNI_PROFILES.unshift(newProfile);
-    saveStoredAlumniProfiles(ALUMNI_PROFILES);
-
-    const accounts = loadAccounts();
-    const hashedPassword = profileData.password ? await hashPassword(profileData.password) : undefined;
-    accounts.push({
-      identifier: cleanPhone || cleanEmail || newProfile.fullName,
-      password: hashedPassword,
-      profile: newProfile,
-    });
-    saveAccounts(accounts);
-
-    setIsLoggedIn(true);
     return true;
   };
 
-  const updateProfile = (updated: Partial<AlumniProfile>) => {
-    setCurrentUser((prev) => {
-      const next = { ...prev, ...updated };
-      const idx = ALUMNI_PROFILES.findIndex((p) => p.id === next.id);
-      if (idx > -1) {
-        ALUMNI_PROFILES[idx] = next;
-      } else {
-        ALUMNI_PROFILES.unshift(next);
+  const updateProfile = async (updated: Partial<AlumniProfile>) => {
+    setCurrentUser((prev) => ({ ...prev, ...updated }));
+    if (isSupabaseConfigured && currentUser.authUserId) {
+      try {
+        await supabase
+          .from('alumni_profiles')
+          .update({
+            full_name: updated.fullName,
+            avatar_url: updated.avatarUrl,
+            cover_url: updated.coverUrl,
+            profession: updated.profession,
+            position: updated.position,
+            institution: updated.institution,
+            city: updated.city,
+            country: updated.country,
+            bio: updated.bio,
+            phone: updated.phone,
+            whatsapp: updated.whatsapp,
+            fb_link: updated.fbLink,
+          })
+          .eq('auth_user_id', currentUser.authUserId);
+      } catch (err) {
+        console.warn('Supabase profile update warning:', err);
       }
-      saveStoredAlumniProfiles(ALUMNI_PROFILES);
-
-      const accounts = loadAccounts();
-      const accIdx = accounts.findIndex((a) => a.profile.id === next.id);
-      if (accIdx > -1) {
-        accounts[accIdx].profile = next;
-        saveAccounts(accounts);
-      }
-
-      return next;
-    });
+    }
   };
 
-  const deleteAccount = async (confirmationPassword?: string): Promise<boolean> => {
-    const deletingId = currentUser.id;
-    const cleanPhone = (currentUser.phone || '').trim();
-    const cleanEmail = (currentUser.email || '').trim().toLowerCase();
-
-    // 1. Call server-side deletion endpoint
-    try {
-      const res = await fetch(apiUrl('/api/auth/delete-account'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profileId: deletingId,
-          password: confirmationPassword,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 401) {
-          throw new Error(data.error || 'Incorrect password confirmation.');
-        }
+  const deleteAccount = async (): Promise<boolean> => {
+    if (isSupabaseConfigured && currentUser.authUserId) {
+      try {
+        await supabase
+          .from('alumni_profiles')
+          .delete()
+          .eq('auth_user_id', currentUser.authUserId);
+      } catch (err) {
+        console.warn('Supabase delete profile warning:', err);
       }
-    } catch (err: any) {
-      if (err.message && err.message.includes('password')) {
-        throw err;
-      }
-      console.warn('Backend delete-account warning:', err);
+      try {
+        await supabase.auth.signOut();
+      } catch {}
     }
 
-    // 2. Remove from in-memory ALUMNI_PROFILES and save to localStorage
-    const pIdx = ALUMNI_PROFILES.findIndex((p) => p.id === deletingId);
-    if (pIdx > -1) {
-      ALUMNI_PROFILES.splice(pIdx, 1);
-    }
-    saveStoredAlumniProfiles(ALUMNI_PROFILES);
-
-    // 3. Remove from registered accounts
-    const accounts = loadAccounts();
-    const filteredAccounts = accounts.filter(
-      (a) =>
-        a.profile.id !== deletingId &&
-        (!cleanPhone || !isPhoneMatch(a.profile.phone, cleanPhone)) &&
-        (!cleanEmail || (a.profile.email && a.profile.email.toLowerCase() !== cleanEmail))
-    );
-    saveAccounts(filteredAccounts);
-
-    // 4. Remove from blood donors registry if present
-    try {
-      const rawDonors = localStorage.getItem('ndc_blood_network_donors');
-      if (rawDonors) {
-        const donors = JSON.parse(rawDonors);
-        if (Array.isArray(donors)) {
-          const updatedDonors = donors.filter((d) => d.userId !== deletingId);
-          localStorage.setItem('ndc_blood_network_donors', JSON.stringify(updatedDonors));
-          window.dispatchEvent(new Event('ndc_blood_network_updated'));
-        }
-      }
-    } catch {}
-
-    // 5. Clear stored current user & auth keys
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-    localStorage.removeItem(PROFILE_STORAGE_KEY);
-    sessionStorage.removeItem(AUTH_STORAGE_KEY);
-    sessionStorage.removeItem(PROFILE_STORAGE_KEY);
-
-    // 6. Sign out Supabase Auth
     inMemorySupabaseToken = null;
     setSupabaseToken(null);
-    if (isSupabaseConfigured) {
-      supabase.auth.signOut().catch(() => {});
-    }
-
-    // 7. Reset state to blank logged-out user
     setCurrentUser(DEFAULT_BLANK_USER);
     setIsAdminUser(false);
     setIsLoggedIn(false);
-
-    window.dispatchEvent(new CustomEvent('ndc_profile_deleted', { detail: { profileId: deletingId } }));
     return true;
   };
 
-  const requestOtp = async (phone: string) => {
-    await new Promise((r) => setTimeout(r, 500));
-    const key = normalizePhoneDigits(phone);
+  const requestOtp = async (phoneOrEmail: string) => {
+    const clean = phoneOrEmail.trim().toLowerCase();
+    if (clean.includes('@')) {
+      const { error } = await supabase.auth.resetPasswordForEmail(clean, {
+        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/#reset-password` : undefined,
+      });
+      if (error) {
+        throw new Error(error.message);
+      }
+      return { success: true, emailSent: true };
+    }
+    const key = normalizePhoneDigits(phoneOrEmail);
     if (key.length < 6) {
-      throw new Error('Please enter a valid registered mobile number.');
+      throw new Error('Please enter your registered email address or mobile number.');
     }
     const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
     otpStoreRef.current.set(key, {
@@ -665,12 +595,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true, debugOtp: generatedOtp };
   };
 
-  const resetPasswordWithOtp = async (phone: string, otp: string, newPass: string) => {
-    await new Promise((r) => setTimeout(r, 500));
+  const resetPasswordWithOtp = async (phoneOrEmail: string, otp: string, newPass: string) => {
     if (!newPass || newPass.length < 6) {
       throw new Error('Password must be at least 6 characters.');
     }
-    const key = normalizePhoneDigits(phone);
+    const clean = phoneOrEmail.trim().toLowerCase();
+    if (clean.includes('@')) {
+      const { error } = await supabase.auth.updateUser({ password: newPass });
+      if (error) throw new Error(error.message);
+      return true;
+    }
+    const key = normalizePhoneDigits(phoneOrEmail);
     const entry = otpStoreRef.current.get(key);
     if (!entry || Date.now() > entry.expiresAt) {
       throw new Error('OTP has expired or was not requested. Please request a new OTP.');
@@ -678,39 +613,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (entry.otp !== otp.trim()) {
       throw new Error('Invalid OTP code. Please check the 6-digit code and try again.');
     }
-
-    const hashedPassword = await hashPassword(newPass);
-    const accounts = loadAccounts();
-    const accIdx = accounts.findIndex(
-      (a) => isPhoneMatch(a.profile.phone, phone) || isPhoneMatch(a.identifier, phone)
-    );
-
-    if (accIdx > -1) {
-      accounts[accIdx].password = hashedPassword;
-      saveAccounts(accounts);
-    } else {
-      const existingProfile = ALUMNI_PROFILES.find((p) => isPhoneMatch(p.phone, phone));
-      if (existingProfile) {
-        accounts.push({
-          identifier: existingProfile.phone || phone.trim(),
-          password: hashedPassword,
-          profile: existingProfile,
-        });
-        saveAccounts(accounts);
-      }
-    }
-
-    // Sync updated password to Cloud SQL database so user can log in with new password on any device
-    try {
-      await fetch(apiUrl('/api/auth/reset-password'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, newPassword: newPass }),
-      });
-    } catch {
-      // offline fallback
-    }
-
     otpStoreRef.current.delete(key);
     return true;
   };
@@ -724,6 +626,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         supabaseToken,
         isAdminUser,
         login,
+        loginWithPhoneOtp,
+        verifyPhoneOtp,
         loginWithGoogle,
         logout,
         register,

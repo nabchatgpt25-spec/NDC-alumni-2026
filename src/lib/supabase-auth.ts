@@ -121,12 +121,14 @@ export async function getOrCreateSupabaseProfile(
     // Admin elevation for super admin emails is resolved dynamically in mapSupabaseRowToAlumniProfile.
     const initialRecord = {
       auth_user_id: authUser.id,
+      role: 'member',
+      verification_status: 'unverified',
       full_name:
         extraData?.fullName?.trim() ||
         (authUser.user_metadata as any)?.full_name ||
         (authUser.user_metadata as any)?.name ||
-        cleanEmail.split('@')[0] ||
-        'Notredamian Alumnus',
+        (cleanEmail ? cleanEmail.split('@')[0] : null) ||
+        (authUser.phone ? `Alumnus (${authUser.phone})` : 'Notredamian Alumnus'),
       avatar_url:
         extraData?.avatarUrl ||
         (authUser.user_metadata as any)?.avatar_url ||
@@ -149,7 +151,7 @@ export async function getOrCreateSupabaseProfile(
       city: extraData?.city || 'Dhaka',
       country: extraData?.country || 'Bangladesh',
       email: cleanEmail || null,
-      phone: extraData?.phone?.trim() || null,
+      phone: extraData?.phone?.trim() || (authUser.user_metadata as any)?.phone || authUser.phone || null,
       whatsapp: extraData?.whatsapp?.trim() || null,
       blood_group: extraData?.bloodGroup || null,
     };

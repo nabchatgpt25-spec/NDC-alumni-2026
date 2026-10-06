@@ -1,7 +1,13 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const rawUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || '';
-const rawAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() || '';
+const DEFAULT_SUPABASE_URL = 'https://gqbibeffpbvpopgmmqvr.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxYmliZWZmcGJ2cG9wZ21tcXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMDQxMzQsImV4cCI6MjEwNjg4MDEzNH0.9G5VKEBVp-yGfx_uAhmt4uARKQPUH9-6qYVT2WJmOzE';
+
+const rawUrl =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || DEFAULT_SUPABASE_URL;
+const rawAnonKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() || DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(
   rawUrl &&
@@ -10,10 +16,9 @@ export const isSupabaseConfigured = Boolean(
   !rawUrl.includes('placeholder.supabase.co')
 );
 
-// Safe fallback URL/key so createClient never throws at module import time when env vars are not yet set.
 // Never use or expose service_role key in client code.
-const effectiveUrl = isSupabaseConfigured ? rawUrl : 'https://placeholder.supabase.co';
-const effectiveAnonKey = isSupabaseConfigured ? rawAnonKey : 'public-anon-placeholder-key';
+const effectiveUrl = isSupabaseConfigured ? rawUrl : DEFAULT_SUPABASE_URL;
+const effectiveAnonKey = isSupabaseConfigured ? rawAnonKey : DEFAULT_SUPABASE_ANON_KEY;
 
 export const supabase: SupabaseClient = createClient(effectiveUrl, effectiveAnonKey, {
   auth: {

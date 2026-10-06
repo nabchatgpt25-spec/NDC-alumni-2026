@@ -126,14 +126,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { login, loginWithGoogle, register, requestOtp, resetPasswordWithOtp } = useAuth();
+  const {
+    login,
+    loginWithPhoneOtp,
+    verifyPhoneOtp,
+    loginWithGoogle,
+    register,
+    requestOtp,
+    resetPasswordWithOtp,
+  } = useAuth();
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
 
   // Login State
+  const [loginTab, setLoginTab] = useState<'email' | 'phone'>('email');
+  const [phoneLoginMode, setPhoneLoginMode] = useState<'otp' | 'password'>('otp');
   const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPhone, setLoginPhone] = useState('');
+  const [loginPhoneOtp, setLoginPhoneOtp] = useState('');
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [phoneCountdown, setPhoneCountdown] = useState(0);
+  const [providerNotice, setProviderNotice] = useState<string | null>(null);
   const [loginPassword, setLoginPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+
+  // Countdown timer for phone OTP resend
+  React.useEffect(() => {
+    if (phoneCountdown > 0) {
+      const timer = setTimeout(() => setPhoneCountdown((c) => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [phoneCountdown]);
 
   // Register Form State (14 fields) initialized from localStorage draft
   const [initialDraft] = useState<RegistrationFormDraft>(() => loadRegistrationDraft());
@@ -290,25 +313,101 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Handle Login Submit
+  // Handle Login Submit (Email or Mobile with password)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    setProviderNotice(null);
 
-    if (!loginIdentifier.trim() || !loginPassword.trim()) {
-      setErrorMessage('Please enter your mobile number or email and password.');
+    const input = loginTab === 'email' ? loginIdentifier.trim() : loginPhone.trim();
+    if (!input || !loginPassword.trim()) {
+      setErrorMessage(
+        loginTab === 'email'
+          ? 'Please enter your email and password.'
+          : 'Please enter your mobile number and password.'
+      );
       return;
     }
 
     setLoading(true);
     try {
-      await login(loginIdentifier.trim(), loginPassword);
+      await login(input, loginPassword);
       onClose();
       if (onSuccess) onSuccess('login');
     } catch (err: unknown) {
       const error = err as Error;
-      setErrorMessage(error.message || 'Invalid credentials. Please try again.');
+      const msg = error.message || '';
+      if (
+        msg.toLowerCase().includes('phone provider is disabled') ||
+        msg.toLowerCase().includes('unsupported phone provider')
+      ) {
+        setProviderNotice(
+          'Supabase Phone Provider is not enabled on this project. In the Supabase Dashboard, navigate to Authentication > Providers > Phone, toggle it ON, and configure an SMS provider (Twilio, MessageBird, Vonage, or AWS SNS). In the meantime, you can sign in directly using your registered Email & Password.'
+        );
+      } else {
+        setErrorMessage(msg || 'Invalid credentials. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle Phone OTP Request (Send SMS code via Supabase Auth)
+  const handleRequestPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setProviderNotice(null);
+
+    if (!loginPhone.trim()) {
+      setErrorMessage('Please enter your mobile number.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await loginWithPhoneOtp(loginPhone.trim());
+      setPhoneOtpSent(true);
+      setPhoneCountdown(60);
+      setSuccessMessage('A 6-digit SMS verification code has been sent to your mobile number.');
+    } catch (err: unknown) {
+      const error = err as Error;
+      const msg = error.message || '';
+      if (
+        msg.toLowerCase().includes('phone provider is disabled') ||
+        msg.toLowerCase().includes('unsupported phone provider')
+      ) {
+        setProviderNotice(
+          'Supabase Phone Provider is not enabled on this project. In the Supabase Dashboard, navigate to Authentication > Providers > Phone, toggle it ON, and configure an SMS provider (Twilio, MessageBird, Vonage, or AWS SNS). In the meantime, you can sign in directly using your registered Email & Password.'
+        );
+      } else {
+        setErrorMessage(msg || 'Unable to send SMS verification code.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle Phone OTP Verification (Verify SMS code via Supabase Auth)
+  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (!loginPhone.trim() || !loginPhoneOtp.trim()) {
+      setErrorMessage('Please enter both your mobile number and the 6-digit verification code.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await verifyPhoneOtp(loginPhone.trim(), loginPhoneOtp.trim());
+      onClose();
+      if (onSuccess) onSuccess('login');
+    } catch (err: unknown) {
+      const error = err as Error;
+      setErrorMessage(error.message || 'Invalid or expired SMS code. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -479,10 +578,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto bg-slate-900/30 dark:bg-slate-950/45 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-md animate-in fade-in duration-200"
     >
       <div
-        className="relative w-full max-w-2xl my-auto bg-white/35 dark:bg-slate-900/40 backdrop-blur-2xl backdrop-saturate-180 rounded-3xl shadow-[0_24px_64px_-12px_rgba(15,23,42,0.35),inset_0_1px_1px_rgba(255,255,255,0.75)] dark:shadow-[0_24px_64px_-12px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.2)] border border-white/60 dark:border-white/15 ring-1 ring-white/35 dark:ring-white/10 overflow-hidden flex flex-col max-h-[92vh]"
+        className="relative w-full max-w-2xl my-auto bg-white/40 dark:bg-slate-900/50 backdrop-blur-2xl backdrop-saturate-180 rounded-2xl sm:rounded-3xl shadow-[0_24px_64px_-12px_rgba(15,23,42,0.35),inset_0_1px_1px_rgba(255,255,255,0.75)] dark:shadow-[0_24px_64px_-12px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.2)] border border-white/60 dark:border-white/15 ring-1 ring-white/35 dark:ring-white/10 overflow-hidden flex flex-col max-h-[94vh] sm:max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Subtle Liquid Glass Refractive Highlights */}
@@ -490,27 +589,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="pointer-events-none absolute -bottom-24 -right-24 w-72 h-72 rounded-full bg-indigo-400/20 dark:bg-amber-500/10 blur-3xl" />
 
         {/* Modal Header */}
-        <div className="relative px-6 py-5 border-b border-white/40 dark:border-white/10 bg-white/25 dark:bg-white/[0.04] backdrop-blur-xl flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-md p-1 border border-white/70 dark:border-white/15 flex items-center justify-center shadow-md shadow-blue-600/10 overflow-hidden shrink-0">
+        <div className="relative px-4 sm:px-6 py-3.5 sm:py-5 border-b border-white/40 dark:border-white/10 bg-white/25 dark:bg-white/[0.04] backdrop-blur-xl flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white/70 dark:bg-slate-800/60 backdrop-blur-md p-1 border border-white/70 dark:border-white/15 flex items-center justify-center shadow-md shadow-blue-600/10 overflow-hidden shrink-0">
               <NDCLogo className="w-full h-full" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none">
-                  {mode === 'login' && 'Sign In to Notre Dame Portal'}
-                  {mode === 'register' && 'Notre Dame Alumni Registration'}
-                  {mode === 'forgot' && 'Reset Portal Password'}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none truncate">
+                  {mode === 'login' && 'Sign In to Portal'}
+                  {mode === 'register' && 'Alumni Registration'}
+                  {mode === 'forgot' && 'Reset Password'}
                 </h2>
                 <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 dark:bg-blue-400/15 border border-blue-400/30 text-blue-700 dark:text-blue-300 backdrop-blur-sm">
                   <ShieldCheck className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                   <span>Verified Notredamian</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+              <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 mt-1 truncate">
                 {mode === 'login' && 'Notre Dame College (NDC Dhaka) Alumni Network'}
-                {mode === 'register' && 'Join your fellow batchmates and seniors across 75+ batches worldwide'}
-                {mode === 'forgot' && 'Verify your mobile number to restore access to your account'}
+                {mode === 'register' && 'Join 75+ batches worldwide'}
+                {mode === 'forgot' && 'Verify mobile number to restore access'}
               </p>
             </div>
           </div>
@@ -518,7 +617,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-white/50 hover:bg-white/80 dark:bg-white/10 dark:hover:bg-white/20 border border-white/50 dark:border-white/15 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-colors cursor-pointer backdrop-blur-md"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/50 hover:bg-white/80 dark:bg-white/10 dark:hover:bg-white/20 border border-white/50 dark:border-white/15 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-colors cursor-pointer backdrop-blur-md shrink-0 ml-2"
             aria-label="Close modal"
           >
             <X className="w-4 h-4" />
@@ -527,7 +626,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Tab Switcher (Login vs Sign Up) */}
         {mode !== 'forgot' && (
-          <div className="relative px-6 pt-4 pb-2 bg-white/15 dark:bg-white/[0.02] border-b border-white/35 dark:border-white/10 flex-shrink-0">
+          <div className="relative px-4 sm:px-6 pt-3 sm:pt-4 pb-2 bg-white/15 dark:bg-white/[0.02] border-b border-white/35 dark:border-white/10 flex-shrink-0">
             <div className="flex p-1 rounded-2xl bg-white/35 dark:bg-slate-950/35 border border-white/50 dark:border-white/10 backdrop-blur-md max-w-md mx-auto">
               <button
                 type="button"
@@ -536,7 +635,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   setErrorMessage('');
                   setSuccessMessage('');
                 }}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                className={`flex-1 py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                   mode === 'login'
                     ? 'bg-white/80 dark:bg-white/15 text-blue-600 dark:text-blue-300 shadow-xs border border-white/60 dark:border-white/15 backdrop-blur-md'
                     : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -553,7 +652,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   setErrorMessage('');
                   setSuccessMessage('');
                 }}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                className={`flex-1 py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                   mode === 'register'
                     ? 'bg-white/80 dark:bg-white/15 text-blue-600 dark:text-blue-300 shadow-xs border border-white/60 dark:border-white/15 backdrop-blur-md'
                     : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -567,7 +666,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         )}
 
         {/* Scrollable Form Body */}
-        <div className="relative p-6 overflow-y-auto space-y-4">
+        <div className="relative p-4 sm:p-6 overflow-y-auto space-y-4">
           {/* Status Alerts */}
           {errorMessage && (
             <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-semibold animate-in fade-in">
@@ -582,111 +681,394 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {/* =========================================================================
-              VIEW 1: SIGN IN (LOGIN)
+              VIEW 1: SIGN IN (LOGIN - EMAIL OR SECURE PHONE AUTH)
              ========================================================================= */}
           {mode === 'login' && (
-            <form onSubmit={handleLogin} className="space-y-4 max-w-md mx-auto py-2">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.05 }}
-              >
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
-                  Mobile Number or Email
-                </label>
-                <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                  <div className="pl-3.5 text-slate-500 dark:text-slate-400">
-                    <Phone className="w-4 h-4" />
+            <div className="space-y-4 max-w-md mx-auto py-1">
+              {/* Login Method Sub-Tabs: Email vs Mobile Phone */}
+              <div className="flex p-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginTab('email');
+                    setErrorMessage('');
+                    setProviderNotice(null);
+                  }}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    loginTab === 'email'
+                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Email &amp; Password</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginTab('phone');
+                    setErrorMessage('');
+                    setProviderNotice(null);
+                  }}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    loginTab === 'phone'
+                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>Mobile Number</span>
+                </button>
+              </div>
+
+              {/* Exact Supabase Provider Setup Notice (Shown if Phone provider is not yet enabled) */}
+              {providerNotice && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs space-y-2 animate-in fade-in">
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-extrabold text-slate-900 dark:text-white">
+                        Supabase SMS/Phone Provider Setting Required
+                      </div>
+                      <p className="mt-1 leading-relaxed text-[11px] text-slate-700 dark:text-slate-300">
+                        {providerNotice}
+                      </p>
+                    </div>
                   </div>
-                  <input
-                    type="text"
-                    placeholder="e.g. 01711223344 or alumnus@ndc.edu.bd"
-                    value={loginIdentifier}
-                    onChange={(e) => setLoginIdentifier(e.target.value)}
-                    className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                    autoFocus
-                  />
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.12 }}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Password
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('forgot');
-                      setErrorMessage('');
-                    }}
-                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
-                <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                  <div className="pl-3.5 text-slate-500 dark:text-slate-400">
-                    <Lock className="w-4 h-4" />
+                  <div className="pt-1 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginTab('email');
+                        setProviderNotice(null);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] cursor-pointer transition-colors"
+                    >
+                      Sign In with Email Instead
+                    </button>
                   </div>
-                  <input
-                    type={showLoginPassword ? 'text' : 'password'}
-                    placeholder="Enter your password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowLoginPassword(!showLoginPassword)}
-                    className="pr-3.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
-                    aria-label="Toggle password visibility"
-                  >
-                    {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
                 </div>
-              </motion.div>
+              )}
 
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.18 }}
-                className="flex items-center justify-between pt-1"
-              >
-                <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
-                  />
-                  <span>Remember me on this browser</span>
-                </label>
-              </motion.div>
+              {/* -------------------------------------------------------------
+                  SUB-VIEW A: EMAIL & PASSWORD
+                 ------------------------------------------------------------- */}
+              {loginTab === 'email' && (
+                <form onSubmit={handleLogin} className="space-y-3.5">
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                      Email Address
+                    </label>
+                    <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                      <div className="pl-3.5 text-slate-500 dark:text-slate-400">
+                        <Mail className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="e.g. name@example.com"
+                        value={loginIdentifier}
+                        onChange={(e) => setLoginIdentifier(e.target.value)}
+                        className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                        autoFocus
+                      />
+                    </div>
+                  </motion.div>
 
-              <motion.button
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.24 }}
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                <span>{loading ? 'Signing in...' : 'Sign In to Portal'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </motion.button>
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, delay: 0.05 }}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                        Password
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('forgot');
+                          setErrorMessage('');
+                        }}
+                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                    <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                      <div className="pl-3.5 text-slate-500 dark:text-slate-400">
+                        <Lock className="w-4 h-4" />
+                      </div>
+                      <input
+                        type={showLoginPassword ? 'text' : 'password'}
+                        placeholder="Enter your password"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        className="pr-3.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+                        aria-label="Toggle password visibility"
+                      >
+                        {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </motion.div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                      />
+                      <span>Remember me on this browser</span>
+                    </label>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 min-h-[44px]"
+                  >
+                    <span>{loading ? 'Signing in...' : 'Sign In to Portal'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </form>
+              )}
+
+              {/* -------------------------------------------------------------
+                  SUB-VIEW B: PHONE NUMBER (SMS OTP OR PHONE+PASSWORD)
+                 ------------------------------------------------------------- */}
+              {loginTab === 'phone' && (
+                <div className="space-y-3.5">
+                  {/* Phone login mode selector */}
+                  <div className="flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhoneLoginMode('otp');
+                        setErrorMessage('');
+                      }}
+                      className={`px-3 py-1 rounded-full cursor-pointer transition-colors ${
+                        phoneLoginMode === 'otp'
+                          ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold'
+                          : 'hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      SMS Code (OTP)
+                    </button>
+                    <span>·</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhoneLoginMode('password');
+                        setErrorMessage('');
+                      }}
+                      className={`px-3 py-1 rounded-full cursor-pointer transition-colors ${
+                        phoneLoginMode === 'password'
+                          ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold'
+                          : 'hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Mobile &amp; Password
+                    </button>
+                  </div>
+
+                  {phoneLoginMode === 'otp' ? (
+                    <form
+                      onSubmit={phoneOtpSent ? handleVerifyPhoneOtp : handleRequestPhoneOtp}
+                      className="space-y-3.5"
+                    >
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25 }}
+                      >
+                        <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                          Alumni Mobile Number
+                        </label>
+                        <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                          <div className="pl-3.5 flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-bold shrink-0">
+                            <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            <span className="text-slate-600 dark:text-slate-300 border-r border-slate-300 dark:border-slate-700 pr-2">
+                              +880
+                            </span>
+                          </div>
+                          <input
+                            type="tel"
+                            placeholder="e.g. 01712345678"
+                            value={loginPhone}
+                            onChange={(e) => setLoginPhone(e.target.value)}
+                            disabled={phoneOtpSent}
+                            className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none disabled:opacity-60"
+                            autoFocus
+                          />
+                          {phoneOtpSent && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhoneOtpSent(false);
+                                setLoginPhoneOtp('');
+                              }}
+                              className="pr-3 text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer shrink-0"
+                            >
+                              Change
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+
+                      {phoneOtpSent && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                              6-Digit SMS Verification Code
+                            </label>
+                            {phoneCountdown > 0 ? (
+                              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                Resend in {phoneCountdown}s
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleRequestPhoneOtp}
+                                disabled={loading}
+                                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                              >
+                                Resend SMS Code
+                              </button>
+                            )}
+                          </div>
+                          <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                            <div className="pl-3.5 text-slate-500 dark:text-slate-400">
+                              <KeyRound className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            <input
+                              type="text"
+                              maxLength={6}
+                              placeholder="Enter 6-digit code (e.g. 123456)"
+                              value={loginPhoneOtp}
+                              onChange={(e) => setLoginPhoneOtp(e.target.value.replace(/\D/g, ''))}
+                              className="w-full px-3 py-3 text-xs sm:text-sm font-mono tracking-widest text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                              autoFocus
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 min-h-[44px]"
+                      >
+                        {phoneOtpSent ? (
+                          <>
+                            <span>{loading ? 'Verifying...' : 'Verify Code & Sign In'}</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        ) : (
+                          <>
+                            <span>{loading ? 'Sending SMS Code...' : 'Send SMS Verification Code'}</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleLogin} className="space-y-3.5">
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25 }}
+                      >
+                        <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                          Alumni Mobile Number
+                        </label>
+                        <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                          <div className="pl-3.5 text-slate-500 dark:text-slate-400">
+                            <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <input
+                            type="tel"
+                            placeholder="e.g. 01712345678"
+                            value={loginPhone}
+                            onChange={(e) => setLoginPhone(e.target.value)}
+                            className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                            autoFocus
+                          />
+                        </div>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25, delay: 0.05 }}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                            Password
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMode('forgot');
+                              setErrorMessage('');
+                            }}
+                            className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                          >
+                            Forgot Password?
+                          </button>
+                        </div>
+                        <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                          <div className="pl-3.5 text-slate-500 dark:text-slate-400">
+                            <Lock className="w-4 h-4" />
+                          </div>
+                          <input
+                            type={showLoginPassword ? 'text' : 'password'}
+                            placeholder="Enter your password"
+                            value={loginPassword}
+                            onChange={(e) => setLoginPassword(e.target.value)}
+                            className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowLoginPassword(!showLoginPassword)}
+                            className="pr-3.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+                            aria-label="Toggle password visibility"
+                          >
+                            {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </motion.div>
+
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 min-h-[44px]"
+                      >
+                        <span>{loading ? 'Signing in...' : 'Sign In with Mobile'}</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
 
               {/* Helper for new users */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.3 }}
-                className="pt-4 border-t border-white/35 dark:border-white/10 text-center"
-              >
+              <div className="pt-3 border-t border-white/35 dark:border-white/10 text-center">
                 <p className="text-xs text-slate-700 dark:text-slate-300 mb-2">
                   Don't have a registered alumni account yet?
                 </p>
@@ -701,8 +1083,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>Register Verified Alumni Profile</span>
                 </button>
-              </motion.div>
-            </form>
+              </div>
+            </div>
           )}
 
           {/* =========================================================================

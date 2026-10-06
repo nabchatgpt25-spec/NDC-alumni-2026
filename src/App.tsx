@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+import { Home, Users, BookOpen, HeartHandshake, User as UserIcon } from 'lucide-react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
@@ -219,7 +220,7 @@ function AlumniAppContent() {
         />
 
         {/* View Router with Smooth Cinematic Page Transitions */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1500px] w-full mx-auto">
+        <main className="flex-1 px-2.5 sm:px-5 lg:px-8 py-3 sm:py-6 lg:py-8 max-w-[1500px] w-full mx-auto pb-24 lg:pb-8">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={`${route}-${route === 'profile' ? selectedProfileId : ''}`}
