@@ -746,3 +746,126 @@ html[data-theme="vintage-parchment"] .text-blue-700 {
   box-shadow: 0 10px 30px 0 rgba(0, 0, 0, 0.35);
 }
 
+/* ==========================================================================
+   SUBTLE CAMPUS BACKGROUND CAROUSEL CONTAINER (BEHIND CONTENT)
+   ========================================================================== */
+
+.subtle-campus-bg-container {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  user-select: none;
+}
+
+.subtle-campus-bg-slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 5.5s cubic-bezier(0.25, 1, 0.5, 1);
+  will-change: opacity, transform;
+}
+
+.subtle-campus-bg-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.64) 45%,
+    rgba(248, 250, 252, 0.92) 100%
+  );
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+}
+
+.dark .subtle-campus-bg-overlay {
+  background: linear-gradient(
+    to bottom,
+    rgba(2, 6, 23, 0.85) 0%,
+    rgba(15, 23, 42, 0.7) 45%,
+    rgba(2, 6, 23, 0.94) 100%
+  );
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+}
+
+/* ==========================================================================
+   CINEMATIC KEN BURNS ZOOM-AND-PAN CAROUSEL ANIMATIONS
+   ========================================================================== */
+
+@keyframes kenBurnsZoomIn {
+  0% {
+    transform: scale(1) translate(0%, 0%);
+  }
+  100% {
+    transform: scale(1.10) translate(-1.2%, -0.8%);
+  }
+}
+
+@keyframes kenBurnsPanRight {
+  0% {
+    transform: scale(1.06) translate(-2%, 0.5%);
+  }
+  100% {
+    transform: scale(1.12) translate(1.5%, -0.5%);
+  }
+}
+
+@keyframes kenBurnsPanLeft {
+  0% {
+    transform: scale(1.12) translate(1.5%, 0%);
+  }
+  100% {
+    transform: scale(1.06) translate(-1.5%, -0.8%);
+  }
+}
+
+@keyframes kenBurnsZoomOut {
+  0% {
+    transform: scale(1.14) translate(1%, 0.8%);
+  }
+  100% {
+    transform: scale(1.03) translate(-0.5%, -0.5%);
+  }
+}
+
+@keyframes kenBurnsPanUp {
+  0% {
+    transform: scale(1.05) translate(0%, 1.8%);
+  }
+  100% {
+    transform: scale(1.11) translate(0.8%, -1.2%);
+  }
+}
+
+.ken-burns-anim-0 {
+  animation: kenBurnsZoomIn 6.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  will-change: transform;
+}
+
+.ken-burns-anim-1 {
+  animation: kenBurnsPanRight 6.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  will-change: transform;
+}
+
+.ken-burns-anim-2 {
+  animation: kenBurnsPanLeft 6.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  will-change: transform;
+}
+
+.ken-burns-anim-3 {
+  animation: kenBurnsZoomOut 6.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  will-change: transform;
+}
+
+.ken-burns-anim-4 {
+  animation: kenBurnsPanUp 6.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  will-change: transform;
+}
+
+
+
