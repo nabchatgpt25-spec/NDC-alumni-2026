@@ -1,3 +1,12 @@
+// Defensively clean up any global __dirname / __filename polluted by tsx CLI
+// so that ESM packages like vite-plugin-pwa and Vite resolve relative to import.meta.url correctly
+if (typeof (globalThis as any).__dirname !== 'undefined') {
+  delete (globalThis as any).__dirname;
+}
+if (typeof (globalThis as any).__filename !== 'undefined') {
+  delete (globalThis as any).__filename;
+}
+
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { createServer as createHttpServer } from 'http';
 import { readFile } from 'fs/promises';
@@ -113,9 +122,10 @@ function resolveActor(req: AuthRequest) {
     };
   }
   if (req.user) {
+    const user = req.user as any;
     return {
-      uid: req.user.uid,
-      email: req.user.email || 'admin@ndcalumni.org',
+      uid: user.uid || user.id || 'admin-user',
+      email: user.email || 'admin@ndcalumni.org',
       role: 'admin',
     };
   }
@@ -605,8 +615,9 @@ app.post(
   optionalAuth,
   async (req: AuthRequest, res: Response) => {
     try {
+      const user = req.user as any;
       const created = await createOrRegisterAlumniProfile({
-        userUid: req.user?.uid || req.body.userUid,
+        userUid: user?.uid || user?.id || req.body.userUid,
         fullName: req.body.fullName,
         avatarUrl: req.body.avatarUrl,
         batchYear: Number(req.body.batchYear) || 68,

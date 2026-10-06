@@ -15,6 +15,11 @@ import {
 } from '../types';
 import { NOTIFICATIONS_LIST } from '../data/mockData';
 import { matchDonorsForRequest } from './bloodMatching';
+import {
+  createBloodRequestInDb,
+  registerBloodDonorInDb,
+  respondToBloodRequestInDb,
+} from '../services/supabaseService';
 
 export const BLOOD_REQUESTS_STORAGE_KEY = 'ndc_blood_requests_v1';
 export const BLOOD_DONORS_STORAGE_KEY = 'ndc_blood_donors_v1';
@@ -548,6 +553,20 @@ export function upsertBloodDonorProfile(
   }
 
   saveBloodDonors(donors);
+
+  // Persist to Supabase blood_donors table
+  registerBloodDonorInDb({
+    userId: user.id,
+    bloodGroup: input.bloodGroup,
+    availability: input.availability,
+    preferredArea: cleanArea,
+    city: sanitizeInputText(user.city || 'Dhaka', 60),
+    lastDonationDate: input.lastDonationDate,
+    emergencyAlertPreference: input.emergencyAlertPreference,
+  }).catch((err) => {
+    console.warn('registerBloodDonorInDb fallback:', err);
+  });
+
   return updatedDonor;
 }
 
@@ -761,6 +780,22 @@ export function createEmergencyBloodRequest(
   const updatedRequests = [newRequest, ...requests];
   saveBloodRequests(updatedRequests);
 
+  // Persist to Supabase blood_requests table
+  createBloodRequestInDb({
+    requesterId: requester.id,
+    bloodGroup: input.bloodGroup,
+    unitsRequired: units,
+    hospitalName,
+    hospitalArea,
+    city: sanitizeInputText(input.city || requester.city || 'Dhaka', 60),
+    requiredDateTime,
+    emergencyLevel: input.emergencyLevel,
+    contactMethod: input.contactMethod,
+    description,
+  }).catch((err) => {
+    console.warn('createBloodRequestInDb fallback:', err);
+  });
+
   const donors = loadBloodDonors();
   const matched = matchDonorsForRequest(newRequest, donors);
 
@@ -837,6 +872,16 @@ export function respondToBloodRequest(
 
   requests[idx] = updatedRequest;
   saveBloodRequests(requests);
+
+  // Persist to Supabase blood_request_responses table
+  respondToBloodRequestInDb({
+    requestId: target.id,
+    donorUserId: donorUser.id,
+    status: 'offered',
+    note: responseItem.note,
+  }).catch((err) => {
+    console.warn('respondToBloodRequestInDb fallback:', err);
+  });
 
   // Send notification via the EXISTING notification system
   pushPortalNotification({

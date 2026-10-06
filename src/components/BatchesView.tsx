@@ -18,6 +18,7 @@ import {
 import { BATCH_LIST, ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
 import { BatchSummary, AlumniProfile } from '../types';
 import { NDCLogo } from './NDCLogo';
+import { fetchBatchesFromDb } from '../services/supabaseService';
 
 interface BatchesViewProps {
   onSelectBatch: (batchYear: number) => void;
@@ -240,6 +241,7 @@ function computeBatchGroupCounts(batch: BatchSummary) {
 }
 
 export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewProfile }) => {
+  const [batchesList, setBatchesList] = useState<BatchSummary[]>(BATCH_LIST);
   const [searchTerm, setSearchTerm] = useState('');
   const [rangeFilter, setRangeFilter] = useState<'all' | '1-20' | '21-40' | '41-60' | '61-78'>('all');
   const [activeBatchYear, setActiveBatchYear] = useState<number | null>(null);
@@ -247,10 +249,33 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
   const [groupSearch, setGroupSearch] = useState<string>('');
   const [previewAlumnus, setPreviewAlumnus] = useState<AlumniProfile | null>(null);
 
+  React.useEffect(() => {
+    let isMounted = true;
+    fetchBatchesFromDb()
+      .then((dbBatches) => {
+        if (isMounted && dbBatches && dbBatches.length > 0) {
+          setBatchesList((prev) => {
+            const map = new Map<number, BatchSummary>();
+            dbBatches.forEach((b) => map.set(b.batchYear, b));
+            prev.forEach((b) => {
+              if (!map.has(b.batchYear)) map.set(b.batchYear, b);
+            });
+            return Array.from(map.values()).sort((a, b) => b.batchYear - a.batchYear);
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('BatchesView: could not load batches from Supabase:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const activeBatch = useMemo(() => {
     if (activeBatchYear === null) return null;
-    return BATCH_LIST.find((b) => b.batchYear === activeBatchYear) || null;
-  }, [activeBatchYear]);
+    return batchesList.find((b) => b.batchYear === activeBatchYear) || null;
+  }, [activeBatchYear, batchesList]);
 
   const activeBatchGroupStats = useMemo(() => {
     if (!activeBatch) return null;
@@ -290,25 +315,25 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
     if (!Number.isNaN(num)) {
       // Exact batch number (1 to 78)
       if (num >= 1 && num <= 78) {
-        return BATCH_LIST.find((b) => b.batchYear === num) || null;
+        return batchesList.find((b) => b.batchYear === num) || null;
       }
       // 4-digit HSC year (e.g., 2016 -> Batch 66, since Batch 1 is HSC 1951)
       if (num >= 1951 && num <= 1950 + 78) {
         const targetBatchNum = num - 1950;
-        return BATCH_LIST.find((b) => b.batchYear === targetBatchNum) || null;
+        return batchesList.find((b) => b.batchYear === targetBatchNum) || null;
       }
       // 1949 or 1950 admission year -> Batch 1 or Batch 2
-      if (num === 1949) return BATCH_LIST[0] || null;
-      if (num === 1950) return BATCH_LIST[1] || null;
+      if (num === 1949) return batchesList[0] || null;
+      if (num === 1950) return batchesList[1] || null;
     }
     return null;
-  }, [searchTerm]);
+  }, [searchTerm, batchesList]);
 
   // Filter batches
   const filteredBatches = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
 
-    const list = BATCH_LIST.filter((b) => {
+    const list = batchesList.filter((b) => {
       // When not searching, apply range filter; when searching, search across all 78 batches
       if (!q) {
         if (rangeFilter === '1-20' && (b.batchYear < 1 || b.batchYear > 20)) return false;

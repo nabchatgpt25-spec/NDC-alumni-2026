@@ -10,6 +10,11 @@ import {
   loadStoredAlumniProfiles,
   saveStoredAlumniProfiles,
 } from '../data/mockData';
+import {
+  submitPeerVouchInDb,
+  createVerificationRequestInDb,
+  submitAdminDocSubmissionInDb,
+} from '../services/supabaseService';
 
 export const VOUCH_STORAGE_KEY = 'ndc_vouch_requests';
 export const ADMIN_DOCS_STORAGE_KEY = 'ndc_admin_doc_submissions';
@@ -378,6 +383,20 @@ export const submitDocumentForAdminReview = (
   }
   saveAdminDocSubmissions(submissions);
 
+  // Persist to Supabase admin_doc_submissions table
+  submitAdminDocSubmissionInDb({
+    userId: user.id,
+    batchYear: user.batchYear || 68,
+    collegeRoll: user.collegeRoll || '118042',
+    academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
+    academicGroup: user.academicGroup || null,
+    docType,
+    docTypeLabel: DOC_TYPE_LABELS[docType] || 'Identity Document',
+    storageObjectPath: documentUrl,
+  }).catch((err) => {
+    console.warn('submitAdminDocSubmissionInDb fallback:', err);
+  });
+
   // Also ensure a VouchRequest exists and attach the idProofUrl so Admin sees it in both places
   const requests = loadVouchRequests();
   const reqIdx = requests.findIndex((r) => r.requesterId === user.id);
@@ -588,6 +607,21 @@ export const registerUserVouchRequest = (
 
   requests.unshift(newRequest);
   saveVouchRequests(requests);
+
+  // Persist to Supabase verification_requests table
+  createVerificationRequestInDb({
+    requesterId: user.id,
+    batchYear: user.batchYear || 68,
+    collegeRoll: user.collegeRoll || '118042',
+    academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
+    academicGroup: user.academicGroup || null,
+    section: user.section || null,
+    message: customNote || null,
+    targetVouches: 2,
+  }).catch((err) => {
+    console.warn('createVerificationRequestInDb fallback:', err);
+  });
+
   return newRequest;
 };
 
@@ -635,6 +669,17 @@ export const submitPeerVouch = (
 
   requests[reqIndex] = req;
   saveVouchRequests(requests);
+
+  // Persist peer vouch to Supabase peer_vouches table
+  submitPeerVouchInDb({
+    verificationRequestId: req.id,
+    requesterId: req.requesterId,
+    voucherId: voucher.id,
+    voucherBatch: voucher.batchYear,
+    comment,
+  }).catch((err) => {
+    console.warn('submitPeerVouchInDb fallback:', err);
+  });
 
   syncProfileVerificationInStorage(req.requesterId, {
     vouchesCount: req.vouches.length,

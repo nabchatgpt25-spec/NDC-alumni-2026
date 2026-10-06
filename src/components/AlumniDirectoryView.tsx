@@ -24,6 +24,7 @@ import { matchesUniversalSearch, UNIVERSAL_DIRECTORY_PROFILES } from './Director
 import { VerificationStatusBadge } from './verification/VerificationStatusBadge';
 import { vouchForAlumniProfile } from '../utils/verificationService';
 import { Tilt3DCard } from './motion/CinematicMotion';
+import { fetchAlumniProfilesFromDb } from '../services/supabaseService';
 
 interface AlumniDirectoryViewProps {
   onViewProfile: (profileId: number) => void;
@@ -52,13 +53,37 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
   const [visibleCount, setVisibleCount] = useState(12);
 
   useEffect(() => {
+    let isMounted = true;
     const cached = getCachedDirectory();
     const stored = loadStoredAlumniProfiles();
-    setProfiles(
-      [...stored, ...cached, ...UNIVERSAL_DIRECTORY_PROFILES].filter(
-        (v, i, a) => a.findIndex((t) => t.id === v.id) === i
-      )
+    const initialCombined = [...stored, ...cached, ...UNIVERSAL_DIRECTORY_PROFILES].filter(
+      (v, i, a) => a.findIndex((t) => t.id === v.id) === i
     );
+    setProfiles(initialCombined);
+
+    // Fetch live profiles from Supabase database
+    fetchAlumniProfilesFromDb()
+      .then((dbProfiles) => {
+        if (isMounted && dbProfiles && dbProfiles.length > 0) {
+          setProfiles((prev) => {
+            const map = new Map<number, AlumniProfile>();
+            // Live Supabase profiles take highest priority
+            dbProfiles.forEach((p) => map.set(p.id, p));
+            // Keep local/cached profiles as fallback
+            prev.forEach((p) => {
+              if (!map.has(p.id)) map.set(p.id, p);
+            });
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not load live profiles from Supabase, keeping cached fallback:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const filteredProfiles = useMemo(() => {

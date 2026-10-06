@@ -34,6 +34,7 @@ import {
 import { saveMediaFile, isVideoUrl, formatFileSize } from '../../utils/mediaStorage';
 import { NDCLogo } from '../NDCLogo';
 import { WhatsAppIcon } from '../SocialIcons';
+import { fetchVerificationRequestsFromDb } from '../../services/supabaseService';
 
 interface VerificationCenterModalProps {
   isOpen: boolean;
@@ -74,10 +75,31 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
   const [docVerifiedSuccess, setDocVerifiedSuccess] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
     if (isOpen) {
       setActiveTab(resolveTab(initialTab));
       setVouchRequests(loadVouchRequests());
+
+      fetchVerificationRequestsFromDb()
+        .then((dbReqs) => {
+          if (isMounted && dbReqs && dbReqs.length > 0) {
+            setVouchRequests((prev) => {
+              const map = new Map<string, VouchRequest>();
+              dbReqs.forEach((r) => map.set(r.id, r));
+              prev.forEach((r) => {
+                if (!map.has(r.id)) map.set(r.id, r);
+              });
+              return Array.from(map.values());
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('VerificationCenter: Supabase requests fetch fallback:', err);
+        });
     }
+    return () => {
+      isMounted = false;
+    };
   }, [isOpen, initialTab]);
 
   useEffect(() => {

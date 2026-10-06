@@ -22,6 +22,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useAuth } from '../context/AuthContext';
 import { VerificationStatusBadge } from './verification/VerificationStatusBadge';
 import { vouchForAlumniProfile } from '../utils/verificationService';
+import { fetchAlumniProfilesFromDb } from '../services/supabaseService';
 
 export const UNIVERSAL_DIRECTORY_PROFILES: AlumniProfile[] = [
   {
@@ -318,6 +319,7 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
 
   // Update cached directory if updated
   useEffect(() => {
+    let isMounted = true;
     const cached = getCachedDirectory();
     const stored = loadStoredAlumniProfiles();
     setProfiles(
@@ -325,6 +327,29 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
         (v, i, a) => a.findIndex((t) => t.id === v.id) === i
       )
     );
+
+    // Fetch live profiles from Supabase database
+    fetchAlumniProfilesFromDb()
+      .then((dbProfiles) => {
+        if (isMounted && dbProfiles && dbProfiles.length > 0) {
+          setProfiles((prev) => {
+            const map = new Map<number, AlumniProfile>();
+            // Live Supabase profiles take priority
+            dbProfiles.forEach((p) => map.set(p.id, p));
+            prev.forEach((p) => {
+              if (!map.has(p.id)) map.set(p.id, p);
+            });
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('DirectoryView: Supabase live fetch fallback to local:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleRefreshCache = () => {

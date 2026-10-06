@@ -46,6 +46,10 @@ import { BloodDonorRegistration } from './BloodDonorRegistration';
 import { BloodDonorSearch } from './BloodDonorSearch';
 import { BloodRequestModal } from './BloodRequestModal';
 import { BloodRequestDetailsModal } from './BloodRequestDetailsModal';
+import {
+  fetchBloodRequestsFromDb,
+  fetchBloodDonorsFromDb,
+} from '../services/supabaseService';
 
 interface BloodNetworkViewProps {
   onViewProfile?: (userId: number) => void;
@@ -84,8 +88,45 @@ export const BloodNetworkView: React.FC<BloodNetworkViewProps> = ({
   const [actionBanner, setActionBanner] = useState<string | null>(null);
 
   const syncData = () => {
-    setRequests(loadBloodRequests());
-    setDonors(loadBloodDonors());
+    const localReqs = loadBloodRequests();
+    const localDonors = loadBloodDonors();
+    setRequests(localReqs);
+    setDonors(localDonors);
+
+    // Fetch live requests and donors from Supabase
+    fetchBloodRequestsFromDb()
+      .then((dbReqs) => {
+        if (dbReqs && dbReqs.length > 0) {
+          setRequests((prev) => {
+            const map = new Map<string, BloodEmergencyRequest>();
+            dbReqs.forEach((r) => map.set(r.id, r));
+            prev.forEach((r) => {
+              if (!map.has(r.id)) map.set(r.id, r);
+            });
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('BloodNetworkView: Supabase requests fetch fallback:', err);
+      });
+
+    fetchBloodDonorsFromDb()
+      .then((dbDonors) => {
+        if (dbDonors && dbDonors.length > 0) {
+          setDonors((prev) => {
+            const map = new Map<number, BloodDonorProfile>();
+            dbDonors.forEach((d) => map.set(d.userId, d));
+            prev.forEach((d) => {
+              if (!map.has(d.userId)) map.set(d.userId, d);
+            });
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('BloodNetworkView: Supabase donors fetch fallback:', err);
+      });
   };
 
   useEffect(() => {

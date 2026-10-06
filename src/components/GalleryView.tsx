@@ -21,6 +21,7 @@ import { AlbumShowcaseView } from './gallery/AlbumShowcaseView';
 import { CreateAlbumModal } from './gallery/CreateAlbumModal';
 import { UploadPhotosModal } from './gallery/UploadPhotosModal';
 import { PhotoLightbox } from './gallery/PhotoLightbox';
+import { fetchGalleryAlbumsFromDb } from '../services/supabaseService';
 
 const STORAGE_KEY = 'ndc_alumni_gallery_albums';
 
@@ -41,7 +42,30 @@ export const GalleryView: React.FC = () => {
     return INITIAL_ALBUMS;
   });
 
-  // Save to localStorage on change
+  // Save to localStorage on change and load from Supabase on mount
+  useEffect(() => {
+    let isMounted = true;
+    fetchGalleryAlbumsFromDb()
+      .then((dbAlbums) => {
+        if (isMounted && dbAlbums && dbAlbums.length > 0) {
+          setAlbums((prev) => {
+            const map = new Map<string | number, GalleryAlbum>();
+            dbAlbums.forEach((a) => map.set(a.id, a));
+            prev.forEach((a) => {
+              if (!map.has(a.id)) map.set(a.id, a);
+            });
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('GalleryView: Supabase albums fetch fallback:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(albums));

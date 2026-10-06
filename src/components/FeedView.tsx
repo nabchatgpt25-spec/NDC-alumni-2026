@@ -60,6 +60,15 @@ import {
   normalizeToBatchNumber
 } from '../utils/verificationService';
 import { BloodNeededNowSection } from './landing/BloodNeededNowSection';
+import {
+  fetchFeedPostsFromDb,
+  createFeedPostInDb,
+  togglePostLikeInDb,
+  addPostCommentInDb,
+  toggleSavePostInDb,
+  editFeedPostInDb,
+  deleteFeedPostInDb,
+} from '../services/supabaseService';
 
 interface FeedViewProps {
   onViewProfile?: (userId: number) => void;
@@ -118,7 +127,33 @@ export const FeedView: React.FC<FeedViewProps> = ({
     return INITIAL_OFFLINE_SAVED_POSTS;
   });
 
-  // Sync posts to localStorage
+  // Sync posts to localStorage and load from Supabase on mount
+  useEffect(() => {
+    let isMounted = true;
+    fetchFeedPostsFromDb(50, currentUser.id)
+      .then((dbPosts) => {
+        if (isMounted && dbPosts && dbPosts.length > 0) {
+          setPosts((prev) => {
+            const map = new Map<number, PostItem>();
+            // Live Supabase posts take priority
+            dbPosts.forEach((p) => map.set(p.id, p));
+            // Keep local posts that aren't yet in DB
+            prev.forEach((p) => {
+              if (!map.has(p.id)) map.set(p.id, p);
+            });
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('FeedView: failed to fetch Supabase posts, using cached:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser.id]);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -129,9 +164,10 @@ export const FeedView: React.FC<FeedViewProps> = ({
     }
   }, [posts]);
 
-  // Handle saving / bookmarking a post to offline cache
+  // Handle saving / bookmarking a post to offline cache & Supabase
   const handleToggleSave = (post: PostItem) => {
     const isNowSaved = toggleSavePost(post);
+    toggleSavePostInDb(post.id, currentUser.id).catch(() => {});
     setPosts((prev) =>
       prev.map((p) => (p.id === post.id ? { ...p, isSaved: isNowSaved } : p))
     );
@@ -581,6 +617,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
   // Toggle Like
   const handleToggleLike = (postId: number) => {
+    togglePostLikeInDb(postId, currentUser.id).catch((err) => {
+      console.warn('togglePostLikeInDb error:', err);
+    });
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id === postId) {
@@ -640,6 +679,17 @@ export const FeedView: React.FC<FeedViewProps> = ({
       comments: [],
     };
 
+    // Persist to Supabase Database
+    createFeedPostInDb({
+      authorId: currentUser.id,
+      content: finalContent,
+      category: selectedCategory,
+      images: attachedImages,
+      videos: finalVideos,
+    }).catch((err) => {
+      console.warn('createFeedPostInDb fallback:', err);
+    });
+
     setPosts([newPost, ...posts]);
     setPostContent('');
     setAttachedImages([]);
@@ -674,6 +724,14 @@ export const FeedView: React.FC<FeedViewProps> = ({
       return;
     }
 
+    editFeedPostInDb({
+      postId: editingPost.id,
+      content: editContent.trim(),
+      category: editCategory,
+      images: editImages,
+      videos: editVideos,
+    }).catch(() => {});
+
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id === editingPost.id) {
@@ -697,6 +755,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
   // Confirm and Execute Delete Post
   const handleConfirmDelete = () => {
     if (!postToDelete) return;
+    deleteFeedPostInDb(postToDelete.id).catch(() => {});
     setPosts((prev) => prev.filter((p) => p.id !== postToDelete.id));
     setPostToDelete(null);
     showToast('Post has been deleted from your feed.');
@@ -755,6 +814,14 @@ export const FeedView: React.FC<FeedViewProps> = ({
     const text = (commentInputs[postId] || '').trim();
     if (!text) return;
 
+    addPostCommentInDb({
+      postId,
+      userId: currentUser.id,
+      content: text,
+    }).catch((err) => {
+      console.warn('addPostCommentInDb fallback:', err);
+    });
+
     const newComment: PostComment = {
       id: Date.now(),
       postId,
@@ -789,6 +856,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
   const handleAddReply = (postId: number, parentCommentId: number) => {
     const text = (replyInputs[parentCommentId] || '').trim();
     if (!text) return;
+
+    addPostCommentInDb({
+      postId,
+      userId: currentUser.id,
+      content: text,
+    }).catch(() => {});
 
     const newReply: PostComment = {
       id: Date.now(),

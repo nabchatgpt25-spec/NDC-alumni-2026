@@ -9,6 +9,10 @@ import {
   loadPortalNotifications,
   savePortalNotifications,
 } from '../utils/bloodDonationService';
+import {
+  fetchNotificationsFromDb,
+  markNotificationReadInDb,
+} from '../services/supabaseService';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -45,8 +49,26 @@ export const Header: React.FC<HeaderProps> = ({
       );
     };
     const syncNotifications = () => {
-      setNotifications(loadPortalNotifications());
+      const local = loadPortalNotifications();
+      setNotifications(local);
+      if (currentUser?.id) {
+        fetchNotificationsFromDb(currentUser.id)
+          .then((dbNotifs) => {
+            if (dbNotifs && dbNotifs.length > 0) {
+              setNotifications((prev) => {
+                const map = new Map<string | number, NotificationItem>();
+                dbNotifs.forEach((n) => map.set(n.id, n));
+                prev.forEach((n) => {
+                  if (!map.has(n.id)) map.set(n.id, n);
+                });
+                return Array.from(map.values());
+              });
+            }
+          })
+          .catch(() => {});
+      }
     };
+    syncNotifications();
     window.addEventListener('ndc_vouch_requests_updated', syncVouches);
     window.addEventListener('ndc_notifications_updated', syncNotifications);
     window.addEventListener('storage', syncNotifications);
@@ -55,7 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
       window.removeEventListener('ndc_notifications_updated', syncNotifications);
       window.removeEventListener('storage', syncNotifications);
     };
-  }, []);
+  }, [currentUser?.id]);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -76,12 +98,16 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const markAllAsRead = () => {
-    const next = notifications.map((n) => ({ ...n, unread: false }));
+    const next = notifications.map((n) => {
+      markNotificationReadInDb(String(n.id)).catch(() => {});
+      return { ...n, unread: false };
+    });
     setNotifications(next);
     savePortalNotifications(next);
   };
 
   const markItemAsRead = (id: number, targetRoute?: string) => {
+    markNotificationReadInDb(String(id)).catch(() => {});
     const next = notifications.map((n) => (n.id === id ? { ...n, unread: false } : n));
     setNotifications(next);
     savePortalNotifications(next);

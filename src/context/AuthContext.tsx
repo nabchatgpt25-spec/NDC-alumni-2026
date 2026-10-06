@@ -7,6 +7,12 @@ import {
   signOut
 } from 'firebase/auth';
 import { auth, googleAuthProvider } from '../lib/firebase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  getOrCreateSupabaseProfile,
+  mapSupabaseRowToAlumniProfile,
+  isSuperAdminEmail,
+} from '../lib/supabase-auth';
 import { apiUrl } from '../lib/apiConfig';
 import { AlumniProfile } from '../types';
 import {
@@ -35,6 +41,7 @@ interface AuthContextType {
   isLoggedIn: boolean;
   currentUser: AlumniProfile;
   firebaseToken: string | null;
+  supabaseToken: string | null;
   isAdminUser: boolean;
   login: (phoneOrEmail: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
@@ -56,6 +63,7 @@ const PASSWORD_SALT = 'ndc_dhaka_1949_salt_v1:';
 
 // In-memory token reference (never persisted to localStorage per security guidelines)
 let inMemoryFirebaseToken: string | null = null;
+let inMemorySupabaseToken: string | null = null;
 
 async function hashPassword(rawPassword: string): Promise<string> {
   if (!rawPassword) return '';
@@ -126,6 +134,7 @@ const saveAccounts = (accounts: RegisteredAccount[]) => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const otpStoreRef = useRef<Map<string, PendingOtpEntry>>(new Map());
   const [firebaseToken, setFirebaseToken] = useState<string | null>(null);
+  const [supabaseToken, setSupabaseToken] = useState<string | null>(null);
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
@@ -152,6 +161,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return DEFAULT_BLANK_USER;
   });
 
+  // 1. Primary Production Auth: Listen to Supabase Auth state & sync alumni_profiles
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    // Check active Supabase session on startup
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        inMemorySupabaseToken = session.access_token;
+        setSupabaseToken(session.access_token);
+        try {
+          const profile = await getOrCreateSupabaseProfile(session.user);
+          if (profile) {
+            setCurrentUser(profile);
+            setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+            setIsLoggedIn(true);
+          }
+        } catch (err) {
+          console.warn('Failed to load profile for Supabase session:', err);
+        }
+      }
+    }).catch((err) => {
+      console.warn('Supabase getSession warning:', err);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          inMemorySupabaseToken = session.access_token;
+          setSupabaseToken(session.access_token);
+          try {
+            const profile = await getOrCreateSupabaseProfile(session.user);
+            if (profile) {
+              setCurrentUser(profile);
+              setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+              setIsLoggedIn(true);
+            }
+          } catch (err) {
+            console.warn('Failed to sync profile on Supabase auth change:', err);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          inMemorySupabaseToken = null;
+          setSupabaseToken(null);
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   // Configure browserLocalPersistence so authentication sessions remain valid across browser restarts, tabs, and devices
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch((error) => {
@@ -168,7 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           inMemoryFirebaseToken = token;
           setFirebaseToken(token);
 
-          // Sync authenticated Firebase user with Cloud SQL backend
+          // Sync authenticated Firebase user with backend
           await fetch(apiUrl('/api/auth/sync'), {
             method: 'POST',
             headers: {
@@ -211,6 +271,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+
+    // 1. Primary: Use Supabase session JWT
+    if (isSupabaseConfigured) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          inMemorySupabaseToken = session.access_token;
+          headers.Authorization = `Bearer ${session.access_token}`;
+          return headers;
+        }
+      } catch {}
+    }
+    if (inMemorySupabaseToken) {
+      headers.Authorization = `Bearer ${inMemorySupabaseToken}`;
+      return headers;
+    }
+
+    // 2. Fallback: Use Firebase ID token
     if (auth.currentUser) {
       try {
         const freshToken = await auth.currentUser.getIdToken();
@@ -228,6 +306,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithGoogle = async (): Promise<boolean> => {
+    // 1. Primary: Try Supabase Google OAuth
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+          },
+        });
+        if (!error && data?.url) {
+          return true;
+        }
+      } catch (sbOAuthErr) {
+        console.warn('Supabase Google OAuth fallback:', sbOAuthErr);
+      }
+    }
+
+    // 2. Fallback: Seamless Firebase / Demo flow
     try {
       try {
         await setPersistence(auth, browserLocalPersistence);
@@ -263,7 +359,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setFirebaseToken(token);
       }
 
-      // Sync user to Cloud SQL database
+      // Sync user to backend
       let serverRole = 'member';
       try {
         const syncRes = await fetch(apiUrl('/api/auth/sync'), {
@@ -320,7 +416,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const cleanId = phoneOrEmail.trim().toLowerCase();
 
-    // 1. Primary: Verify credentials against Cloud SQL backend database (works across all devices)
+    // 1. Primary: Verify via Supabase Auth when email is provided
+    if (isSupabaseConfigured && cleanId.includes('@')) {
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: cleanId,
+          password: pass,
+        });
+
+        if (!authError && authData.user) {
+          inMemorySupabaseToken = authData.session?.access_token || null;
+          setSupabaseToken(inMemorySupabaseToken);
+          const profile = await getOrCreateSupabaseProfile(authData.user);
+          if (profile) {
+            setCurrentUser(profile);
+            setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+            setIsLoggedIn(true);
+            return true;
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Supabase email login attempt failed, falling back to server credentials:', sbErr);
+      }
+    }
+
+    // 2. Verify credentials against backend database (works across all devices and phone numbers)
     try {
       const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
@@ -385,7 +505,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // If offline, continue to local device cache fallback below
     }
 
-    // 2. Offline / Local fallback: Check local device cache
+    // 3. Offline / Local fallback: Check local device cache
     const accounts = loadAccounts();
     const accountIdx = accounts.findIndex(
       (a) =>
@@ -427,7 +547,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setIsLoggedIn(false);
     inMemoryFirebaseToken = null;
+    inMemorySupabaseToken = null;
     setFirebaseToken(null);
+    setSupabaseToken(null);
+    if (isSupabaseConfigured) {
+      supabase.auth.signOut().catch(() => {});
+    }
     signOut(auth).catch(() => {});
   };
 
@@ -441,7 +566,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let registeredProfile: AlumniProfile | null = null;
 
-    // 1. Primary: Register account and credentials directly in Cloud SQL backend (accessible from all devices)
+    // 1. Primary: Register in Supabase Auth & create alumni_profiles record
+    if (isSupabaseConfigured && cleanEmail && profileData.password) {
+      try {
+        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: profileData.password,
+          options: {
+            data: {
+              full_name: profileData.fullName?.trim(),
+              batch_year: rawBatch,
+            },
+          },
+        });
+
+        if (!signUpErr && signUpData.user) {
+          inMemorySupabaseToken = signUpData.session?.access_token || null;
+          setSupabaseToken(inMemorySupabaseToken);
+          const profile = await getOrCreateSupabaseProfile(signUpData.user, profileData);
+          if (profile) {
+            registeredProfile = profile;
+          }
+        }
+      } catch (sbRegisterErr) {
+        console.warn('Supabase registration attempt failed, continuing with backend sync:', sbRegisterErr);
+      }
+    }
+
+    // 2. Register account and credentials on backend
     try {
       const registerRes = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
@@ -476,11 +628,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       const registerData = await registerRes.json();
-      if (!registerRes.ok) {
+      if (!registerRes.ok && !registeredProfile) {
         throw new Error(registerData.error || 'Registration failed. Please check your information and try again.');
       }
 
-      if (registerData.profile) {
+      if (registerData.profile && !registeredProfile) {
         registeredProfile = registerData.profile;
       }
     } catch (err: any) {
