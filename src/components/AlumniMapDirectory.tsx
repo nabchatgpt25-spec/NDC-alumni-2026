@@ -829,7 +829,7 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
 
     marker.bindPopup(popupDiv, {
       className: 'ndc-leaflet-popup',
-      maxWidth: 320,
+      maxWidth: typeof window !== 'undefined' ? Math.min(280, Math.max(220, window.innerWidth - 36)) : 280,
     });
 
     marker.on('popupopen', () => {
@@ -1119,7 +1119,7 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
           </div>
 
           {/* Map Overlay: Current Region & Department HUD */}
-          <div className="absolute top-3 right-3 z-20 pointer-events-none">
+          <div className="absolute top-14 sm:top-3 right-3 z-20 pointer-events-none">
             <div className="bg-slate-900/85 dark:bg-slate-900/90 text-white backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-[11px] font-bold shadow-md flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <span>

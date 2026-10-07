@@ -176,7 +176,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Subtle Premium Bluish Liquid-Glass Sidebar Container */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-screen w-72 bg-gradient-to-b from-blue-50/90 via-slate-50/90 to-blue-50/85 dark:from-[#081226]/92 dark:via-[#0b172e]/90 dark:to-[#091428]/92 backdrop-blur-2xl border-r border-blue-200/60 dark:border-blue-500/20 shadow-xl shadow-blue-950/5 dark:shadow-2xl dark:shadow-black/60 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-0 left-0 z-50 h-screen w-72 max-w-[85vw] bg-gradient-to-b from-blue-50/90 via-slate-50/90 to-blue-50/85 dark:from-[#081226]/92 dark:via-[#0b172e]/90 dark:to-[#091428]/92 backdrop-blur-2xl border-r border-blue-200/60 dark:border-blue-500/20 shadow-xl shadow-blue-950/5 dark:shadow-2xl dark:shadow-black/60 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -188,16 +188,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onSelectTab('dashboard');
               onClose();
             }}
-            className="flex items-center gap-3 text-left cursor-pointer group"
+            className="flex items-center gap-3 text-left cursor-pointer group min-w-0"
           >
-            <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 p-1 border border-blue-200/70 dark:border-blue-500/25 flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform overflow-hidden">
+            <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 p-1 border border-blue-200/70 dark:border-blue-500/25 flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform overflow-hidden shrink-0">
               <NDCLogo className="w-full h-full" />
             </div>
-            <div>
-              <div className="font-black text-sm text-slate-900 dark:text-white tracking-tight leading-tight">
+            <div className="min-w-0">
+              <div className="font-black text-sm text-slate-900 dark:text-white tracking-tight leading-tight truncate">
                 Notre Dame Alumni
               </div>
-              <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold tracking-wide">
+              <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold tracking-wide truncate">
                 Diligite Lumen Sapientiae
               </div>
             </div>
@@ -214,7 +214,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Navigation Content: 4 Clear Segments (MAIN, COMMUNITY, SERVICES, ACCOUNT) */}
-        <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-4 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto overscroll-contain px-3.5 py-3 space-y-4 scrollbar-thin">
           {sections.map((section) => (
             <div key={section.id} className="space-y-1">
               <div className="px-2.5 pt-1 pb-1 flex items-center justify-between">

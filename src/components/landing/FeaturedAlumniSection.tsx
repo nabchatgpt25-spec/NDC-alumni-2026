@@ -595,7 +595,7 @@ export const FeaturedAlumniSection: React.FC<FeaturedAlumniSectionProps> = ({
           <Tilt3DCard
             key={`${alumnus.id}-${idx}`}
             onClick={() => onSelectAlumnus(alumnus)}
-            className="w-[275px] sm:w-[320px] lg:w-[350px] shrink-0 group glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-5 cursor-pointer flex flex-col justify-between"
+            className="w-[82vw] min-[360px]:w-[280px] sm:w-[320px] lg:w-[350px] max-w-[340px] shrink-0 group glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-5 cursor-pointer flex flex-col justify-between"
           >
             <div>
               {/* Profile Picture Header & Badges */}

@@ -933,9 +933,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-20 right-5 z-50 flex items-center gap-2.5 px-4 py-3 bg-slate-900/95 text-white dark:bg-white/95 dark:text-slate-900 rounded-2xl shadow-xl border border-slate-700/50 dark:border-slate-200 text-xs font-semibold animate-fade-in">
+        <div className="fixed top-16 sm:top-20 right-3 sm:right-5 max-w-[calc(100vw-1.5rem)] sm:max-w-md z-50 flex items-center gap-2.5 px-3.5 sm:px-4 py-2.5 sm:py-3 bg-slate-900/95 text-white dark:bg-white/95 dark:text-slate-900 rounded-2xl shadow-xl border border-slate-700/50 dark:border-slate-200 text-xs font-semibold animate-fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600 shrink-0" />
-          <span>{toastMessage}</span>
+          <span className="truncate">{toastMessage}</span>
         </div>
       )}
 
@@ -2103,20 +2103,20 @@ export const FeedView: React.FC<FeedViewProps> = ({
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
                   <button
                     type="button"
                     onClick={() => handleToggleLike(post.id)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                       post.likedByMe
                         ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Heart
-                      className={`w-4 h-4 ${post.likedByMe ? 'fill-rose-500 text-rose-500' : ''}`}
+                      className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${post.likedByMe ? 'fill-rose-500 text-rose-500' : ''}`}
                     />
-                    <span>{post.likedByMe ? 'Liked' : 'Like'}</span>
+                    <span className="truncate">{post.likedByMe ? 'Liked' : 'Like'}</span>
                   </button>
 
                   <button
@@ -2126,16 +2126,16 @@ export const FeedView: React.FC<FeedViewProps> = ({
                         activeCommentPostId === post.id ? null : post.id
                       )
                     }
-                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4" />
-                    <span>Comment</span>
+                    <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                    <span className="truncate">Comment</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleToggleSave(post)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                       isPostSaved(post.id) || post.isSaved
                         ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -2143,18 +2143,18 @@ export const FeedView: React.FC<FeedViewProps> = ({
                     title={isPostSaved(post.id) || post.isSaved ? 'Saved to offline cache' : 'Save post for offline reading'}
                   >
                     {isPostSaved(post.id) || post.isSaved ? (
-                      <BookmarkCheck className="w-4 h-4 fill-current text-blue-600 dark:text-blue-400" />
+                      <BookmarkCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 fill-current text-blue-600 dark:text-blue-400" />
                     ) : (
-                      <Bookmark className="w-4 h-4" />
+                      <Bookmark className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                     )}
-                    <span>{isPostSaved(post.id) || post.isSaved ? 'Saved' : 'Save'}</span>
+                    <span className="truncate">{isPostSaved(post.id) || post.isSaved ? 'Saved' : 'Save'}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleSharePost(post.id)}
                     title="Copy direct link to this post"
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                       copiedPostId === post.id
                         ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -2162,13 +2162,13 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   >
                     {copiedPostId === post.id ? (
                       <>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                        <span>Link Copied!</span>
+                        <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span className="truncate">Copied</span>
                       </>
                     ) : (
                       <>
-                        <Share2 className="w-4 h-4" />
-                        <span>Share</span>
+                        <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                        <span className="truncate">Share</span>
                       </>
                     )}
                   </button>

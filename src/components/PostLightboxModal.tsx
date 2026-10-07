@@ -155,44 +155,44 @@ export const PostLightboxModal: React.FC<PostLightboxProps> = ({
       }}
     >
       {/* Top Header Bar */}
-      <div className="absolute top-0 inset-x-0 p-3 sm:p-4.5 flex items-center justify-between z-30 bg-gradient-to-b from-black/85 via-black/50 to-transparent text-white">
+      <div className="absolute top-0 inset-x-0 p-3 sm:p-4.5 flex items-center justify-between z-30 bg-gradient-to-b from-black/85 via-black/50 to-transparent text-white gap-2">
         {/* Author / Post Info */}
-        <div className="flex items-center gap-3 max-w-[65%] sm:max-w-md">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           {postAuthor ? (
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
               <img
                 src={postAuthor.avatarUrl}
                 alt={postAuthor.fullName}
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover ring-2 ring-blue-500/40"
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover ring-2 ring-blue-500/40 shrink-0"
               />
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5 font-bold text-xs sm:text-sm text-white truncate">
+                <div className="flex items-center gap-1 sm:gap-1.5 font-bold text-xs sm:text-sm text-white truncate">
                   <span className="truncate">{postAuthor.fullName}</span>
-                  <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0" />
+                  <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400 shrink-0" />
                 </div>
-                <div className="text-[11px] text-slate-300 flex items-center gap-2 truncate">
+                <div className="text-[10px] sm:text-[11px] text-slate-300 flex items-center gap-1.5 sm:gap-2 truncate">
                   {postAuthor.batchYear && (
-                    <span className="font-semibold text-blue-300">Batch {postAuthor.batchYear}</span>
+                    <span className="font-semibold text-blue-300 shrink-0">Batch {postAuthor.batchYear}</span>
                   )}
                   {postAuthor.createdAt && (
-                    <span>· {postAuthor.createdAt}</span>
+                    <span className="truncate">· {postAuthor.createdAt}</span>
                   )}
                 </div>
               </div>
             </div>
           ) : (
-            <span className="font-bold text-sm text-slate-200">Notre Dame Alumni Media</span>
+            <span className="font-bold text-xs sm:text-sm text-slate-200 truncate">Notre Dame Alumni Media</span>
           )}
 
           {images.length > 1 && (
-            <span className="ml-2 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold border border-blue-500/30 whitespace-nowrap">
+            <span className="hidden min-[480px]:inline-flex ml-1 sm:ml-2 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-blue-500/20 text-blue-300 text-[10px] sm:text-xs font-bold border border-blue-500/30 whitespace-nowrap shrink-0">
               {currentIndex + 1} of {images.length}
             </span>
           )}
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Zoom controls */}
           <div className="hidden sm:flex items-center bg-white/10 rounded-xl p-1 backdrop-blur-sm border border-white/10">
             <button

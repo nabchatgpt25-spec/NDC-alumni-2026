@@ -833,7 +833,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/20 to-transparent" />
 
           {isMine && (
-            <div className="absolute top-4 right-4 flex items-center gap-2">
+            <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-2">
               <input
                 ref={coverFileInputRef}
                 type="file"
@@ -845,7 +845,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 type="button"
                 id="header-change-cover-btn"
                 onClick={() => handleOpenPhotoModal('cover')}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-950/75 hover:bg-slate-950/90 text-white text-xs font-bold rounded-xl backdrop-blur-md transition-all shadow-md cursor-pointer border border-white/20 active:scale-95"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-slate-950/75 hover:bg-slate-950/90 text-white text-[11px] sm:text-xs font-bold rounded-xl backdrop-blur-md transition-all shadow-md cursor-pointer border border-white/20 active:scale-95"
               >
                 <Camera className="w-3.5 h-3.5" />
                 <span>Change Cover</span>
@@ -950,16 +950,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Social & Contact Actions */}
-            <div className="flex items-center justify-center sm:justify-end gap-2 pt-2 sm:pt-4 shrink-0">
+            <div className="flex flex-wrap items-center justify-center sm:justify-end gap-1.5 sm:gap-2 pt-2 sm:pt-4 shrink-0 w-full sm:w-auto">
               {profile.whatsapp && (
                 <a
                   href={`https://wa.me/${profile.whatsapp.replace(/[^0-9]/g, '')}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors"
+                  className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] sm:text-xs font-bold shadow-xs transition-colors shrink-0"
                   aria-label="WhatsApp"
                 >
-                  <WhatsAppIcon className="w-4 h-4" />
+                  <WhatsAppIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span>WhatsApp</span>
                 </a>
               )}
@@ -973,10 +973,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors"
+                  className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] sm:text-xs font-bold shadow-xs transition-colors shrink-0"
                   aria-label="Facebook"
                 >
-                  <FacebookIcon className="w-4 h-4" />
+                  <FacebookIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span>Facebook</span>
                 </a>
               )}
@@ -988,7 +988,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   setProfileShareCopied(true);
                   setTimeout(() => setProfileShareCopied(false), 2500);
                 }}
-                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-colors cursor-pointer"
+                className="p-1.5 sm:p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-colors cursor-pointer shrink-0"
                 title="Share profile"
               >
                 {profileShareCopied ? (
@@ -1023,12 +1023,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           {isMine && (
             <div className="mt-4 p-4 rounded-2xl liquid-glass-subcard border border-blue-300/50 dark:border-blue-500/25 bg-gradient-to-r from-blue-500/10 via-sky-500/8 to-indigo-500/12 dark:from-blue-950/40 dark:via-slate-900/50 dark:to-blue-900/30">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">
                     {savedCompletion.percentage}%
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                       <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
                         Profile Completion Level
                       </span>
@@ -1042,9 +1042,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         {savedCompletion.completedCount}/{savedCompletion.totalCount} Total Fields
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
-                      Registration Form: <strong>{savedCompletion.registrationCompletedCount}/{savedCompletion.registrationTotalCount}</strong> · Edit Profile Full Form: <strong>{savedCompletion.editProfileCompletedCount}/{savedCompletion.editProfileTotalCount}</strong>
-                    </p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-snug">
+                      <span>Registration: <strong>{savedCompletion.registrationCompletedCount}/{savedCompletion.registrationTotalCount}</strong></span>
+                      <span className="hidden min-[380px]:inline text-slate-400">·</span>
+                      <span>Full Profile: <strong>{savedCompletion.editProfileCompletedCount}/{savedCompletion.editProfileTotalCount}</strong></span>
+                    </div>
                   </div>
                 </div>
 
@@ -1052,7 +1054,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('edit')}
-                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0 w-full sm:w-auto"
                   >
                     <Edit className="w-3.5 h-3.5" />
                     <span>Complete Full Profile</span>
@@ -1198,11 +1200,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           )}
 
           {/* Tab Selector: About | Posts | Edit Profile */}
-          <div className="flex gap-6 mt-6 border-b border-slate-100 dark:border-slate-800 text-xs font-bold">
+          <div className="flex gap-4 sm:gap-6 mt-6 border-b border-slate-100 dark:border-slate-800 text-xs font-bold overflow-x-auto no-scrollbar scroll-smooth whitespace-nowrap pb-1">
             <button
               type="button"
               onClick={() => setActiveTab('about')}
-              className={`pb-3 border-b-2 transition-colors cursor-pointer ${
+              className={`pb-3 border-b-2 transition-colors cursor-pointer shrink-0 ${
                 activeTab === 'about'
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -1214,7 +1216,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('posts')}
-              className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
                 activeTab === 'posts'
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -1232,7 +1234,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('blood')}
-                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     activeTab === 'blood'
                       ? 'border-rose-600 text-rose-600 dark:text-rose-400'
                       : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -1245,7 +1247,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('edit')}
-                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     activeTab === 'edit'
                       ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                       : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -1258,7 +1260,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('settings')}
-                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     activeTab === 'settings'
                       ? 'border-red-600 text-red-600 dark:text-red-400'
                       : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'

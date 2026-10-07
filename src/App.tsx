@@ -181,9 +181,9 @@ function AlumniAppContent() {
 
   // Logged-in application shell (Notre Dame Alumni Network portal)
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex transition-colors duration-200 font-sans antialiased selection:bg-blue-500 selection:text-white relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex transition-colors duration-200 font-sans antialiased selection:bg-blue-500 selection:text-white relative overflow-x-hidden w-full max-w-full">
       {/* Smooth Liquid Transparent Glass Ambient Canvas */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none max-w-full">
         <div className="absolute -top-32 -left-32 w-[500px] h-[500px] rounded-full bg-gradient-to-tr from-blue-500/20 via-indigo-500/18 to-teal-400/20 blur-[120px] animate-liquid-blob-1 dark:from-blue-600/22 dark:via-cyan-500/15 dark:to-teal-500/15" />
         <div className="absolute top-1/4 -right-28 w-[460px] h-[460px] rounded-full bg-gradient-to-br from-purple-500/18 via-rose-500/16 to-blue-500/20 blur-[130px] animate-liquid-blob-2 dark:from-purple-600/15 dark:via-rose-600/12 dark:to-blue-600/18" />
         <div className="absolute -bottom-36 left-1/3 w-[520px] h-[520px] rounded-full bg-gradient-to-tr from-teal-500/16 via-emerald-500/14 to-indigo-500/18 blur-[130px] animate-liquid-blob-3 dark:from-cyan-600/12 dark:via-emerald-600/10 dark:to-indigo-600/15" />
@@ -204,7 +204,7 @@ function AlumniAppContent() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 lg:pl-72 flex flex-col min-w-0">
+      <div className="flex-1 lg:pl-72 flex flex-col min-w-0 w-full max-w-full overflow-x-hidden">
         {/* Header with Theme Toggle */}
         <Header
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -220,7 +220,7 @@ function AlumniAppContent() {
         />
 
         {/* View Router with Smooth Cinematic Page Transitions */}
-        <main className="flex-1 px-2.5 sm:px-5 lg:px-8 py-3 sm:py-6 lg:py-8 max-w-[1500px] w-full mx-auto pb-24 lg:pb-8">
+        <main className="flex-1 px-2.5 sm:px-5 lg:px-8 py-3 sm:py-6 lg:py-8 max-w-[1500px] w-full mx-auto pb-24 lg:pb-8 min-w-0">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={`${route}-${route === 'profile' ? selectedProfileId : ''}`}
@@ -323,7 +323,7 @@ function AlumniAppContent() {
         </main>
 
         {/* Heritage Monument Portal Footer */}
-        <footer className="border-t border-slate-200/80 dark:border-slate-800/80 pt-8 pb-5 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white/40 via-white/70 to-slate-100/60 dark:from-slate-900/40 dark:via-slate-900/80 dark:to-slate-950/90 backdrop-blur-md">
+        <footer className="border-t border-slate-200/80 dark:border-slate-800/80 pt-8 pb-28 lg:pb-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white/40 via-white/70 to-slate-100/60 dark:from-slate-900/40 dark:via-slate-900/80 dark:to-slate-950/90 backdrop-blur-md">
           <div className="max-w-[1500px] mx-auto">
             {/* Centerpiece Emotional Tribute */}
             <div className="flex flex-col items-center justify-center text-center mb-6">
@@ -372,7 +372,7 @@ function AlumniAppContent() {
       {/* Mobile Bottom Navigation Bar (Active on screens < 1024px) */}
       <nav
         aria-label="Mobile Navigation"
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/92 dark:bg-slate-900/92 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_25px_rgba(0,0,0,0.35)] pb-safe transition-colors duration-200"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_25px_rgba(0,0,0,0.35)] pb-safe transition-colors duration-200 touch-manipulation"
       >
         <div className="h-14 sm:h-16 px-1 flex items-center justify-around max-w-lg mx-auto">
           {/* 1. Feed / Quad */}

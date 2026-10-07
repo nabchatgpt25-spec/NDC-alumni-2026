@@ -389,13 +389,13 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex flex-wrap items-center gap-2 mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800">
                 {profile.whatsapp && (
                   <a
                     href={`https://wa.me/${profile.whatsapp.replace(/[^0-9]/g, '')}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 transition-colors"
+                    className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 transition-colors shrink-0"
                     title="WhatsApp"
                     aria-label="WhatsApp"
                   >
@@ -412,7 +412,7 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
                     }
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition-colors"
+                    className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition-colors shrink-0"
                     title="Facebook"
                     aria-label="Facebook"
                   >
@@ -439,7 +439,7 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
                         }
                         setVouchNotice(res.message);
                       }}
-                      className="inline-flex items-center justify-center gap-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
+                      className="inline-flex items-center justify-center gap-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shrink-0"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Vouch</span>
@@ -449,7 +449,7 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onViewProfile(profile.id)}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   <span>View Profile</span>

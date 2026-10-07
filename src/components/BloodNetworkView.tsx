@@ -321,21 +321,21 @@ export const BloodNetworkView: React.FC<BloodNetworkViewProps> = ({
           </div>
 
           {/* Two Clear Primary Actions: "I Need Blood" and "I Want to Donate" */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-col gap-3 shrink-0 sm:w-auto w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-col gap-2.5 sm:gap-3 shrink-0 sm:w-auto w-full">
             <button
               type="button"
               onClick={() => {
                 setRequestModalPrefillGroup(undefined);
                 setIsRequestModalOpen(true);
               }}
-              className="px-6 py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-sm sm:text-base shadow-xl shadow-rose-600/30 inline-flex items-center justify-center gap-3 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              className="px-4 min-[360px]:px-6 py-3 min-[360px]:py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs min-[360px]:text-sm sm:text-base shadow-xl shadow-rose-600/30 inline-flex items-center justify-center gap-2.5 sm:gap-3 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
             >
-              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                <Plus className="w-5 h-5 text-white" />
+              <div className="w-7 h-7 min-[360px]:w-8 min-[360px]:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <Plus className="w-4 h-4 min-[360px]:w-5 min-[360px]:h-5 text-white" />
               </div>
-              <div className="text-left">
-                <div className="leading-tight">I Need Blood</div>
-                <div className="text-[11px] font-semibold text-rose-100 opacity-90">
+              <div className="text-left min-w-0">
+                <div className="leading-tight truncate">I Need Blood</div>
+                <div className="text-[10px] min-[360px]:text-[11px] font-semibold text-rose-100 opacity-90 truncate">
                   Post Emergency Request
                 </div>
               </div>
@@ -344,14 +344,14 @@ export const BloodNetworkView: React.FC<BloodNetworkViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('donor_profile')}
-              className="px-6 py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm sm:text-base shadow-xl shadow-blue-600/30 inline-flex items-center justify-center gap-3 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              className="px-4 min-[360px]:px-6 py-3 min-[360px]:py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs min-[360px]:text-sm sm:text-base shadow-xl shadow-blue-600/30 inline-flex items-center justify-center gap-2.5 sm:gap-3 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
             >
-              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                <Heart className="w-5 h-5 text-rose-200 fill-rose-200" />
+              <div className="w-7 h-7 min-[360px]:w-8 min-[360px]:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <Heart className="w-4 h-4 min-[360px]:w-5 min-[360px]:h-5 text-rose-200 fill-rose-200" />
               </div>
-              <div className="text-left">
-                <div className="leading-tight">I Want to Donate</div>
-                <div className="text-[11px] font-semibold text-blue-100 opacity-90">
+              <div className="text-left min-w-0">
+                <div className="leading-tight truncate">I Want to Donate</div>
+                <div className="text-[10px] min-[360px]:text-[11px] font-semibold text-blue-100 opacity-90 truncate">
                   {myDonorProfile?.isRegisteredDonor
                     ? `My Profile (${myDonorProfile.bloodGroup})`
                     : 'Register as Blood Donor'}
