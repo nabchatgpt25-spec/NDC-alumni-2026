@@ -369,6 +369,125 @@ function AlumniAppContent() {
         </footer>
       </div>
 
+      {/* Mobile Bottom Navigation Bar (Active on screens < 1024px) */}
+      <nav
+        aria-label="Mobile Navigation"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/92 dark:bg-slate-900/92 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_25px_rgba(0,0,0,0.35)] pb-safe transition-colors duration-200"
+      >
+        <div className="h-14 sm:h-16 px-1 flex items-center justify-around max-w-lg mx-auto">
+          {/* 1. Feed / Quad */}
+          <button
+            type="button"
+            onClick={() => navigateTo('feed')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              route === 'feed' || route === 'dashboard'
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <div className="relative">
+              <Home className={`w-5 h-5 transition-transform ${route === 'feed' || route === 'dashboard' ? 'scale-110' : ''}`} />
+              {(route === 'feed' || route === 'dashboard') && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600 dark:bg-blue-400" />
+              )}
+            </div>
+            <span className="text-[10px] sm:text-[11px] mt-0.5 truncate max-w-[64px]">The Quad</span>
+          </button>
+
+          {/* 2. Directory */}
+          <button
+            type="button"
+            onClick={() => navigateTo('alumni')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              route === 'alumni' || route === 'directory' || route === 'find'
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <div className="relative">
+              <Users className={`w-5 h-5 transition-transform ${route === 'alumni' || route === 'directory' || route === 'find' ? 'scale-110' : ''}`} />
+              {(route === 'alumni' || route === 'directory' || route === 'find') && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600 dark:bg-blue-400" />
+              )}
+            </div>
+            <span className="text-[10px] sm:text-[11px] mt-0.5 truncate max-w-[64px]">Directory</span>
+          </button>
+
+          {/* 3. Batches */}
+          <button
+            type="button"
+            onClick={() => navigateTo('batches')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              route === 'batches' || route.startsWith('batch:')
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <div className="relative">
+              <BookOpen className={`w-5 h-5 transition-transform ${route === 'batches' || route.startsWith('batch:') ? 'scale-110' : ''}`} />
+              {(route === 'batches' || route.startsWith('batch:')) && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600 dark:bg-blue-400" />
+              )}
+            </div>
+            <span className="text-[10px] sm:text-[11px] mt-0.5 truncate max-w-[64px]">Batches</span>
+          </button>
+
+          {/* 4. Blood Lifeline */}
+          <button
+            type="button"
+            onClick={() => navigateTo('emergency')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              route === 'emergency' || route === 'blood' || route === 'blood-network'
+                ? 'text-rose-600 dark:text-rose-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400'
+            }`}
+          >
+            <div className="relative">
+              <HeartHandshake className={`w-5 h-5 transition-transform ${route === 'emergency' || route === 'blood' || route === 'blood-network' ? 'scale-110 text-rose-600' : ''}`} />
+              <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              {(route === 'emergency' || route === 'blood' || route === 'blood-network') && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-rose-600 dark:bg-rose-400" />
+              )}
+            </div>
+            <span className="text-[10px] sm:text-[11px] mt-0.5 truncate max-w-[64px]">Blood</span>
+          </button>
+
+          {/* 5. Profile */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedProfileId(currentUser.id);
+              navigateTo('profile');
+            }}
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              route === 'profile' || route === 'profile-settings' || route === 'settings'
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <div className="relative">
+              {currentUser.avatarUrl ? (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.fullName}
+                  className={`w-5 h-5 rounded-full object-cover ring-1 transition-all ${
+                    route === 'profile' || route === 'profile-settings' || route === 'settings'
+                      ? 'ring-blue-600 dark:ring-blue-400 scale-110'
+                      : 'ring-slate-300 dark:ring-slate-700'
+                  }`}
+                />
+              ) : (
+                <UserIcon className="w-5 h-5" />
+              )}
+              {(route === 'profile' || route === 'profile-settings' || route === 'settings') && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600 dark:bg-blue-400" />
+              )}
+            </div>
+            <span className="text-[10px] sm:text-[11px] mt-0.5 truncate max-w-[64px]">Profile</span>
+          </button>
+        </div>
+      </nav>
+
       {/* Global Offline Mode Status Indicator */}
       <OfflineIndicator onNavigate={navigateTo} />
 

@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured, ALUMNI_PUBLIC_COLUMNS } from '../lib/supabase';
-import { mapSupabaseRowToAlumniProfile } from '../lib/supabase-auth';
+import { mapSupabaseRowToAlumniProfile, getOrCreateSupabaseProfile } from '../lib/supabase-auth';
 import {
   AlumniProfile,
   BatchSummary,
@@ -129,16 +129,264 @@ export async function fetchAcademicStreamGroupsFromDb(): Promise<any[]> {
 // 2. THE QUAD / SOCIAL FEED & POSTS
 // =============================================================================
 
-export async function fetchFeedPostsFromDb(limit = 30, currentUserId?: number): Promise<PostItem[]> {
+function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
+  const author = row.author || {};
+  const comments: PostComment[] = (row.post_comments || []).map((c: any) => ({
+    id: Number(c.id),
+    postId: Number(row.id),
+    userId: Number(c.user_id),
+    fullName: c.author?.full_name || 'Alumnus',
+    avatarUrl: c.author?.avatar_url || '/ndc-logo.png',
+    content: c.content,
+    likesCount: Number(c.likes_count) || 0,
+    likedByMe: false,
+    createdAt: new Date(c.created_at).toLocaleDateString(),
+    author: c.author?.full_name || 'Alumnus',
+    authorAvatar: c.author?.avatar_url || '/ndc-logo.png',
+    timestamp: new Date(c.created_at).toLocaleDateString(),
+  }));
+
+  const isLiked = Boolean(
+    currentUserId &&
+      Array.isArray(row.post_likes) &&
+      row.post_likes.some((l: any) => Number(l.user_id) === currentUserId)
+  );
+
+  return {
+    id: Number(row.id),
+    userId: Number(row.author_id),
+    fullName: author.full_name || 'Notredamian Alumnus',
+    avatarUrl: author.avatar_url || '/ndc-logo.png',
+    batchYear: author.batch_year || 68,
+    content: row.content || '',
+    images: Array.isArray(row.images) ? row.images : [],
+    videos: Array.isArray(row.videos) ? row.videos : [],
+    likesCount: Number(row.likes_count) || (row.post_likes?.length ?? 0),
+    commentsCount: comments.length,
+    createdAt: new Date(row.created_at).toLocaleDateString(),
+    likedByMe: isLiked,
+    comments: comments,
+    category: row.category || 'General Update',
+    isEdited: Boolean(row.is_edited),
+    pinned: Boolean(row.is_pinned),
+    author: author.full_name || 'Notredamian Alumnus',
+    authorAvatar: author.avatar_url || '/ndc-logo.png',
+    authorBatch: author.batch_year || 68,
+    authorRole: 'Alumnus',
+    verified: author.verification_status === 'verified',
+    timestamp: new Date(row.created_at).toLocaleDateString(),
+    likes: Number(row.likes_count) || (row.post_likes?.length ?? 0),
+    liked: isLiked,
+    commentsList: comments,
+    shares: 0,
+  } as unknown as PostItem;
+}
+
+export async function fetchFeedPostsFromDb(limit = 50, currentUserId?: number): Promise<PostItem[]> {
   if (!isSupabaseConfigured) {
     return [];
   }
 
+  // 1. Directly fetch posts from public.posts table (avoids brittle PostgREST nested joins)
+  const { data: postsData, error: postsError } = await supabase
+    .from('posts')
+    .select(`
+      id,
+      author_id,
+      content,
+      category,
+      images,
+      videos,
+      likes_count,
+      comments_count,
+      is_pinned,
+      is_edited,
+      created_at
+    `)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (postsError) {
+    console.error('Supabase fetchFeedPosts error loading posts:', postsError);
+    throw new Error(`Failed to load posts from Supabase: ${postsError.message || postsError.code}`);
+  }
+
+  if (!postsData || postsData.length === 0) {
+    return [];
+  }
+
+  // 2. Collect author IDs and post IDs for batched queries
+  const authorIds = Array.from(
+    new Set(postsData.map((p) => Number(p.author_id)).filter((id) => id > 0))
+  );
+  const postIds = postsData.map((p) => Number(p.id));
+
+  // 3. Batch fetch author profiles
+  const authorMap = new Map<number, any>();
+  if (authorIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from('alumni_profiles')
+      .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
+      .in('id', authorIds);
+
+    if (profilesError) {
+      console.warn('Supabase fetchFeedPosts warning loading author profiles:', profilesError.message);
+    } else if (profiles) {
+      profiles.forEach((p: any) => authorMap.set(Number(p.id), p));
+    }
+  }
+
+  // 4. Batch fetch comments for these posts
+  const commentsByPost = new Map<number, any[]>();
+  if (postIds.length > 0) {
+    const { data: comments, error: commentsError } = await supabase
+      .from('post_comments')
+      .select(`
+        id,
+        post_id,
+        user_id,
+        content,
+        likes_count,
+        created_at
+      `)
+      .in('post_id', postIds)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: true });
+
+    if (commentsError) {
+      console.warn('Supabase fetchFeedPosts warning loading post comments:', commentsError.message);
+    } else if (comments && comments.length > 0) {
+      // Find any commenters whose profiles we don't have yet
+      const commenterIds = Array.from(
+        new Set(
+          comments
+            .map((c: any) => Number(c.user_id))
+            .filter((id: number) => id > 0 && !authorMap.has(id))
+        )
+      );
+
+      if (commenterIds.length > 0) {
+        const { data: commenterProfiles } = await supabase
+          .from('alumni_profiles')
+          .select('id, full_name, avatar_url, batch_year, verification_status')
+          .in('id', commenterIds);
+
+        if (commenterProfiles) {
+          commenterProfiles.forEach((cp: any) => authorMap.set(Number(cp.id), cp));
+        }
+      }
+
+      // Group comments with attached author profile
+      for (const c of comments) {
+        const pId = Number(c.post_id);
+        const cAuthor = authorMap.get(Number(c.user_id)) || {};
+        const commentWithAuthor = { ...c, author: cAuthor };
+        const list = commentsByPost.get(pId) || [];
+        list.push(commentWithAuthor);
+        commentsByPost.set(pId, list);
+      }
+    }
+  }
+
+  // 5. Batch fetch likes for active user (if currentUserId provided)
+  const userLikesSet = new Set<number>();
+  if (currentUserId && postIds.length > 0) {
+    const { data: likes, error: likesError } = await supabase
+      .from('post_likes')
+      .select('post_id')
+      .eq('user_id', currentUserId)
+      .in('post_id', postIds);
+
+    if (!likesError && likes) {
+      likes.forEach((l: any) => userLikesSet.add(Number(l.post_id)));
+    }
+  }
+
+  // 6. Map and combine into complete PostItem array
+  return postsData.map((row: any) => {
+    const pId = Number(row.id);
+    const author = authorMap.get(Number(row.author_id)) || {};
+    const comments = commentsByPost.get(pId) || [];
+    const isLiked = userLikesSet.has(pId);
+
+    return mapRowToFeedPost(
+      {
+        ...row,
+        author,
+        post_comments: comments,
+        post_likes: isLiked ? [{ user_id: currentUserId }] : [],
+      },
+      currentUserId
+    );
+  });
+}
+
+export async function createFeedPostInDb(params: {
+  authorId?: number;
+  content: string;
+  category: string;
+  images?: string[];
+  videos?: string[];
+}): Promise<{ success: boolean; post?: PostItem; error?: string }> {
+  if (!isSupabaseConfigured) {
+    return { success: false, error: 'Supabase client is not configured' };
+  }
+
   try {
-    const { data, error } = await supabase
+    // 1. Get authenticated Supabase user
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const authUser = authData?.user;
+
+    if (authError || !authUser) {
+      return {
+        success: false,
+        error: 'You must be signed in with a valid account to publish a post to Supabase.',
+      };
+    }
+
+    // 2. Always obtain the authenticated user's real alumni_profiles.id from Supabase
+    let profileRow: any = null;
+
+    const { data: existingProfile, error: profileFetchErr } = await supabase
+      .from('alumni_profiles')
+      .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
+      .eq('auth_user_id', authUser.id)
+      .maybeSingle();
+
+    if (existingProfile?.id) {
+      profileRow = existingProfile;
+    } else {
+      // Ensure the profile exists before inserting the post
+      const created = await getOrCreateSupabaseProfile(authUser);
+      if (created?.id) {
+        profileRow = created;
+      }
+    }
+
+    if (!profileRow?.id || Number(profileRow.id) <= 0) {
+      return {
+        success: false,
+        error: 'Unable to publish: Could not verify your registered alumni profile in Supabase.',
+      };
+    }
+
+    const realAuthorId = Number(profileRow.id);
+
+    // 3. Prepare insert payload with real alumni_profiles.id
+    const insertPayload = {
+      author_id: realAuthorId,
+      content: params.content.trim(),
+      category: params.category || 'General Update',
+      images: params.images || [],
+      videos: params.videos || [],
+    };
+
+    // 4. Insert into public.posts
+    const { data: insertedRow, error: insertError } = await supabase
       .from('posts')
-      .select(
-        `
+      .insert(insertPayload)
+      .select(`
         id,
         author_id,
         content,
@@ -149,147 +397,62 @@ export async function fetchFeedPostsFromDb(limit = 30, currentUserId?: number): 
         comments_count,
         is_pinned,
         is_edited,
-        created_at,
-        author:alumni_profiles!posts_author_id_fkey (
-          id,
-          full_name,
-          avatar_url,
-          batch_year,
-          verification_status,
-          profession,
-          institution
-        ),
-        post_comments (
-          id,
-          post_id,
-          user_id,
-          content,
-          likes_count,
-          created_at,
-          author:alumni_profiles!post_comments_user_id_fkey (
-            id,
-            full_name,
-            avatar_url
-          )
-        ),
-        post_likes (
-          user_id
-        )
-      `
-      )
-      .eq('is_deleted', false)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+        created_at
+      `)
+      .single();
 
-    if (error || !data || data.length === 0) {
-      return [];
-    }
-
-    return data.map((row: any) => {
-      const author = row.author || {};
-      const comments: PostComment[] = (row.post_comments || []).map((c: any) => ({
-        id: Number(c.id),
-        postId: Number(row.id),
-        userId: Number(c.user_id),
-        fullName: c.author?.full_name || 'Alumnus',
-        avatarUrl: c.author?.avatar_url || '/ndc-logo.png',
-        content: c.content,
-        likesCount: Number(c.likes_count) || 0,
-        likedByMe: false,
-        createdAt: new Date(c.created_at).toLocaleDateString(),
-        author: c.author?.full_name || 'Alumnus',
-        authorAvatar: c.author?.avatar_url || '/ndc-logo.png',
-        timestamp: new Date(c.created_at).toLocaleDateString(),
-      }));
-
-      const isLiked = Boolean(
-        currentUserId && Array.isArray(row.post_likes) && row.post_likes.some((l: any) => Number(l.user_id) === currentUserId)
-      );
-
+    if (insertError || !insertedRow) {
+      console.error('Supabase createFeedPost insert error:', insertError);
       return {
-        id: Number(row.id),
-        userId: Number(row.author_id),
-        fullName: author.full_name || 'Notredamian Alumnus',
-        avatarUrl: author.avatar_url || '/ndc-logo.png',
-        batchYear: author.batch_year || 68,
-        content: row.content,
-        images: row.images || [],
-        videos: row.videos || [],
-        likesCount: Number(row.likes_count) || (row.post_likes?.length ?? 0),
-        commentsCount: comments.length,
-        createdAt: new Date(row.created_at).toLocaleDateString(),
-        likedByMe: isLiked,
-        comments: comments,
-        category: row.category || 'General Update',
-        isEdited: Boolean(row.is_edited),
-        pinned: Boolean(row.is_pinned),
-        author: author.full_name || 'Notredamian Alumnus',
-        authorAvatar: author.avatar_url || '/ndc-logo.png',
-        authorBatch: author.batch_year || 68,
-        authorRole: 'Alumnus',
-        verified: author.verification_status === 'verified',
-        timestamp: new Date(row.created_at).toLocaleDateString(),
-        likes: Number(row.likes_count) || (row.post_likes?.length ?? 0),
-        liked: isLiked,
-        commentsList: comments,
-        shares: 0,
-      } as unknown as PostItem;
-    });
-  } catch (err) {
-    console.warn('Supabase fetchFeedPosts error:', err);
-    return [];
-  }
-}
-
-export async function createFeedPostInDb(params: {
-  authorId: number;
-  content: string;
-  category: string;
-  images?: string[];
-  videos?: string[];
-}): Promise<boolean> {
-  if (!isSupabaseConfigured) return false;
-
-  try {
-    const { error } = await supabase.from('posts').insert({
-      author_id: params.authorId,
-      content: params.content,
-      category: params.category,
-      images: params.images || [],
-      videos: params.videos || [],
-    });
-
-    if (error) {
-      console.warn('Supabase createFeedPost error:', error.message);
-      return false;
+        success: false,
+        error: insertError?.message || 'Failed to save post to Supabase database',
+      };
     }
-    return true;
-  } catch (err) {
-    console.warn('Failed to insert post in Supabase:', err);
-    return false;
+
+    const postItem = mapRowToFeedPost({ ...insertedRow, author: profileRow }, realAuthorId);
+    return { success: true, post: postItem };
+  } catch (err: any) {
+    console.error('Failed to insert post in Supabase:', err);
+    return { success: false, error: err.message || 'Unexpected error inserting post' };
   }
 }
 
 export async function togglePostLikeInDb(
   postId: number,
-  userId: number
+  userId?: number
 ): Promise<{ liked: boolean; likesCount: number }> {
   if (!isSupabaseConfigured) return { liked: true, likesCount: 1 };
 
   try {
+    let likeUserId = userId && userId > 0 ? userId : null;
+    const { data: authData } = await supabase.auth.getUser();
+    const authUser = authData?.user;
+    if (authUser) {
+      const { data: profile } = await supabase
+        .from('alumni_profiles')
+        .select('id')
+        .eq('auth_user_id', authUser.id)
+        .maybeSingle();
+      if (profile?.id) {
+        likeUserId = Number(profile.id);
+      }
+    }
+
+    if (!likeUserId) return { liked: false, likesCount: 0 };
+
     // Check if like already exists
     const { data: existing } = await supabase
       .from('post_likes')
       .select('id')
       .eq('post_id', postId)
-      .eq('user_id', userId)
+      .eq('user_id', likeUserId)
       .maybeSingle();
 
     if (existing) {
       await supabase.from('post_likes').delete().eq('id', existing.id);
       return { liked: false, likesCount: -1 };
     } else {
-      await supabase.from('post_likes').insert({ post_id: postId, user_id: userId });
+      await supabase.from('post_likes').insert({ post_id: postId, user_id: likeUserId });
       return { liked: true, likesCount: 1 };
     }
   } catch (err) {
@@ -300,15 +463,31 @@ export async function togglePostLikeInDb(
 
 export async function addPostCommentInDb(params: {
   postId: number;
-  userId: number;
+  userId?: number;
   content: string;
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
   try {
+    let commentAuthorId = params.userId && params.userId > 0 ? params.userId : null;
+    const { data: authData } = await supabase.auth.getUser();
+    const authUser = authData?.user;
+    if (authUser) {
+      const { data: profile } = await supabase
+        .from('alumni_profiles')
+        .select('id')
+        .eq('auth_user_id', authUser.id)
+        .maybeSingle();
+      if (profile?.id) {
+        commentAuthorId = Number(profile.id);
+      }
+    }
+
+    if (!commentAuthorId) return false;
+
     const { error } = await supabase.from('post_comments').insert({
       post_id: params.postId,
-      user_id: params.userId,
+      user_id: commentAuthorId,
       content: params.content,
     });
     return !error;

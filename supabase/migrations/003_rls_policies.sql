@@ -214,11 +214,7 @@ REVOKE ALL ON public.audit_logs FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.audit_logs TO authenticated;
 GRANT ALL ON public.audit_logs TO service_role;
 
--- Revoke anonymous access from authenticated-only tables
-REVOKE ALL ON public.posts FROM PUBLIC, anon;
-REVOKE ALL ON public.post_comments FROM PUBLIC, anon;
-REVOKE ALL ON public.post_likes FROM PUBLIC, anon;
-REVOKE ALL ON public.saved_posts FROM PUBLIC, anon;
+-- Revoke anonymous access from private management tables
 REVOKE ALL ON public.notifications FROM PUBLIC, anon;
 REVOKE ALL ON public.verification_requests FROM PUBLIC, anon;
 REVOKE ALL ON public.peer_vouches FROM PUBLIC, anon;
@@ -226,6 +222,24 @@ REVOKE ALL ON public.admin_doc_submissions FROM PUBLIC, anon;
 REVOKE ALL ON public.blood_donors FROM PUBLIC, anon;
 REVOKE ALL ON public.blood_requests FROM PUBLIC, anon;
 REVOKE ALL ON public.blood_request_responses FROM PUBLIC, anon;
+
+-- Explicitly grant privileges for social quad feed tables
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.posts TO authenticated;
+GRANT SELECT ON public.posts TO anon;
+GRANT ALL ON public.posts TO service_role;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.post_comments TO authenticated;
+GRANT SELECT ON public.post_comments TO anon;
+GRANT ALL ON public.post_comments TO service_role;
+
+GRANT SELECT, INSERT, DELETE ON public.post_likes TO authenticated;
+GRANT SELECT ON public.post_likes TO anon;
+GRANT ALL ON public.post_likes TO service_role;
+
+GRANT SELECT, INSERT, DELETE ON public.saved_posts TO authenticated;
+GRANT ALL ON public.saved_posts TO service_role;
 
 -- Restrict anon to read-only on public reference/content tables and insert-only on contact_inquiries
 REVOKE ALL ON public.batches FROM PUBLIC, anon;
@@ -364,7 +378,7 @@ CREATE POLICY "alumni_profiles_delete_admin"
 DROP POLICY IF EXISTS "posts_select_visible" ON public.posts;
 CREATE POLICY "posts_select_visible"
   ON public.posts FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (
     is_deleted = FALSE
     OR author_id = public.current_profile_id()

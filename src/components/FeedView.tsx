@@ -49,8 +49,7 @@ import {
 } from './SmartPostMediaAndEmbeds';
 import {
   isPostSaved,
-  toggleSavePost,
-  INITIAL_OFFLINE_SAVED_POSTS
+  toggleSavePost
 } from '../utils/offlineStorage';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { VerificationStatusBadge } from './verification/VerificationStatusBadge';
@@ -114,66 +113,32 @@ export const FeedView: React.FC<FeedViewProps> = ({
     return () => window.removeEventListener('storage', syncVouches);
   }, [currentUser]);
 
-  const [posts, setPosts] = useState<PostItem[]>(() => {
-    if (typeof window === 'undefined') return INITIAL_OFFLINE_SAVED_POSTS;
-    try {
-      const raw = localStorage.getItem('ndc_alumni_posts');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter(
-            (p) =>
-              p &&
-              p.id &&
-              p.id !== 9001 &&
-              p.id !== 9002 &&
-              !String(p.id).startsWith('demo-') &&
-              !String(p.id).startsWith('mock-')
-          );
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load posts', e);
-    }
-    return INITIAL_OFFLINE_SAVED_POSTS;
-  });
+  const [posts, setPosts] = useState<PostItem[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(true);
+  const [isSubmittingPost, setIsSubmittingPost] = useState<boolean>(false);
 
-  // Sync posts to localStorage and load from Supabase on mount
+  // Supabase is the ONLY source of truth: load from Supabase on mount
   useEffect(() => {
     let isMounted = true;
+    setIsLoadingPosts(true);
     fetchFeedPostsFromDb(50, currentUser.id)
       .then((dbPosts) => {
-        if (isMounted && dbPosts && dbPosts.length > 0) {
-          setPosts((prev) => {
-            const map = new Map<number, PostItem>();
-            // Live Supabase posts take priority
-            dbPosts.forEach((p) => map.set(p.id, p));
-            // Keep local posts that aren't yet in DB
-            prev.forEach((p) => {
-              if (!map.has(p.id)) map.set(p.id, p);
-            });
-            return Array.from(map.values());
-          });
+        if (isMounted) {
+          setPosts(dbPosts || []);
+          setIsLoadingPosts(false);
         }
       })
       .catch((err) => {
-        console.warn('FeedView: failed to fetch Supabase posts, using cached:', err);
+        console.error('FeedView: failed to fetch Supabase posts:', err);
+        if (isMounted) {
+          setIsLoadingPosts(false);
+        }
       });
 
     return () => {
       isMounted = false;
     };
   }, [currentUser.id]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('ndc_alumni_posts', JSON.stringify(posts));
-      } catch (e) {
-        console.warn('Failed to save posts', e);
-      }
-    }
-  }, [posts]);
 
   // Handle saving / bookmarking a post to offline cache & Supabase
   const handleToggleSave = (post: PostItem) => {
@@ -662,8 +627,10 @@ export const FeedView: React.FC<FeedViewProps> = ({
   };
 
   // Create Post
-  const handleCreatePost = (e?: React.FormEvent | React.MouseEvent) => {
+  const handleCreatePost = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
+    if (isSubmittingPost) return;
+
     const pendingVideoOrSocialLink = normalizeUrlInput(videoUrlInput);
     const finalVideos = Array.from(
       new Set([
@@ -687,48 +654,80 @@ export const FeedView: React.FC<FeedViewProps> = ({
       ? `${metaPrefix}\n\n${postContent.trim()}`
       : postContent.trim();
 
-    const newPost: PostItem = {
-      id: Date.now(),
-      userId: currentUser.userId,
-      fullName: currentUser.fullName,
-      avatarUrl: currentUser.avatarUrl,
-      batchYear: currentUser.batchYear,
+    setIsSubmittingPost(true);
+    const tempPostId = -Date.now();
+    const optimisticPost: PostItem = {
+      id: tempPostId,
+      userId: currentUser.id,
+      fullName: currentUser.fullName || 'Notredamian Alumnus',
+      avatarUrl: currentUser.avatarUrl || '/ndc-logo.png',
+      batchYear: currentUser.batchYear || 68,
       content: finalContent,
-      images: [...attachedImages],
+      images: attachedImages,
       videos: finalVideos,
-      category: selectedCategory,
       likesCount: 0,
       commentsCount: 0,
       createdAt: 'Just now',
       likedByMe: false,
       comments: [],
-    };
-
-    // Persist to Supabase Database
-    createFeedPostInDb({
-      authorId: currentUser.id,
-      content: finalContent,
       category: selectedCategory,
-      images: attachedImages,
-      videos: finalVideos,
-    }).catch((err) => {
-      console.warn('createFeedPostInDb fallback:', err);
-    });
+      isEdited: false,
+      pinned: false,
+      author: currentUser.fullName || 'Notredamian Alumnus',
+      authorAvatar: currentUser.avatarUrl || '/ndc-logo.png',
+      authorBatch: currentUser.batchYear || 68,
+      authorRole: 'Alumnus',
+      verified: currentUser.verificationStatus === 'verified',
+      timestamp: 'Just now',
+      likes: 0,
+      liked: false,
+      commentsList: [],
+      shares: 0,
+    } as unknown as PostItem;
 
-    setPosts([newPost, ...posts]);
-    setPostContent('');
-    setAttachedImages([]);
-    setAttachedVideos([]);
-    setVideoUrlInput('');
-    setShowVideoUrlInput(false);
-    setSelectedCategory('General Update');
-    setPostBackground('default');
-    setPostFeeling(null);
-    setPostLocation(null);
-    setShowPhotoDropzone(false);
-    setIsCreateModalOpen(false);
-    playSound('post');
-    showToast('Post published successfully to the alumni feed!');
+    // Show optimistic post immediately for instant responsiveness
+    setPosts((prev) => [optimisticPost, ...prev]);
+
+    try {
+      // Persist directly to Supabase Database (Single Source of Truth)
+      const res = await createFeedPostInDb({
+        authorId: currentUser.id,
+        content: finalContent,
+        category: selectedCategory,
+        images: attachedImages,
+        videos: finalVideos,
+      });
+
+      if (!res.success || !res.post) {
+        // Rollback optimistic post immediately when database insert fails
+        setPosts((prev) => prev.filter((p) => p.id !== tempPostId));
+        showToast(res.error || 'Failed to publish post to Supabase database.');
+        return;
+      }
+
+      // Prepend the real database-persisted post with its assigned ID and clear temp
+      setPosts((prev) => [res.post!, ...prev.filter((p) => p.id !== tempPostId && p.id !== res.post!.id)]);
+      setPostContent('');
+      setAttachedImages([]);
+      setAttachedVideos([]);
+      setVideoUrlInput('');
+      setShowVideoUrlInput(false);
+      setSelectedCategory('General Update');
+      setPostBackground('default');
+      setPostFeeling(null);
+      setPostLocation(null);
+      setShowPhotoDropzone(false);
+      setIsCreateModalOpen(false);
+      playSound('post');
+      showToast('Post published successfully to the alumni feed!');
+    } catch (err: any) {
+      // Rollback optimistic post on unexpected network or database error
+      setPosts((prev) => prev.filter((p) => p.id !== tempPostId));
+      console.error('Error creating feed post in Supabase:', err);
+      showToast(err.message || 'Error publishing post');
+    } finally {
+      setIsSubmittingPost(false);
+    }
   };
 
   // Open Edit Post
@@ -809,29 +808,20 @@ export const FeedView: React.FC<FeedViewProps> = ({
     });
   };
 
-  // Refresh Feed
-  const handleRefreshFeed = () => {
+  // Refresh Feed directly from Supabase
+  const handleRefreshFeed = async () => {
     setHasNewPosts(false);
-    const simulatedPost: PostItem = {
-      id: Date.now(),
-      userId: 105,
-      fullName: 'Tahmidur Rahman',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-      batchYear: 58,
-      content: 'Heartfelt congratulations to Batch 68 Notredamians completing their university graduations today! Notre Dame continues to shine across all sectors in Bangladesh and beyond.',
-      images: [
-        'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&auto=format&fit=crop&q=80',
-      ],
-      category: 'Achievement',
-      likesCount: 14,
-      commentsCount: 2,
-      createdAt: 'Just now',
-      likedByMe: false,
-      comments: [],
-    };
-    setPosts([simulatedPost, ...posts]);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    showToast('Feed refreshed with new posts!');
+    setIsLoadingPosts(true);
+    try {
+      const dbPosts = await fetchFeedPostsFromDb(50, currentUser.id);
+      setPosts(dbPosts || []);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast('Feed refreshed from Supabase!');
+    } catch {
+      showToast('Failed to refresh feed from database.');
+    } finally {
+      setIsLoadingPosts(false);
+    }
   };
 
   // Add Comment
@@ -1774,14 +1764,15 @@ export const FeedView: React.FC<FeedViewProps> = ({
                 id="submit-post-btn"
                 onClick={handleCreatePost}
                 disabled={
-                  !postContent.trim() &&
-                  attachedImages.length === 0 &&
-                  attachedVideos.length === 0 &&
-                  !videoUrlInput.trim()
+                  isSubmittingPost ||
+                  (!postContent.trim() &&
+                    attachedImages.length === 0 &&
+                    attachedVideos.length === 0 &&
+                    !videoUrlInput.trim())
                 }
                 className="inline-flex items-center justify-center gap-2 px-7 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-bold rounded-xl shadow-md shadow-blue-600/20 transition-all cursor-pointer"
               >
-                <span>Post</span>
+                <span>{isSubmittingPost ? 'Posting...' : 'Post'}</span>
               </button>
             </div>
           </div>
@@ -1828,6 +1819,15 @@ export const FeedView: React.FC<FeedViewProps> = ({
       {/* Posts Stream */}
       <div className="space-y-5">
         {(() => {
+          if (isLoadingPosts) {
+            return (
+              <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 border border-slate-200/80 dark:border-slate-800 text-center shadow-xs">
+                <RefreshCw className="w-6 h-6 mx-auto text-blue-500 animate-spin mb-3" />
+                <p className="text-xs text-slate-500 dark:text-slate-400">Loading live feed from Supabase...</p>
+              </div>
+            );
+          }
+
           const displayedPosts =
             activeFilterCategory !== 'All'
               ? posts.filter((p) => p.category === activeFilterCategory)
