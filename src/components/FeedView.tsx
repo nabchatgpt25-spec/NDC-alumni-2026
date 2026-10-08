@@ -49,7 +49,8 @@ import {
 } from './SmartPostMediaAndEmbeds';
 import {
   isPostSaved,
-  toggleSavePost
+  toggleSavePost,
+  INITIAL_OFFLINE_SAVED_POSTS
 } from '../utils/offlineStorage';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { VerificationStatusBadge } from './verification/VerificationStatusBadge';
@@ -67,7 +68,7 @@ import {
   toggleSavePostInDb,
   editFeedPostInDb,
   deleteFeedPostInDb,
-  createNotificationInDb,
+  uploadMediaToSupabaseStorage,
 } from '../services/supabaseService';
 
 interface FeedViewProps {
@@ -113,32 +114,56 @@ export const FeedView: React.FC<FeedViewProps> = ({
     return () => window.removeEventListener('storage', syncVouches);
   }, [currentUser]);
 
-  const [posts, setPosts] = useState<PostItem[]>([]);
-  const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(true);
-  const [isSubmittingPost, setIsSubmittingPost] = useState<boolean>(false);
+  const [posts, setPosts] = useState<PostItem[]>(() => {
+    if (typeof window === 'undefined') return INITIAL_OFFLINE_SAVED_POSTS;
+    try {
+      const raw = localStorage.getItem('ndc_alumni_posts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load posts', e);
+    }
+    return INITIAL_OFFLINE_SAVED_POSTS;
+  });
 
-  // Supabase is the ONLY source of truth: load from Supabase on mount
+  // Sync posts to localStorage and load from Supabase on mount
   useEffect(() => {
     let isMounted = true;
-    setIsLoadingPosts(true);
     fetchFeedPostsFromDb(50, currentUser.id)
       .then((dbPosts) => {
-        if (isMounted) {
-          setPosts(dbPosts || []);
-          setIsLoadingPosts(false);
+        if (isMounted && dbPosts && dbPosts.length > 0) {
+          setPosts((prev) => {
+            const map = new Map<number, PostItem>();
+            // Live Supabase posts take priority
+            dbPosts.forEach((p) => map.set(p.id, p));
+            // Keep local posts that aren't yet in DB
+            prev.forEach((p) => {
+              if (!map.has(p.id)) map.set(p.id, p);
+            });
+            return Array.from(map.values());
+          });
         }
       })
       .catch((err) => {
-        console.error('FeedView: failed to fetch Supabase posts:', err);
-        if (isMounted) {
-          setIsLoadingPosts(false);
-        }
+        console.warn('FeedView: failed to fetch Supabase posts, using cached:', err);
       });
 
     return () => {
       isMounted = false;
     };
   }, [currentUser.id]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ndc_alumni_posts', JSON.stringify(posts));
+      } catch (e) {
+        console.warn('Failed to save posts', e);
+      }
+    }
+  }, [posts]);
 
   // Handle saving / bookmarking a post to offline cache & Supabase
   const handleToggleSave = (post: PostItem) => {
@@ -371,46 +396,76 @@ export const FeedView: React.FC<FeedViewProps> = ({
   };
 
   // Process uploaded files (photos and videos) from input, drag-and-drop, or clipboard paste
-  const processUploadedFiles = (files: FileList | File[]) => {
+  const processUploadedFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
 
     let addedPhotos = 0;
     let addedVideos = 0;
 
-    fileArray.forEach((file: File) => {
+    for (const file of fileArray) {
       if (['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
         if (file.size > 10 * 1024 * 1024) {
           showToast('Each photo must be smaller than 10 MB.');
-          return;
+          continue;
         }
         addedPhotos += 1;
-        compressImageFileToDataUrl(file)
-          .then((result) => {
-            if (result) {
-              setAttachedImages((prev) => [...prev, result]);
-            }
-          })
-          .catch(() => {
-            const reader = new FileReader();
-            reader.onload = (uploadEvent) => {
-              const result = uploadEvent.target?.result as string;
+
+        // Try direct Supabase storage upload
+        let uploadedUrl: string | null = null;
+        try {
+          const uploadRes = await uploadMediaToSupabaseStorage(file, 'post-media', 'posts');
+          if (uploadRes?.publicUrl) {
+            uploadedUrl = uploadRes.publicUrl;
+          }
+        } catch {
+          // fallback to local data url
+        }
+
+        if (uploadedUrl) {
+          setAttachedImages((prev) => [...prev, uploadedUrl!]);
+        } else {
+          compressImageFileToDataUrl(file)
+            .then((result) => {
               if (result) {
                 setAttachedImages((prev) => [...prev, result]);
               }
-            };
-            reader.readAsDataURL(file);
-          });
+            })
+            .catch(() => {
+              const reader = new FileReader();
+              reader.onload = (uploadEvent) => {
+                const result = uploadEvent.target?.result as string;
+                if (result) {
+                  setAttachedImages((prev) => [...prev, result]);
+                }
+              };
+              reader.readAsDataURL(file);
+            });
+        }
       } else if (
         file.type.startsWith('video/') ||
         ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'].includes(file.type)
       ) {
         if (file.size > 100 * 1024 * 1024) {
           showToast('Each video must be smaller than 100 MB.');
-          return;
+          continue;
         }
         addedVideos += 1;
-        if (file.size <= 15 * 1024 * 1024) {
+
+        // Try direct Supabase storage upload for videos
+        let uploadedVideoUrl: string | null = null;
+        try {
+          const uploadRes = await uploadMediaToSupabaseStorage(file, 'post-media', 'videos');
+          if (uploadRes?.publicUrl) {
+            uploadedVideoUrl = uploadRes.publicUrl;
+          }
+        } catch {
+          // fallback to local player url
+        }
+
+        if (uploadedVideoUrl) {
+          setAttachedVideos((prev) => [...prev, uploadedVideoUrl!]);
+        } else if (file.size <= 15 * 1024 * 1024) {
           const reader = new FileReader();
           reader.onload = (uploadEvent) => {
             const result = uploadEvent.target?.result as string;
@@ -426,7 +481,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
       } else {
         showToast('Supported formats: JPG, PNG, WEBP, GIF photos and MP4, WEBM, MOV videos.');
       }
-    });
+    }
 
     if (addedPhotos > 0 && addedVideos > 0) {
       showToast(`Added ${addedPhotos} photo(s) and ${addedVideos} video(s) to your post!`);
@@ -526,32 +581,44 @@ export const FeedView: React.FC<FeedViewProps> = ({
   };
 
   // Edit image upload
-  const handleEditImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    (Array.from(files) as File[]).forEach((file: File) => {
+    for (const file of Array.from(files) as File[]) {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
         showToast('Only JPG, PNG, and WEBP images are supported.');
-        return;
+        continue;
       }
-      compressImageFileToDataUrl(file)
-        .then((result) => {
-          if (result) {
-            setEditImages((prev) => [...prev, result]);
-          }
-        })
-        .catch(() => {
-          const reader = new FileReader();
-          reader.onload = (uploadEvent) => {
-            const result = uploadEvent.target?.result as string;
+      let uploadedUrl: string | null = null;
+      try {
+        const uploadRes = await uploadMediaToSupabaseStorage(file, 'post-media', 'posts');
+        if (uploadRes?.publicUrl) {
+          uploadedUrl = uploadRes.publicUrl;
+        }
+      } catch {}
+
+      if (uploadedUrl) {
+        setEditImages((prev) => [...prev, uploadedUrl!]);
+      } else {
+        compressImageFileToDataUrl(file)
+          .then((result) => {
             if (result) {
               setEditImages((prev) => [...prev, result]);
             }
-          };
-          reader.readAsDataURL(file);
-        });
-    });
+          })
+          .catch(() => {
+            const reader = new FileReader();
+            reader.onload = (uploadEvent) => {
+              const result = uploadEvent.target?.result as string;
+              if (result) {
+                setEditImages((prev) => [...prev, result]);
+              }
+            };
+            reader.readAsDataURL(file);
+          });
+      }
+    }
 
     e.target.value = '';
   };
@@ -560,16 +627,27 @@ export const FeedView: React.FC<FeedViewProps> = ({
     setEditImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
-  const handleEditVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    (Array.from(files) as File[]).forEach((file: File) => {
+    for (const file of Array.from(files) as File[]) {
       if (!file.type.startsWith('video/')) {
         showToast('Only video files (MP4, WEBM, MOV) are supported.');
-        return;
+        continue;
       }
-      if (file.size <= 15 * 1024 * 1024) {
+
+      let uploadedVideoUrl: string | null = null;
+      try {
+        const uploadRes = await uploadMediaToSupabaseStorage(file, 'post-media', 'videos');
+        if (uploadRes?.publicUrl) {
+          uploadedVideoUrl = uploadRes.publicUrl;
+        }
+      } catch {}
+
+      if (uploadedVideoUrl) {
+        setEditVideos((prev) => [...prev, uploadedVideoUrl!]);
+      } else if (file.size <= 15 * 1024 * 1024) {
         const reader = new FileReader();
         reader.onload = (uploadEvent) => {
           const result = uploadEvent.target?.result as string;
@@ -582,7 +660,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
         const objectUrl = URL.createObjectURL(file);
         setEditVideos((prev) => [...prev, objectUrl]);
       }
-    });
+    }
 
     e.target.value = '';
   };
@@ -596,20 +674,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
     togglePostLikeInDb(postId, currentUser.id).catch((err) => {
       console.warn('togglePostLikeInDb error:', err);
     });
-
-    const targetPost = posts.find((p) => p.id === postId);
-    if (targetPost && !targetPost.likedByMe && targetPost.userId !== currentUser.id) {
-      createNotificationInDb({
-        recipientId: targetPost.userId,
-        actorId: currentUser.id,
-        type: 'like',
-        title: `${currentUser.fullName} liked your post`,
-        message: targetPost.content.slice(0, 80),
-        postId: targetPost.id,
-        targetRoute: 'feed',
-      }).catch(() => {});
-    }
-
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id === postId) {
@@ -627,10 +691,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
   };
 
   // Create Post
-  const handleCreatePost = async (e?: React.FormEvent | React.MouseEvent) => {
+  const handleCreatePost = (e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
-    if (isSubmittingPost) return;
-
     const pendingVideoOrSocialLink = normalizeUrlInput(videoUrlInput);
     const finalVideos = Array.from(
       new Set([
@@ -654,80 +716,64 @@ export const FeedView: React.FC<FeedViewProps> = ({
       ? `${metaPrefix}\n\n${postContent.trim()}`
       : postContent.trim();
 
-    setIsSubmittingPost(true);
-    const tempPostId = -Date.now();
-    const optimisticPost: PostItem = {
-      id: tempPostId,
-      userId: currentUser.id,
-      fullName: currentUser.fullName || 'Notredamian Alumnus',
-      avatarUrl: currentUser.avatarUrl || '/ndc-logo.png',
-      batchYear: currentUser.batchYear || 68,
+    const newPost: PostItem = {
+      id: Date.now(),
+      userId: currentUser.userId,
+      fullName: currentUser.fullName,
+      avatarUrl: currentUser.avatarUrl,
+      batchYear: currentUser.batchYear,
       content: finalContent,
-      images: attachedImages,
+      images: [...attachedImages],
       videos: finalVideos,
+      category: selectedCategory,
       likesCount: 0,
       commentsCount: 0,
       createdAt: 'Just now',
       likedByMe: false,
       comments: [],
+    };
+
+    // Persist to Supabase Database
+    createFeedPostInDb({
+      authorId: currentUser.id,
+      content: finalContent,
       category: selectedCategory,
-      isEdited: false,
-      pinned: false,
-      author: currentUser.fullName || 'Notredamian Alumnus',
-      authorAvatar: currentUser.avatarUrl || '/ndc-logo.png',
-      authorBatch: currentUser.batchYear || 68,
-      authorRole: 'Alumnus',
-      verified: currentUser.verificationStatus === 'verified',
-      timestamp: 'Just now',
-      likes: 0,
-      liked: false,
-      commentsList: [],
-      shares: 0,
-    } as unknown as PostItem;
-
-    // Show optimistic post immediately for instant responsiveness
-    setPosts((prev) => [optimisticPost, ...prev]);
-
-    try {
-      // Persist directly to Supabase Database (Single Source of Truth)
-      const res = await createFeedPostInDb({
-        authorId: currentUser.id,
-        content: finalContent,
-        category: selectedCategory,
-        images: attachedImages,
-        videos: finalVideos,
+      images: attachedImages,
+      videos: finalVideos,
+    })
+      .then((res) => {
+        if (res && typeof res === 'object' && 'id' in res && res.id) {
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === newPost.id
+                ? {
+                    ...p,
+                    id: res.id,
+                    createdAt: res.createdAt ? new Date(res.createdAt).toLocaleDateString() : p.createdAt,
+                  }
+                : p
+            )
+          );
+        }
+      })
+      .catch((err) => {
+        console.warn('createFeedPostInDb fallback:', err);
       });
 
-      if (!res.success || !res.post) {
-        // Rollback optimistic post immediately when database insert fails
-        setPosts((prev) => prev.filter((p) => p.id !== tempPostId));
-        showToast(res.error || 'Failed to publish post to Supabase database.');
-        return;
-      }
-
-      // Prepend the real database-persisted post with its assigned ID and clear temp
-      setPosts((prev) => [res.post!, ...prev.filter((p) => p.id !== tempPostId && p.id !== res.post!.id)]);
-      setPostContent('');
-      setAttachedImages([]);
-      setAttachedVideos([]);
-      setVideoUrlInput('');
-      setShowVideoUrlInput(false);
-      setSelectedCategory('General Update');
-      setPostBackground('default');
-      setPostFeeling(null);
-      setPostLocation(null);
-      setShowPhotoDropzone(false);
-      setIsCreateModalOpen(false);
-      playSound('post');
-      showToast('Post published successfully to the alumni feed!');
-    } catch (err: any) {
-      // Rollback optimistic post on unexpected network or database error
-      setPosts((prev) => prev.filter((p) => p.id !== tempPostId));
-      console.error('Error creating feed post in Supabase:', err);
-      showToast(err.message || 'Error publishing post');
-    } finally {
-      setIsSubmittingPost(false);
-    }
+    setPosts([newPost, ...posts]);
+    setPostContent('');
+    setAttachedImages([]);
+    setAttachedVideos([]);
+    setVideoUrlInput('');
+    setShowVideoUrlInput(false);
+    setSelectedCategory('General Update');
+    setPostBackground('default');
+    setPostFeeling(null);
+    setPostLocation(null);
+    setShowPhotoDropzone(false);
+    setIsCreateModalOpen(false);
+    playSound('post');
+    showToast('Post published successfully to the alumni feed!');
   };
 
   // Open Edit Post
@@ -808,20 +854,29 @@ export const FeedView: React.FC<FeedViewProps> = ({
     });
   };
 
-  // Refresh Feed directly from Supabase
-  const handleRefreshFeed = async () => {
+  // Refresh Feed
+  const handleRefreshFeed = () => {
     setHasNewPosts(false);
-    setIsLoadingPosts(true);
-    try {
-      const dbPosts = await fetchFeedPostsFromDb(50, currentUser.id);
-      setPosts(dbPosts || []);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast('Feed refreshed from Supabase!');
-    } catch {
-      showToast('Failed to refresh feed from database.');
-    } finally {
-      setIsLoadingPosts(false);
-    }
+    const simulatedPost: PostItem = {
+      id: Date.now(),
+      userId: 105,
+      fullName: 'Tahmidur Rahman',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+      batchYear: 58,
+      content: 'Heartfelt congratulations to Batch 68 Notredamians completing their university graduations today! Notre Dame continues to shine across all sectors in Bangladesh and beyond.',
+      images: [
+        'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&auto=format&fit=crop&q=80',
+      ],
+      category: 'Achievement',
+      likesCount: 14,
+      commentsCount: 2,
+      createdAt: 'Just now',
+      likedByMe: false,
+      comments: [],
+    };
+    setPosts([simulatedPost, ...posts]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast('Feed refreshed with new posts!');
   };
 
   // Add Comment
@@ -836,19 +891,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
     }).catch((err) => {
       console.warn('addPostCommentInDb fallback:', err);
     });
-
-    const targetPost = posts.find((p) => p.id === postId);
-    if (targetPost && targetPost.userId !== currentUser.id) {
-      createNotificationInDb({
-        recipientId: targetPost.userId,
-        actorId: currentUser.id,
-        type: 'comment',
-        title: `${currentUser.fullName} commented on your post`,
-        message: text.slice(0, 100),
-        postId: targetPost.id,
-        targetRoute: 'feed',
-      }).catch(() => {});
-    }
 
     const newComment: PostComment = {
       id: Date.now(),
@@ -933,9 +975,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-16 sm:top-20 right-3 sm:right-5 max-w-[calc(100vw-1.5rem)] sm:max-w-md z-50 flex items-center gap-2.5 px-3.5 sm:px-4 py-2.5 sm:py-3 bg-slate-900/95 text-white dark:bg-white/95 dark:text-slate-900 rounded-2xl shadow-xl border border-slate-700/50 dark:border-slate-200 text-xs font-semibold animate-fade-in">
+        <div className="fixed top-20 right-5 z-50 flex items-center gap-2.5 px-4 py-3 bg-slate-900/95 text-white dark:bg-white/95 dark:text-slate-900 rounded-2xl shadow-xl border border-slate-700/50 dark:border-slate-200 text-xs font-semibold animate-fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600 shrink-0" />
-          <span className="truncate">{toastMessage}</span>
+          <span>{toastMessage}</span>
         </div>
       )}
 
@@ -1764,15 +1806,14 @@ export const FeedView: React.FC<FeedViewProps> = ({
                 id="submit-post-btn"
                 onClick={handleCreatePost}
                 disabled={
-                  isSubmittingPost ||
-                  (!postContent.trim() &&
-                    attachedImages.length === 0 &&
-                    attachedVideos.length === 0 &&
-                    !videoUrlInput.trim())
+                  !postContent.trim() &&
+                  attachedImages.length === 0 &&
+                  attachedVideos.length === 0 &&
+                  !videoUrlInput.trim()
                 }
                 className="inline-flex items-center justify-center gap-2 px-7 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-bold rounded-xl shadow-md shadow-blue-600/20 transition-all cursor-pointer"
               >
-                <span>{isSubmittingPost ? 'Posting...' : 'Post'}</span>
+                <span>Post</span>
               </button>
             </div>
           </div>
@@ -1819,15 +1860,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
       {/* Posts Stream */}
       <div className="space-y-5">
         {(() => {
-          if (isLoadingPosts) {
-            return (
-              <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 border border-slate-200/80 dark:border-slate-800 text-center shadow-xs">
-                <RefreshCw className="w-6 h-6 mx-auto text-blue-500 animate-spin mb-3" />
-                <p className="text-xs text-slate-500 dark:text-slate-400">Loading live feed from Supabase...</p>
-              </div>
-            );
-          }
-
           const displayedPosts =
             activeFilterCategory !== 'All'
               ? posts.filter((p) => p.category === activeFilterCategory)
@@ -2103,20 +2135,20 @@ export const FeedView: React.FC<FeedViewProps> = ({
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-1 sm:gap-2">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleToggleLike(post.id)}
-                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                       post.likedByMe
                         ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Heart
-                      className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${post.likedByMe ? 'fill-rose-500 text-rose-500' : ''}`}
+                      className={`w-4 h-4 ${post.likedByMe ? 'fill-rose-500 text-rose-500' : ''}`}
                     />
-                    <span className="truncate">{post.likedByMe ? 'Liked' : 'Like'}</span>
+                    <span>{post.likedByMe ? 'Liked' : 'Like'}</span>
                   </button>
 
                   <button
@@ -2126,16 +2158,16 @@ export const FeedView: React.FC<FeedViewProps> = ({
                         activeCommentPostId === post.id ? null : post.id
                       )
                     }
-                    className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
-                    <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                    <span className="truncate">Comment</span>
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Comment</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleToggleSave(post)}
-                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                       isPostSaved(post.id) || post.isSaved
                         ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -2143,18 +2175,18 @@ export const FeedView: React.FC<FeedViewProps> = ({
                     title={isPostSaved(post.id) || post.isSaved ? 'Saved to offline cache' : 'Save post for offline reading'}
                   >
                     {isPostSaved(post.id) || post.isSaved ? (
-                      <BookmarkCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 fill-current text-blue-600 dark:text-blue-400" />
+                      <BookmarkCheck className="w-4 h-4 fill-current text-blue-600 dark:text-blue-400" />
                     ) : (
-                      <Bookmark className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                      <Bookmark className="w-4 h-4" />
                     )}
-                    <span className="truncate">{isPostSaved(post.id) || post.isSaved ? 'Saved' : 'Save'}</span>
+                    <span>{isPostSaved(post.id) || post.isSaved ? 'Saved' : 'Save'}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleSharePost(post.id)}
                     title="Copy direct link to this post"
-                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                       copiedPostId === post.id
                         ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -2162,13 +2194,13 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   >
                     {copiedPostId === post.id ? (
                       <>
-                        <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span className="truncate">Copied</span>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>Link Copied!</span>
                       </>
                     ) : (
                       <>
-                        <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                        <span className="truncate">Share</span>
+                        <Share2 className="w-4 h-4" />
+                        <span>Share</span>
                       </>
                     )}
                   </button>

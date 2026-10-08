@@ -3,7 +3,6 @@ import { supabase, isSupabaseConfigured, ALUMNI_PUBLIC_COLUMNS } from './supabas
 import { AlumniProfile, UserRole } from '../types.ts';
 
 const SUPER_ADMIN_EMAILS = new Set([
-  'nurulanambashirdamian@gmail.com',
   'nurulanambashir20@gmail.com',
   'admin@ndcalumni.org',
   'bashir@ndcalumni.org',
@@ -91,8 +90,8 @@ export async function getOrCreateSupabaseProfile(
 
   try {
     // 1. Check if profile already exists for this auth_user_id
-    const { data: existing, error: fetchErr } = await supabase
-      .from('alumni_profiles')
+    const { data: existing, error: fetchErr } = await (supabase
+      .from('alumni_profiles') as any)
       .select(ALUMNI_PUBLIC_COLUMNS)
       .eq('auth_user_id', authUser.id)
       .maybeSingle();
@@ -112,23 +111,53 @@ export async function getOrCreateSupabaseProfile(
       return mapSupabaseRowToAlumniProfile(existing);
     }
 
-    // 2. Otherwise, insert a new record for the authenticated user
+    // 2. If not found by auth_user_id, check if a profile exists by email to link
     const cleanEmail = (authUser.email || extraData?.email || '').toLowerCase().trim();
+    if (cleanEmail) {
+      const { data: byEmail } = await (supabase
+        .from('alumni_profiles') as any)
+        .select(ALUMNI_PUBLIC_COLUMNS)
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (byEmail) {
+        // Link existing profile to this Supabase auth account
+        const { data: updated } = await (supabase
+          .from('alumni_profiles') as any)
+          .update({
+            auth_user_id: authUser.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', (byEmail as any).id)
+          .select(ALUMNI_PUBLIC_COLUMNS)
+          .single();
+
+        if (updated) {
+          try {
+            const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
+              p_profile_id: (updated as any).id,
+            });
+            if (contacts && contacts[0]) {
+              Object.assign(updated, contacts[0]);
+            }
+          } catch {}
+          return mapSupabaseRowToAlumniProfile(updated);
+        }
+      }
+    }
+
+    // 3. Otherwise, insert a new record for the authenticated user
     const batchYear = Number(extraData?.batchYear) || 68;
     const normalizedBatch = batchYear > 1900 ? batchYear - 1950 : (batchYear > 0 ? batchYear : 68);
 
-    // Note: RLS policy "alumni_profiles_insert_own" strictly enforces role = 'member' and verification_status = 'unverified'.
-    // Admin elevation for super admin emails is resolved dynamically in mapSupabaseRowToAlumniProfile.
     const initialRecord = {
       auth_user_id: authUser.id,
-      role: 'member',
-      verification_status: 'unverified',
       full_name:
         extraData?.fullName?.trim() ||
         (authUser.user_metadata as any)?.full_name ||
         (authUser.user_metadata as any)?.name ||
-        (cleanEmail ? cleanEmail.split('@')[0] : null) ||
-        (authUser.phone ? `Alumnus (${authUser.phone})` : 'Notredamian Alumnus'),
+        cleanEmail.split('@')[0] ||
+        'Notredamian Alumnus',
       avatar_url:
         extraData?.avatarUrl ||
         (authUser.user_metadata as any)?.avatar_url ||
@@ -140,10 +169,7 @@ export async function getOrCreateSupabaseProfile(
         extraData?.academicStream === 'Humanities' || extraData?.academicStream === 'Business Studies'
           ? extraData.academicStream
           : 'Science',
-      academic_group:
-        (extraData?.academicStream === 'Humanities' || extraData?.academicStream === 'Business Studies')
-          ? (extraData?.academicGroup || null)
-          : null,
+      academic_group: extraData?.academicGroup || null,
       section: extraData?.section || 'Section A',
       profession: extraData?.profession || 'Alumnus',
       position: extraData?.position || '',
@@ -151,13 +177,15 @@ export async function getOrCreateSupabaseProfile(
       city: extraData?.city || 'Dhaka',
       country: extraData?.country || 'Bangladesh',
       email: cleanEmail || null,
-      phone: extraData?.phone?.trim() || (authUser.user_metadata as any)?.phone || authUser.phone || null,
+      phone: extraData?.phone?.trim() || null,
       whatsapp: extraData?.whatsapp?.trim() || null,
       blood_group: extraData?.bloodGroup || null,
+      role: isSuperAdminEmail(cleanEmail) ? 'admin' : 'member',
+      verification_status: 'unverified',
     };
 
-    const { data: inserted, error: insertErr } = await supabase
-      .from('alumni_profiles')
+    const { data: inserted, error: insertErr } = await (supabase
+      .from('alumni_profiles') as any)
       .insert(initialRecord)
       .select(ALUMNI_PUBLIC_COLUMNS)
       .single();
