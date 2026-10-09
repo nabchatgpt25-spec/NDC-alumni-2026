@@ -30,7 +30,7 @@ import { CursorSpotlight } from './components/motion/CinematicMotion';
 import { NDCLogo } from './components/NDCLogo';
 
 function AlumniAppContent() {
-  const { isLoggedIn, currentUser } = useAuth();
+  const { isLoggedIn, currentUser, isAuthInitializing, authInitializationError } = useAuth();
   const prefersReducedMotion = useReducedMotion();
 
   // Route state: 'landing' | 'feed' | 'alumni' | 'directory' | 'find' | 'batches' | 'map' | 'gallery' | 'profile' | `batch:${number}` | `post-${number}`
@@ -145,6 +145,22 @@ function AlumniAppContent() {
       navigateTo('directory');
     }
   };
+
+  if (isAuthInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
+        Restoring your session…
+      </div>
+    );
+  }
+
+  if (authInitializationError && !isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 text-center" role="alert">
+        {authInitializationError}
+      </div>
+    );
+  }
 
   // If user is logged out and on the landing page, display the full Public Landing Page
   if (!isLoggedIn || route === 'landing') {
