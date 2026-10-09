@@ -79,6 +79,7 @@ export const BloodDonorRegistration: React.FC<BloodDonorRegistrationProps> = ({
   const [newHistNotes, setNewHistNotes] = useState('');
 
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -132,7 +133,7 @@ export const BloodDonorRegistration: React.FC<BloodDonorRegistrationProps> = ({
     setDonationHistory((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -144,8 +145,9 @@ export const BloodDonorRegistration: React.FC<BloodDonorRegistrationProps> = ({
       return;
     }
 
+    setIsSaving(true);
     try {
-      const saved = upsertBloodDonorProfile(currentUser, {
+      const saved = await upsertBloodDonorProfile(currentUser, {
         bloodGroup,
         isRegisteredDonor,
         availability,
@@ -176,6 +178,8 @@ export const BloodDonorRegistration: React.FC<BloodDonorRegistrationProps> = ({
       if (onSaved) onSaved(saved);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not save blood donor profile.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -447,10 +451,11 @@ export const BloodDonorRegistration: React.FC<BloodDonorRegistrationProps> = ({
           </p>
           <button
             type="submit"
+            disabled={isSaving}
             className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition-all cursor-pointer shrink-0"
           >
             <Save className="w-4 h-4" />
-            <span>Save Donor Settings</span>
+            <span>{isSaving ? 'Saving...' : 'Save Donor Settings'}</span>
           </button>
         </div>
       </form>
