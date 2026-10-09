@@ -136,8 +136,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     verifyPhoneOtp,
     loginWithGoogle,
     register,
-    requestOtp,
-    resetPasswordWithOtp,
+    requestPasswordReset,
+    completePasswordRecovery,
   } = useAuth();
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
 
@@ -303,10 +303,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const passwordStrength = getPasswordStrength(password);
 
   // Forgot Password State
-  const [forgotPhone, setForgotPhone] = useState('');
-  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
   const [forgotNewPass, setForgotNewPass] = useState('');
-  const [forgotStep, setForgotStep] = useState<1 | 2>(1);
+  const [forgotStep, setForgotStep] = useState<1 | 2>(() => {
+    if (typeof window === 'undefined') return 1;
+    return new URLSearchParams(window.location.search).get('recovery') === '1' ? 2 : 1;
+  });
 
   // General States
   const [loading, setLoading] = useState(false);
@@ -535,24 +537,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Handle Request Password Reset Link via Supabase Auth
-  const handleRequestOtp = async (e: React.FormEvent) => {
+  // Handle a password reset request through Supabase email recovery.
+  const handleRequestPasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-    const input = forgotPhone.trim();
-    if (!input) {
-      setErrorMessage('Please enter your registered mobile number or email address.');
+    const email = forgotEmail.trim();
+    if (!email) {
+      setErrorMessage('Please enter your registered email address.');
       return;
     }
     setLoading(true);
     try {
-      const res = await requestOtp(input);
-      if (res.emailSent) {
-        setSuccessMessage('Password reset link sent! Please check your registered email inbox or spam folder.');
-      } else {
-        setForgotStep(2);
-        setSuccessMessage('Password reset instructions processed.');
-      }
+      await requestPasswordReset(email);
+      setSuccessMessage('If an account exists for that address, password reset instructions have been sent.');
     } catch (err: unknown) {
       const error = err as Error;
       setErrorMessage(error.message || 'Unable to initiate password reset. Please try again.');
@@ -561,12 +558,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Handle Reset Password with OTP
+  // Supabase recovery links establish a session before this form is shown.
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-    if (!forgotOtp.trim() || !forgotNewPass.trim()) {
-      setErrorMessage('Please enter both the OTP code and your new password.');
+    if (!forgotNewPass.trim()) {
+      setErrorMessage('Please enter your new password.');
       return;
     }
     if (forgotNewPass.length < 6) {
@@ -575,12 +572,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
     setLoading(true);
     try {
-      await resetPasswordWithOtp(forgotPhone, forgotOtp, forgotNewPass);
-      setSuccessMessage('Password reset successfully! You can now sign in with your new password.');
+      await completePasswordRecovery(forgotNewPass);
+      setSuccessMessage('Password reset successfully. You can now sign in with your new password.');
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('recovery');
+        url.hash = '';
+        window.history.replaceState({}, document.title, `${url.pathname}${url.search}`);
+      }
       setTimeout(() => {
         setMode('login');
         setForgotStep(1);
-        setForgotOtp('');
         setForgotNewPass('');
       }, 1200);
     } catch (err: unknown) {
@@ -1435,7 +1437,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {/* =========================================================================
-              VIEW 3: FORGOT PASSWORD / OTP FLOW
+              VIEW 3: SUPABASE EMAIL PASSWORD RECOVERY
              ========================================================================= */}
           {mode === 'forgot' && (
             <div className="space-y-4 max-w-md mx-auto py-2">
@@ -1444,41 +1446,39 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <KeyRound className="w-6 h-6" />
                 </div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  Restore Your Account Access
+                  {forgotStep === 1 ? 'Restore Your Account Access' : 'Choose a New Password'}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Enter your registered mobile number. We will verify your credentials with a 6-digit OTP.
+                  {forgotStep === 1
+                    ? 'Enter your registered email address. If an account exists, Supabase will email a secure reset link.'
+                    : 'Enter a new password for your account.'}
                 </p>
               </div>
 
               {forgotStep === 1 ? (
-                <form onSubmit={handleRequestOtp} className="space-y-4">
+                <form onSubmit={handleRequestPasswordReset} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                      Registered Mobile Number
+                      Registered Email Address
                     </label>
-                    <div className="flex items-center rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus-within:border-blue-500 transition-all overflow-hidden">
-                      <div className="px-3.5 py-3 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
-                        +880
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="1XX-XXXXXXX"
-                        value={forgotPhone}
-                        onChange={(e) => setForgotPhone(e.target.value)}
-                        className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
-                        required
-                        autoFocus
-                      />
-                    </div>
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@example.com"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className="w-full px-3 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                      required
+                      autoFocus
+                    />
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                    className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
                   >
-                    <span>{loading ? 'Sending OTP...' : 'Send Verification OTP'}</span>
+                    <span>{loading ? 'Sending reset link...' : 'Send Password Reset Link'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </form>
@@ -1486,28 +1486,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <form onSubmit={handleResetPassword} className="space-y-3.5">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Enter 6-Digit OTP Code
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 123456"
-                      value={forgotOtp}
-                      onChange={(e) => setForgotOtp(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 font-mono tracking-widest text-center"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       New Password
                     </label>
                     <input
                       type="password"
+                      autoComplete="new-password"
                       placeholder="Enter at least 6 characters"
                       value={forgotNewPass}
                       onChange={(e) => setForgotNewPass(e.target.value)}
                       className="w-full px-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                      minLength={6}
                       required
                     />
                   </div>
@@ -1515,9 +1503,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer"
+                    className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer disabled:opacity-60"
                   >
-                    {loading ? 'Resetting password...' : 'Confirm New Password & Log In'}
+                    {loading ? 'Resetting password...' : 'Save New Password'}
                   </button>
                 </form>
               )}
