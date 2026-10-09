@@ -42,14 +42,13 @@ interface AuthContextType {
   register: (profileData: Partial<AlumniProfile> & { password?: string }) => Promise<boolean>;
   updateProfile: (updated: Partial<AlumniProfile>) => void;
   deleteAccount: (confirmationPassword?: string) => Promise<boolean>;
-  requestOtp: (phoneOrEmail: string) => Promise<{ success: boolean; emailSent?: boolean }>;
-  resetPasswordWithOtp: (phone: string, otp: string, newPass: string) => Promise<boolean>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean }>;
+  completePasswordRecovery: (newPassword: string) => Promise<boolean>;
   getAuthHeaders: () => Promise<Record<string, string>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PROFILE_STORAGE_KEY = 'ndc_alumni_current_user';
 
 // In-memory token reference (never persisted to localStorage per security guidelines)
 let inMemorySupabaseToken: string | null = null;
@@ -71,20 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const resolvedAuthUserIdRef = useRef<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  const [currentUser, setCurrentUser] = useState<AlumniProfile>(() => {
-    try {
-      const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && typeof parsed === 'object' && parsed.id) {
-          return parsed;
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return DEFAULT_BLANK_USER;
-  });
+  const [currentUser, setCurrentUser] = useState<AlumniProfile>(DEFAULT_BLANK_USER);
 
   // Restore only the Supabase session; profile errors remain distinct from signed-out state.
   useEffect(() => {
@@ -191,7 +177,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(currentUser));
     } catch {
       // safe ignore
     }
@@ -242,49 +227,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithGoogle = async (): Promise<boolean> => {
-    // 1. Primary: Supabase Google OAuth
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-          },
-        });
-        if (error) {
-          console.error('Supabase Google OAuth error:', error);
-          throw error;
-        }
-        if (data?.url) {
-          return true;
-        }
-      } catch (sbOAuthErr) {
-        console.warn('Supabase Google OAuth error:', sbOAuthErr);
-        throw sbOAuthErr;
-      }
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured.');
     }
 
-    // 2. Fallback when Supabase is unconfigured (offline demo mode)
-    const currentEmail = currentUser.email || 'nabchatgpt25@gmail.com';
-    const currentName = currentUser.fullName && currentUser.fullName !== 'Guest Alumnus'
-      ? currentUser.fullName
-      : 'Nurul Anam Bashir';
-
-    const googleProfile: AlumniProfile = {
-      ...DEFAULT_BLANK_USER,
-      id: Date.now(),
-      userId: Math.floor(Math.random() * 10000) + 1000,
-      fullName: currentName,
-      email: currentEmail,
-      avatarUrl: currentUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-      verificationStatus: 'verified',
-      verificationMethod: 'admin_verified',
-      badges: ['Verified Alumnus'],
-    };
-    setCurrentUser(googleProfile);
-    setIsAdminUser(false);
-    setIsLoggedIn(true);
-    return true;
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      },
+    });
+    if (error) {
+      throw new Error(error.message || 'Google sign-in could not be started.');
+    }
+    return Boolean(data?.url);
   };
 
   const login = async (phoneOrEmail: string, pass: string): Promise<boolean> => {
@@ -521,20 +477,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       cleanPhone = norm.formatted;
 
-      // Safe pre-check: verify phone availability if RPC is installed
-      try {
-        const { data: isAvailable, error: rpcErr } = await supabase.rpc('check_phone_available', {
-          p_phone: cleanPhone,
-        });
-        if (!rpcErr && isAvailable === false) {
-          throw new Error('This mobile number is already registered to another alumni account. Please sign in directly or use your registered email.');
-        }
-      } catch (checkErr: any) {
-        if (checkErr.message?.includes('already registered')) {
-          throw checkErr;
-        }
-        // Continue if RPC is not deployed yet; database unique constraint serves as authoritative guardrail
-      }
     }
 
     const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
@@ -665,40 +607,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   };
 
-  const requestOtp = async (phoneOrEmail: string) => {
-    const clean = phoneOrEmail.trim().toLowerCase();
-    if (clean.includes('@')) {
-      const { error } = await supabase.auth.resetPasswordForEmail(clean, {
-        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/#reset-password` : undefined,
-      });
-      if (error) {
-        throw new Error(error.message);
-      }
-      return { success: true, emailSent: true };
+  const requestPasswordReset = async (email: string): Promise<{ success: boolean }> => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured.');
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Enter the email address associated with your account.');
     }
 
-    // Security requirement: mobile numbers are only alternative login identifiers, NOT verified identities.
-    // They must never be used for password reset or account recovery.
-    throw new Error(
-      'For account security, password recovery instructions are sent exclusively to registered email addresses. Please enter your registered email address to receive password reset instructions.'
-    );
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/?recovery=1` : undefined,
+    });
+    if (error) {
+      throw new Error(error.message || 'Unable to request a password reset.');
+    }
+    return { success: true };
   };
 
-  const resetPasswordWithOtp = async (phoneOrEmail: string, otp: string, newPass: string) => {
-    if (!newPass || newPass.length < 6) {
+  const completePasswordRecovery = async (newPassword: string): Promise<boolean> => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured.');
+    }
+    if (!newPassword || newPassword.length < 6) {
       throw new Error('Password must be at least 6 characters.');
     }
-    const clean = phoneOrEmail.trim().toLowerCase();
-    if (clean.includes('@')) {
-      const { error } = await supabase.auth.updateUser({ password: newPass });
-      if (error) throw new Error(error.message);
-      return true;
+
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session?.user) {
+      throw new Error('Open the password reset link from your registered email before choosing a new password.');
     }
 
-    // Direct password update requires authenticated recovery session
-    const { error } = await supabase.auth.updateUser({ password: newPass });
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) {
-      throw new Error(error.message || 'Please use the password reset link sent to your registered email address.');
+      throw new Error(error.message || 'Password reset failed.');
     }
     return true;
   };
@@ -721,8 +663,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         register,
         updateProfile,
         deleteAccount,
-        requestOtp,
-        resetPasswordWithOtp,
+        requestPasswordReset,
+        completePasswordRecovery,
         getAuthHeaders,
       }}
     >
