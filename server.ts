@@ -826,10 +826,7 @@ app.get(
     try {
       const isAdminView =
         req.query.adminView === 'true' &&
-        (req.dbUser?.role === 'admin' ||
-          (req.user?.email &&
-            (req.user.email === 'nurulanambashirdamian@gmail.com' ||
-              req.user.email === 'nurulanambashir20@gmail.com')));
+        req.dbUser?.role === 'admin';
 
       const result = await queryPaginatedAlumniProfiles({
         page: Number(req.query.page) || 1,
