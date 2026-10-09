@@ -16,13 +16,6 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const SUPER_ADMIN_EMAILS = new Set([
-  "nurulanambashirdamian@gmail.com",
-  "nurulanambashir20@gmail.com",
-  "admin@ndcalumni.org",
-  "bashir@ndcalumni.org",
-]);
-
 function formatToE164(raw: string): string {
   const cleaned = raw.trim();
   if (cleaned.startsWith("+")) return cleaned.replace(/[^\d+]/g, "");
@@ -97,19 +90,17 @@ serve(async (req: Request) => {
     const caller = userData.user;
     const callerEmail = (caller.email || "").toLowerCase().trim();
 
-    // 2. Authorize Admin Privileges
+    // 2. Authorize Admin Privileges strictly via database role
     const { data: callerProfile } = await supabaseAdmin
       .from("alumni_profiles")
       .select("id, role")
       .eq("auth_user_id", caller.id)
       .maybeSingle();
 
-    // Strict super admin verification: only explicit whitelist or database super_admin role
-    const isSuperAdmin =
-      SUPER_ADMIN_EMAILS.has(callerEmail) ||
-      callerProfile?.role === "super_admin";
-
-    const isAdmin = isSuperAdmin || callerProfile?.role === "admin";
+    const isAdmin =
+      callerProfile?.role === "admin" ||
+      callerProfile?.role === "super_admin" ||
+      callerProfile?.role === "moderator";
 
     if (!isAdmin) {
       return new Response(
@@ -599,11 +590,26 @@ serve(async (req: Request) => {
         const { decision, adminNote } = rawBody;
         const finalDecision = decision === "approved" ? "approved" : "rejected";
 
+        // Prevent administrators from self-approving their own verification
+        const { data: existingSub } = await supabaseAdmin
+          .from("admin_doc_submissions")
+          .select("user_id")
+          .eq("id", submissionId)
+          .maybeSingle();
+
+        if (existingSub && callerProfile?.id && existingSub.user_id === callerProfile.id) {
+          return new Response(
+            JSON.stringify({ error: "Unauthorized: Administrators cannot review or approve their own verification submissions." }),
+            { status: 403, headers: corsHeaders }
+          );
+        }
+
         const { data: updatedSub, error: subErr } = await supabaseAdmin
           .from("admin_doc_submissions")
           .update({
             status: finalDecision,
             admin_note: adminNote || "Reviewed by administrator",
+            reviewed_by: callerProfile?.id || null,
             reviewed_at: new Date().toISOString(),
           })
           .eq("id", submissionId)
@@ -621,6 +627,7 @@ serve(async (req: Request) => {
               verification_status: "verified",
               verification_method: "id_card_upload",
               verified_at: new Date().toISOString(),
+              verified_by_profile_id: callerProfile?.id || null,
             })
             .eq("id", updatedSub.user_id);
         }
@@ -637,7 +644,7 @@ serve(async (req: Request) => {
         return new Response(JSON.stringify({ submission: updatedSub }), { status: 200, headers: corsHeaders });
       }
 
-      // List submissions
+      // List submissions with signed URLs for private verification documents
       const statusFilter = url.searchParams.get("status") || "all";
       let query = supabaseAdmin.from("admin_doc_submissions").select("*").order("submitted_at", { ascending: false });
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
@@ -647,24 +654,38 @@ serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: subErr.message }), { status: 500, headers: corsHeaders });
       }
 
-      const submissions = (subs || []).map((r: any) => ({
-        id: r.id,
-        submissionCode: `DOC-${String(r.id).slice(0, 8)}`,
-        profileId: r.user_id,
-        fullName: "Notredamian Alumnus",
-        avatarUrl: "/ndc-logo.png",
-        batchYear: r.batch_year,
-        collegeRoll: r.college_roll,
-        academicStream: r.academic_stream,
-        academicGroup: r.academic_group,
-        docType: r.doc_type,
-        docTypeLabel: r.doc_type_label,
-        documentUrl: r.storage_object_path,
-        status: r.status,
-        submittedAt: r.submitted_at,
-        reviewedBy: r.reviewed_by ? String(r.reviewed_by) : null,
-        reviewedAt: r.reviewed_at,
-        adminNote: r.admin_note,
+      const submissions = await Promise.all((subs || []).map(async (r: any) => {
+        let signedUrl = r.storage_object_path;
+        if (r.storage_object_path && !r.storage_object_path.startsWith("http")) {
+          try {
+            const { data: signedData } = await supabaseAdmin.storage
+              .from("verification-documents")
+              .createSignedUrl(r.storage_object_path, 3600);
+            if (signedData?.signedUrl) {
+              signedUrl = signedData.signedUrl;
+            }
+          } catch {}
+        }
+
+        return {
+          id: r.id,
+          submissionCode: `DOC-${String(r.id).slice(0, 8)}`,
+          profileId: r.user_id,
+          fullName: "Notredamian Alumnus",
+          avatarUrl: "/ndc-logo.png",
+          batchYear: r.batch_year,
+          collegeRoll: r.college_roll,
+          academicStream: r.academic_stream,
+          academicGroup: r.academic_group,
+          docType: r.doc_type,
+          docTypeLabel: r.doc_type_label,
+          documentUrl: signedUrl,
+          status: r.status,
+          submittedAt: r.submitted_at,
+          reviewedBy: r.reviewed_by ? String(r.reviewed_by) : null,
+          reviewedAt: r.reviewed_at,
+          adminNote: r.admin_note,
+        };
       }));
 
       return new Response(JSON.stringify({ submissions }), { status: 200, headers: corsHeaders });

@@ -34,6 +34,7 @@ import {
 import { AlumniProfile, PostItem, PostComment, SPECIALTIES_LIST, DEGREES_LIST } from '../types';
 import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
 import { UNIVERSAL_DIRECTORY_PROFILES } from './DirectoryView';
+import { fetchAlumniProfileByIdFromDb } from '../services/supabaseService';
 import { useAuth } from '../context/AuthContext';
 import { AchievementBadgeChip, BADGE_CONFIGS } from './AchievementBadge';
 import { PhotoChangeModal, PhotoType } from './PhotoChangeModal';
@@ -149,6 +150,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setActiveTab(initialTab);
     }
   }, [initialTab]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (profileId) {
+      fetchAlumniProfileByIdFromDb(profileId)
+        .then((liveProfile) => {
+          if (isMounted && liveProfile) {
+            setProfile(liveProfile);
+          }
+        })
+        .catch((err) => {
+          console.warn('ProfileView live profile fetch warning:', err);
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [profileId]);
 
   // Account & Profile Deletion State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);

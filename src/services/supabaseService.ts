@@ -75,6 +75,39 @@ export async function fetchAlumniProfilesFromDb(params?: {
   }
 }
 
+export async function fetchAlumniProfileByIdFromDb(profileId: number): Promise<AlumniProfile | null> {
+  if (!isSupabaseConfigured || !profileId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('alumni_profiles')
+      .select(ALUMNI_PUBLIC_COLUMNS)
+      .eq('id', profileId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    // Enrich with permitted contact details via authorized SECURITY DEFINER RPC
+    try {
+      const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
+        p_profile_id: profileId,
+      });
+      if (contacts && contacts[0]) {
+        Object.assign(data, contacts[0]);
+      }
+    } catch {
+      // Graceful fallback if unauthenticated or privacy denied
+    }
+
+    return mapSupabaseRowToAlumniProfile(data);
+  } catch (err) {
+    console.warn('Error fetching alumni profile by id:', err);
+    return null;
+  }
+}
+
 export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
   if (!isSupabaseConfigured) {
     return BATCH_LIST;
@@ -1531,5 +1564,64 @@ export async function uploadMediaToSupabaseStorage(
   } catch (err) {
     console.warn('Storage upload error:', err);
     return null;
+  }
+}
+
+/**
+ * Uploads an identity document (NDC ID, HSC slip, Souvenir) directly to the private
+ * `verification-documents` bucket in Supabase Storage.
+ * Only the file owner and authorized admins have access (enforced via Storage RLS).
+ */
+export async function uploadVerificationDocumentToStorage(
+  file: File | Blob,
+  authUserId: string
+): Promise<{ storagePath: string } | null> {
+  if (!isSupabaseConfigured || !authUserId) return null;
+
+  // File size limit: 5 MB
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error('Verification document file size exceeds the 5MB limit.');
+  }
+
+  // Allowed file types: JPG, PNG, WEBP
+  const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+  let mimeType = file.type;
+  if (!mimeType || !allowedMimes.includes(mimeType)) {
+    const fileName = (file as any).name || '';
+    if (/\.jpe?g$/i.test(fileName)) mimeType = 'image/jpeg';
+    else if (/\.png$/i.test(fileName)) mimeType = 'image/png';
+    else if (/\.webp$/i.test(fileName)) mimeType = 'image/webp';
+    else {
+      throw new Error('Only JPG, PNG, and WEBP image formats are accepted for verification documents.');
+    }
+  }
+
+  let ext = 'jpg';
+  if (mimeType.includes('png')) ext = 'png';
+  else if (mimeType.includes('webp')) ext = 'webp';
+
+  // Folder must start with auth.uid() to fulfill Storage RLS policy
+  const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+  const fullPath = `${authUserId}/${uniqueName}`;
+
+  try {
+    const { error: uploadError } = await supabase.storage
+      .from('verification-documents')
+      .upload(fullPath, file, {
+        cacheControl: '3600',
+        upsert: false, // Strict: Prevent unauthorized file overwrites
+        contentType: mimeType,
+      });
+
+    if (uploadError) {
+      console.warn('Supabase verification-documents storage upload error:', uploadError.message);
+      throw new Error(uploadError.message || 'Failed to upload verification document to storage.');
+    }
+
+    return { storagePath: fullPath };
+  } catch (err: any) {
+    console.warn('uploadVerificationDocumentToStorage error:', err);
+    throw err;
   }
 }

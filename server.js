@@ -53,12 +53,6 @@ var SUPABASE_TABLES = {
 };
 
 // server/middleware/auth.ts
-var SUPER_ADMIN_EMAILS = /* @__PURE__ */ new Set([
-  "nurulanambashirdamian@gmail.com",
-  "nurulanambashir20@gmail.com",
-  "admin@ndcalumni.org",
-  "bashir@ndcalumni.org"
-]);
 async function verifyAuthToken(token) {
   if (!token) return null;
   if (token.startsWith("mock_oauth_") || token.startsWith("dev_") || token.startsWith("test_")) {
@@ -81,9 +75,7 @@ async function verifyAuthToken(token) {
         const user = data.user;
         const cleanEmail = (user.email || "").toLowerCase().trim();
         const { data: profile } = await supabaseServer.from(SUPABASE_TABLES.ALUMNI_PROFILES).select("id, auth_user_id, email, full_name, role, verification_status").eq("auth_user_id", user.id).maybeSingle();
-        const envAdminEmails = (process.env.ADMIN_EMAILS || "").toLowerCase().split(",").map((e) => e.trim()).filter(Boolean);
-        const isSuperAdmin = SUPER_ADMIN_EMAILS.has(cleanEmail) || envAdminEmails.includes(cleanEmail) || profile?.role === "admin";
-        const role = isSuperAdmin ? "admin" : profile?.role || "member";
+        const role = profile?.role === "admin" || profile?.role === "super_admin" ? "admin" : profile?.role || "member";
         return {
           user,
           dbUser: {
@@ -108,8 +100,6 @@ async function verifyAuthToken(token) {
       if (payload && (payload.iss?.includes("firebase") || payload.iss?.includes("securetoken.google.com") || payload.user_id || payload.sub)) {
         const email = (payload.email || "").toLowerCase().trim();
         const uid = payload.user_id || payload.sub || payload.uid || "fb-user";
-        const envAdminEmails = (process.env.ADMIN_EMAILS || "").toLowerCase().split(",").map((e) => e.trim()).filter(Boolean);
-        const isSuperAdmin = SUPER_ADMIN_EMAILS.has(email) || envAdminEmails.includes(email) || email.includes("admin") || email.includes("bashir");
         return {
           user: { id: uid, uid, email },
           dbUser: {
@@ -117,7 +107,7 @@ async function verifyAuthToken(token) {
             uid,
             email: email || `${uid}@ndcalumni.org`,
             fullName: payload.name || payload.displayName || "Notredamian Alumnus",
-            role: isSuperAdmin ? "admin" : "member",
+            role: "member",
             accountStatus: "active"
           }
         };
@@ -153,9 +143,7 @@ var requireAdmin = async (req, res, next) => {
     req.supabaseUser = authResult.user;
     req.user = authResult.user;
     req.dbUser = authResult.dbUser;
-    const email = (authResult.dbUser.email || "").toLowerCase();
-    const envAdminEmails = (process.env.ADMIN_EMAILS || "").toLowerCase().split(",").map((e) => e.trim()).filter(Boolean);
-    const isAuthorizedAdmin = authResult.dbUser.role === "admin" || SUPER_ADMIN_EMAILS.has(email) || envAdminEmails.includes(email);
+    const isAuthorizedAdmin = authResult.dbUser.role === "admin" || authResult.dbUser.role === "super_admin";
     if (!isAuthorizedAdmin) {
       return res.status(403).json({ error: "Forbidden: Admin access restricted to backend authority" });
     }
@@ -2321,6 +2309,10 @@ app.get(
     }
   }
 );
+app.get(["/download/ndc-alumni-dist.zip", "/ndc-alumni-dist.zip"], (_req, res) => {
+  const zipPath = path.resolve(__dirname, "ndc-alumni-dist.zip");
+  res.download(zipPath, "ndc-alumni-dist.zip");
+});
 async function startServer() {
   const httpServer = createHttpServer(app);
   if (process.env.NODE_ENV !== "production") {

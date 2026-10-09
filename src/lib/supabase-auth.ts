@@ -2,22 +2,11 @@ import { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, ALUMNI_PUBLIC_COLUMNS } from './supabase.ts';
 import { AlumniProfile, UserRole } from '../types.ts';
 import { formatToE164Phone } from '../utils/phone.ts';
-
-const SUPER_ADMIN_EMAILS = new Set([
-  'nurulanambashirdamian@gmail.com',
-  'nurulanambashir20@gmail.com',
-  'admin@ndcalumni.org',
-  'bashir@ndcalumni.org',
-]);
-
-export function isSuperAdminEmail(email?: string): boolean {
-  if (!email) return false;
-  const clean = email.toLowerCase().trim();
-  return SUPER_ADMIN_EMAILS.has(clean) || clean.includes('admin@');
-}
+import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping.ts';
 
 /**
- * Format a database row from public.alumni_profiles into the application's AlumniProfile
+ * Format a database row from public.alumni_profiles into the application's AlumniProfile.
+ * Role is strictly authoritative from the database; never elevated via email addresses.
  */
 export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
   if (!row) {
@@ -25,8 +14,10 @@ export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
   }
 
   const email = row.email || '';
-  const isSuper = isSuperAdminEmail(email);
-  const resolvedRole: UserRole = isSuper ? 'admin' : (row.role || 'member');
+  const resolvedRole: UserRole =
+    row.role === 'admin' || row.role === 'moderator'
+      ? row.role
+      : 'member';
 
   return {
     id: Number(row.id),
@@ -84,7 +75,8 @@ export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
 }
 
 /**
- * Fetch or automatically initialize the authenticated user's alumni_profiles record
+ * Fetch or idempotently initialize the authenticated user's alumni_profiles record.
+ * Handles database errors safely without attempting accidental duplicate inserts.
  */
 export async function getOrCreateSupabaseProfile(
   authUser: User,
@@ -102,7 +94,13 @@ export async function getOrCreateSupabaseProfile(
       .eq('auth_user_id', authUser.id)
       .maybeSingle();
 
-    if (existing && !fetchErr) {
+    if (fetchErr) {
+      console.warn('Database error fetching alumni profile:', fetchErr.message);
+      // Safe error handling: Do NOT attempt an insert if SELECT encountered a database error
+      return null;
+    }
+
+    if (existing) {
       // Enrich with contact details via authorized RPC
       try {
         const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
@@ -117,14 +115,20 @@ export async function getOrCreateSupabaseProfile(
       return mapSupabaseRowToAlumniProfile(existing);
     }
 
-    // 2. Otherwise, insert a new record for the authenticated user
+    // 2. Otherwise, insert a new profile record for the authenticated user
     const cleanEmail = (authUser.email || extraData?.email || '').toLowerCase().trim();
     const batchYear = Number(extraData?.batchYear) || 68;
     const normalizedBatch = batchYear > 1900 ? batchYear - 1950 : (batchYear > 0 ? batchYear : 68);
 
-    // Note: RLS policy "alumni_profiles_insert_own" strictly enforces role = 'member' and verification_status = 'unverified'.
-    // Admin elevation for super admin emails is resolved dynamically in mapSupabaseRowToAlumniProfile.
-    const initialRecord = {
+    // Normalize academic stream and academic group
+    const rawGroupInput =
+      extraData?.academicGroup ||
+      extraData?.group ||
+      extraData?.academicStream;
+    const streamGroup = normalizeAcademicStreamAndGroup(rawGroupInput);
+
+    // New profiles strictly start with role = 'member' and verification_status = 'unverified'
+    const initialRecord: Record<string, any> = {
       auth_user_id: authUser.id,
       role: 'member',
       verification_status: 'unverified',
@@ -141,15 +145,9 @@ export async function getOrCreateSupabaseProfile(
         '/ndc-logo.png',
       batch_year: normalizedBatch,
       session: extraData?.session || null,
-      academic_stream:
-        extraData?.academicStream === 'Humanities' || extraData?.academicStream === 'Business Studies'
-          ? extraData.academicStream
-          : 'Science',
-      academic_group:
-        (extraData?.academicStream === 'Humanities' || extraData?.academicStream === 'Business Studies')
-          ? (extraData?.academicGroup || null)
-          : null,
-      section: extraData?.section || 'Section A',
+      academic_stream: streamGroup.academicStream,
+      academic_group: streamGroup.academicGroup,
+      section: extraData?.section || (streamGroup.academicGroup ? `Group ${streamGroup.academicGroup}` : 'Section A'),
       profession: extraData?.profession || 'Alumnus',
       position: extraData?.position || '',
       institution: extraData?.institution || '',
@@ -164,13 +162,36 @@ export async function getOrCreateSupabaseProfile(
       blood_group: extraData?.bloodGroup || null,
     };
 
-    const { data: inserted, error: insertErr } = await supabase
+    let { data: inserted, error: insertErr } = await supabase
       .from('alumni_profiles')
       .insert(initialRecord)
       .select(ALUMNI_PUBLIC_COLUMNS)
       .single();
 
+    // Gracefully handle database trigger if academic_group for Science is not configured
+    if (insertErr && (insertErr.message.includes('academic_group') || insertErr.message.includes('stream_group'))) {
+      initialRecord.academic_group = null;
+      const retry = await supabase
+        .from('alumni_profiles')
+        .insert(initialRecord)
+        .select(ALUMNI_PUBLIC_COLUMNS)
+        .single();
+      inserted = retry.data;
+      insertErr = retry.error;
+    }
+
+    // Idempotency check: if duplicate key on auth_user_id, fetch the concurrently inserted record
     if (insertErr) {
+      if (insertErr.code === '23505' || insertErr.message.includes('duplicate key')) {
+        const { data: secondFetch } = await supabase
+          .from('alumni_profiles')
+          .select(ALUMNI_PUBLIC_COLUMNS)
+          .eq('auth_user_id', authUser.id)
+          .maybeSingle();
+        if (secondFetch) {
+          return mapSupabaseRowToAlumniProfile(secondFetch);
+        }
+      }
       console.warn('Failed to insert new alumni_profiles record:', insertErr.message);
       return null;
     }

@@ -16,13 +16,6 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const SUPER_ADMIN_EMAILS = new Set([
-  "nurulanambashirdamian@gmail.com",
-  "nurulanambashir20@gmail.com",
-  "admin@ndcalumni.org",
-  "bashir@ndcalumni.org",
-]);
-
 function formatToE164(raw: string): string {
   const cleaned = raw.trim();
   if (cleaned.startsWith("+")) return cleaned.replace(/[^\d+]/g, "");
@@ -73,7 +66,7 @@ serve(async (req: Request) => {
     const caller = userData.user;
     const callerEmail = (caller.email || "").toLowerCase().trim();
 
-    // 2. Authorize Admin Privileges
+    // 2. Authorize Admin Privileges strictly via database role
     const { data: callerProfile } = await supabaseAdmin
       .from("alumni_profiles")
       .select("id, role")
@@ -81,7 +74,6 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     const isAuthorized =
-      SUPER_ADMIN_EMAILS.has(callerEmail) ||
       callerProfile?.role === "super_admin" ||
       callerProfile?.role === "admin";
 

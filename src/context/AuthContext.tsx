@@ -3,7 +3,6 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import {
   getOrCreateSupabaseProfile,
   mapSupabaseRowToAlumniProfile,
-  isSuperAdminEmail,
 } from '../lib/supabase-auth';
 import { apiUrl } from '../lib/apiConfig';
 import { AlumniProfile } from '../types';
@@ -40,7 +39,7 @@ interface AuthContextType {
   register: (profileData: Partial<AlumniProfile> & { password?: string }) => Promise<boolean>;
   updateProfile: (updated: Partial<AlumniProfile>) => void;
   deleteAccount: (confirmationPassword?: string) => Promise<boolean>;
-  requestOtp: (phone: string) => Promise<{ success: boolean; emailSent?: boolean; debugOtp?: string }>;
+  requestOtp: (phoneOrEmail: string) => Promise<{ success: boolean; emailSent?: boolean }>;
   resetPasswordWithOtp: (phone: string, otp: string, newPass: string) => Promise<boolean>;
   getAuthHeaders: () => Promise<Record<string, string>>;
 }
@@ -101,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const profile = await getOrCreateSupabaseProfile(session.user);
           if (profile) {
             setCurrentUser(profile);
-            setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+            setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
             setIsLoggedIn(true);
           }
         } catch (err) {
@@ -121,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const profile = await getOrCreateSupabaseProfile(session.user);
             if (profile) {
               setCurrentUser(profile);
-              setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+              setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
               setIsLoggedIn(true);
             }
           } catch (err) {
@@ -233,7 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       badges: ['Verified Alumnus'],
     };
     setCurrentUser(googleProfile);
-    setIsAdminUser(currentEmail.includes('bashir') || currentEmail.includes('admin'));
+    setIsAdminUser(false);
     setIsLoggedIn(true);
     return true;
   };
@@ -349,7 +348,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const profile = await getOrCreateSupabaseProfile(authData.user);
     if (profile) {
       setCurrentUser(profile);
-      setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+      setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
       setIsLoggedIn(true);
       return true;
     }
@@ -380,27 +379,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       country: 'Bangladesh',
       email: isEmail ? cleanInput.toLowerCase() : (authData.user.email || undefined),
       phone: !isEmail ? formatToE164Phone(cleanInput) : (authData.user.phone || undefined),
-      role: isSuperAdminEmail(authData.user.email) ? 'admin' : 'member',
+      role: 'member',
       isPublic: true,
       online: true,
       badges: [],
     };
     setCurrentUser(fallbackProfile);
-    setIsAdminUser(fallbackProfile.role === 'admin');
+    setIsAdminUser(false);
     setIsLoggedIn(true);
     return true;
   };
 
-  const loginWithPhoneOtp = async (_phone: string): Promise<boolean> => {
-    throw new Error(
-      'SMS verification is disabled. Please sign in using your Mobile Number (or Email) and your password.'
-    );
+  const loginWithPhoneOtp = async (phone: string): Promise<boolean> => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured.');
+    }
+    const norm = normalizePhoneNumber(phone);
+    if (!norm.isValid) {
+      throw new Error(norm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx).');
+    }
+    const { error } = await supabase.auth.signInWithOtp({
+      phone: norm.formatted,
+    });
+    if (error) {
+      throw new Error(error.message || 'Failed to send verification SMS.');
+    }
+    return true;
   };
 
-  const verifyPhoneOtp = async (_phone: string, _token: string): Promise<boolean> => {
-    throw new Error(
-      'SMS verification is disabled. Please sign in using your Mobile Number (or Email) and your password.'
-    );
+  const verifyPhoneOtp = async (phone: string, token: string): Promise<boolean> => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase client is not configured.');
+    }
+    const norm = normalizePhoneNumber(phone);
+    if (!norm.isValid) {
+      throw new Error(norm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx).');
+    }
+    const { data, error } = await supabase.auth.verifyOtp({
+      phone: norm.formatted,
+      token: token.trim(),
+      type: 'sms',
+    });
+    if (error) {
+      throw new Error(error.message || 'Invalid or expired SMS verification code.');
+    }
+    if (data.user) {
+      const profile = await getOrCreateSupabaseProfile(data.user);
+      if (profile) {
+        setCurrentUser(profile);
+        setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
+        setIsLoggedIn(true);
+      }
+    }
+    return true;
   };
 
   const logout = () => {
@@ -494,7 +525,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (profile) {
         setCurrentUser(profile);
-        setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
+        setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
         setIsLoggedIn(true);
         return true;
       }

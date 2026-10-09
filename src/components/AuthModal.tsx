@@ -30,6 +30,9 @@ import { WhatsAppIcon } from './SocialIcons';
 import { NDCLogo } from './NDCLogo';
 import { compressImageFileToDataUrl } from '../utils/mediaStorage';
 import { formatToE164Phone } from '../utils/phone';
+import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
+import { uploadVerificationDocumentToStorage, submitAdminDocSubmissionInDb } from '../services/supabaseService';
+import { supabase } from '../lib/supabase';
 
 interface AuthModalProps {
   initialMode: 'login' | 'register' | 'forgot';
@@ -179,27 +182,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [verificationMethod, setVerificationMethod] = useState<'two_vouches' | 'id_card_upload'>('two_vouches');
+  const [idProofFile, setIdProofFile] = useState<File | null>(null);
   const [idProofPreview, setIdProofPreview] = useState<string>('');
 
   const handleIdProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
       setErrorMessage('Please upload a valid image file (JPG, PNG, or WEBP).');
       return;
     }
-    try {
-      const compressed = await compressImageFileToDataUrl(file);
-      setIdProofPreview(compressed);
-    } catch {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        if (typeof ev.target?.result === 'string') {
-          setIdProofPreview(ev.target.result);
-        }
-      };
-      reader.readAsDataURL(file);
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('Document file size must be less than 5MB.');
+      return;
     }
+    setIdProofFile(file);
+    const blobUrl = URL.createObjectURL(file);
+    setIdProofPreview(blobUrl);
   };
 
   // Auto-save registration form progress to localStorage
@@ -307,7 +307,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [forgotOtp, setForgotOtp] = useState('');
   const [forgotNewPass, setForgotNewPass] = useState('');
   const [forgotStep, setForgotStep] = useState<1 | 2>(1);
-  const [debugOtp, setDebugOtp] = useState<string | null>(null);
 
   // General States
   const [loading, setLoading] = useState(false);
@@ -453,21 +452,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         .filter(Boolean);
 
       const cleanWhatsapp = whatsapp.trim() ? formatToE164Phone(whatsapp) : '';
-
-      const isIdVerified = verificationMethod === 'id_card_upload' && Boolean(idProofPreview);
+      const streamGroup = normalizeAcademicStreamAndGroup(academicGroup);
 
       await register({
         fullName: fullName.trim(),
         avatarUrl: selectedAvatar,
         batchYear: parsedYear,
-        group: (academicGroup || undefined) as any,
+        academicStream: streamGroup.academicStream,
+        academicGroup: streamGroup.academicGroup,
+        group: streamGroup.academicStream,
+        section: streamGroup.academicGroup ? `Group ${streamGroup.academicGroup}` : 'Section A',
         collegeRoll: bmdcNumber.trim(),
         verificationMethod,
-        verificationStatus: isIdVerified ? 'verified' : 'pending_vouch',
-        idProofUrl: idProofPreview || undefined,
-        vouchesCount: isIdVerified ? 2 : 0,
+        verificationStatus: 'unverified',
+        vouchesCount: 0,
         vouchTargetCount: 2,
-        badges: isIdVerified ? ['Verified Notredamian'] : [],
+        badges: [],
         profession: '',
         position: position.trim(),
         institution: institution.trim(),
@@ -481,6 +481,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         bio: '',
         password,
       });
+
+      // Securely upload ID document to private storage and record in admin_doc_submissions
+      if (verificationMethod === 'id_card_upload' && idProofFile) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            const uploadRes = await uploadVerificationDocumentToStorage(idProofFile, session.user.id);
+            if (uploadRes?.storagePath) {
+              const { data: profileRow } = await supabase
+                .from('alumni_profiles')
+                .select('id')
+                .eq('auth_user_id', session.user.id)
+                .maybeSingle();
+
+              if (profileRow?.id) {
+                await submitAdminDocSubmissionInDb({
+                  userId: profileRow.id,
+                  batchYear: parsedYear,
+                  collegeRoll: bmdcNumber.trim(),
+                  academicStream: streamGroup.academicStream,
+                  academicGroup: streamGroup.academicGroup,
+                  docType: 'id_card',
+                  docTypeLabel: 'Notre Dame College ID Card',
+                  storageObjectPath: uploadRes.storagePath,
+                });
+              }
+            }
+          }
+        } catch (uploadErr) {
+          console.warn('Post-registration document submission warning:', uploadErr);
+        }
+      }
 
       if (typeof window !== 'undefined') {
         try {
@@ -519,10 +551,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setSuccessMessage('Password reset link sent! Please check your registered email inbox or spam folder.');
       } else {
         setForgotStep(2);
-        if (res.debugOtp) {
-          setDebugOtp(res.debugOtp);
-        }
-        setSuccessMessage('Verification details processed.');
+        setSuccessMessage('Password reset instructions processed.');
       }
     } catch (err: unknown) {
       const error = err as Error;
@@ -1341,7 +1370,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       )}
                     </div>
                     <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
-                      Fast-track instant verification by uploading your NDC ID card, HSC slip, or souvenir.
+                      Submit your NDC ID card, HSC slip, or souvenir for verification by network administrators.
                     </p>
                   </button>
                 </div>
@@ -1362,10 +1391,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       )}
                       <div className="min-w-0">
                         <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                          {idProofPreview ? 'NDC Document Attached (Instant Verify)' : 'Attach NDC ID / HSC Slip / Souvenir Photo'}
+                          {idProofPreview ? 'NDC Document Attached (Pending Review)' : 'Attach NDC ID / HSC Slip / Souvenir Photo'}
                         </div>
                         <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                          {idProofPreview ? 'Ready for instant verification on submit' : 'Or upload later from the Verification Center'}
+                          {idProofPreview ? 'Will be submitted for administrator review on sign up' : 'Or upload later from the Verification Center'}
                         </div>
                       </div>
                     </div>
@@ -1455,12 +1484,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </form>
               ) : (
                 <form onSubmit={handleResetPassword} className="space-y-3.5">
-                  {debugOtp && (
-                    <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-semibold text-center">
-                      Testing Verification OTP: <span className="font-mono font-bold text-sm underline">{debugOtp}</span>
-                    </div>
-                  )}
-
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       Enter 6-Digit OTP Code

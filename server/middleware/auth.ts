@@ -2,13 +2,6 @@ import type { Request, Response, NextFunction } from 'express';
 import { supabaseServer, isSupabaseServerConfigured, SUPABASE_TABLES } from '../lib/supabase-server.ts';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
-const SUPER_ADMIN_EMAILS = new Set([
-  'nurulanambashirdamian@gmail.com',
-  'nurulanambashir20@gmail.com',
-  'admin@ndcalumni.org',
-  'bashir@ndcalumni.org',
-]);
-
 export interface AuthRequest extends Request {
   user?: SupabaseUser | any;
   supabaseUser?: SupabaseUser;
@@ -54,18 +47,7 @@ async function verifyAuthToken(token: string) {
           .eq('auth_user_id', user.id)
           .maybeSingle();
 
-        const envAdminEmails = (process.env.ADMIN_EMAILS || '')
-          .toLowerCase()
-          .split(',')
-          .map((e) => e.trim())
-          .filter(Boolean);
-
-        const isSuperAdmin =
-          SUPER_ADMIN_EMAILS.has(cleanEmail) ||
-          envAdminEmails.includes(cleanEmail) ||
-          profile?.role === 'admin';
-
-        const role = isSuperAdmin ? 'admin' : (profile?.role || 'member');
+        const role = profile?.role === 'admin' || profile?.role === 'super_admin' ? 'admin' : (profile?.role || 'member');
 
         return {
           user,
@@ -93,18 +75,6 @@ async function verifyAuthToken(token: string) {
       if (payload && (payload.iss?.includes('firebase') || payload.iss?.includes('securetoken.google.com') || payload.user_id || payload.sub)) {
         const email = (payload.email || '').toLowerCase().trim();
         const uid = payload.user_id || payload.sub || payload.uid || 'fb-user';
-        const envAdminEmails = (process.env.ADMIN_EMAILS || '')
-          .toLowerCase()
-          .split(',')
-          .map((e) => e.trim())
-          .filter(Boolean);
-
-        const isSuperAdmin =
-          SUPER_ADMIN_EMAILS.has(email) ||
-          envAdminEmails.includes(email) ||
-          email.includes('admin') ||
-          email.includes('bashir');
-
         return {
           user: { id: uid, uid, email } as any,
           dbUser: {
@@ -112,7 +82,7 @@ async function verifyAuthToken(token: string) {
             uid,
             email: email || `${uid}@ndcalumni.org`,
             fullName: payload.name || payload.displayName || 'Notredamian Alumnus',
-            role: isSuperAdmin ? 'admin' : 'member',
+            role: 'member',
             accountStatus: 'active',
           },
         };
@@ -164,17 +134,9 @@ export const requireAdmin = async (
     req.user = authResult.user;
     req.dbUser = authResult.dbUser;
 
-    const email = (authResult.dbUser.email || '').toLowerCase();
-    const envAdminEmails = (process.env.ADMIN_EMAILS || '')
-      .toLowerCase()
-      .split(',')
-      .map((e) => e.trim())
-      .filter(Boolean);
-
     const isAuthorizedAdmin =
       authResult.dbUser.role === 'admin' ||
-      SUPER_ADMIN_EMAILS.has(email) ||
-      envAdminEmails.includes(email);
+      authResult.dbUser.role === 'super_admin';
 
     if (!isAuthorizedAdmin) {
       return res.status(403).json({ error: 'Forbidden: Admin access restricted to backend authority' });
