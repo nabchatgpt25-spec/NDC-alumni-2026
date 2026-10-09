@@ -25,8 +25,25 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check admin Edge Functions
+        run: deno check supabase/functions/admin-hub/index.ts supabase/functions/admin-verify-phone/index.ts
+
       - name: Build frontend
         run: npm run build
+
+      - name: Upload cPanel deployment archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Check checked-in Express runtime
         run: node --check server.js

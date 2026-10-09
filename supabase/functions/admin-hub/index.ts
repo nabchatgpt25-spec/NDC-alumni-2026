@@ -91,11 +91,19 @@ serve(async (req: Request) => {
     const callerEmail = (caller.email || "").toLowerCase().trim();
 
     // 2. Authorize Admin Privileges strictly via database role
-    const { data: callerProfile } = await supabaseAdmin
+    const { data: callerProfile, error: callerProfileError } = await supabaseAdmin
       .from("alumni_profiles")
       .select("id, role")
       .eq("auth_user_id", caller.id)
       .maybeSingle();
+
+    if (callerProfileError) {
+      console.error("Failed to validate administrator role:", callerProfileError);
+      return new Response(
+        JSON.stringify({ error: "Administrative permissions could not be verified." }),
+        { status: 500, headers: corsHeaders }
+      );
+    }
 
     const isAdmin = callerProfile?.role === "admin";
     const isAuthorized = isAdmin || callerProfile?.role === "moderator";
@@ -181,6 +189,30 @@ serve(async (req: Request) => {
         supabaseAdmin.from("alumni_profiles").select("id", { count: "exact", head: true }).eq("academic_stream", "Business Studies"),
       ]);
 
+      const overviewErrors = [
+        totalRes.error,
+        verifiedRes.error,
+        pendingRes.error,
+        suspendedRes.error,
+        donorsRes.error,
+        pendingDocsRes.error,
+        bloodRes.error,
+        noticesRes.error,
+        streamConfigRes.error,
+        auditLogsRes.error,
+        sciRes.error,
+        humRes.error,
+        busRes.error,
+      ].filter(Boolean);
+
+      if (overviewErrors.length > 0) {
+        console.error("Admin overview query failed:", overviewErrors);
+        return new Response(
+          JSON.stringify({ error: "Admin overview data could not be loaded." }),
+          { status: 500, headers: corsHeaders }
+        );
+      }
+
       const streamGroupsConfig = (streamConfigRes.data || []).map((r: any) => ({
         id: r.id,
         stream: r.stream,
@@ -245,13 +277,24 @@ serve(async (req: Request) => {
             );
           }
 
-          const { data: targetCheck } = await supabaseAdmin
+          const { data: targetCheck, error: targetCheckError } = await supabaseAdmin
             .from("alumni_profiles")
             .select("role")
             .eq("id", targetId)
             .maybeSingle();
 
-          if (targetCheck?.role === "admin" && !isAdmin) {
+          if (targetCheckError) {
+            console.error("Failed to validate target profile role:", targetCheckError);
+            return new Response(
+              JSON.stringify({ error: "Target profile permissions could not be verified." }),
+              { status: 500, headers: corsHeaders }
+            );
+          }
+          if (!targetCheck) {
+            return new Response(JSON.stringify({ error: "Target alumni profile not found." }), { status: 404, headers: corsHeaders });
+          }
+
+          if (targetCheck.role === "admin" && !isAdmin) {
             return new Response(
               JSON.stringify({ error: "Forbidden: Moderator accounts cannot modify administrator profiles." }),
               { status: 403, headers: corsHeaders }
@@ -320,18 +363,45 @@ serve(async (req: Request) => {
             );
           }
 
-          const { data: target } = await supabaseAdmin
+          if (targetId === callerProfile?.id) {
+            return new Response(
+              JSON.stringify({ error: "Administrators cannot delete their own account from the admin hub." }),
+              { status: 403, headers: corsHeaders }
+            );
+          }
+
+          const { data: target, error: targetError } = await supabaseAdmin
             .from("alumni_profiles")
             .select("id, full_name, auth_user_id")
             .eq("id", targetId)
-            .single();
+            .maybeSingle();
 
-          await supabaseAdmin.from("alumni_profiles").delete().eq("id", targetId);
+          if (targetError) {
+            console.error("Failed to load profile before deletion:", targetError);
+            return new Response(JSON.stringify({ error: "Target profile could not be loaded." }), { status: 500, headers: corsHeaders });
+          }
+          if (!target) {
+            return new Response(JSON.stringify({ error: "Target alumni profile not found." }), { status: 404, headers: corsHeaders });
+          }
 
-          if (target?.auth_user_id) {
+          const { error: profileDeleteError } = await supabaseAdmin
+            .from("alumni_profiles")
+            .delete()
+            .eq("id", targetId);
+
+          if (profileDeleteError) {
+            console.error("Failed to delete alumni profile:", profileDeleteError);
+            return new Response(JSON.stringify({ error: "Alumni profile could not be deleted." }), { status: 500, headers: corsHeaders });
+          }
+
+          let authDeleteError: any = null;
+          if (target.auth_user_id) {
             try {
-              await supabaseAdmin.auth.admin.deleteUser(target.auth_user_id);
-            } catch {}
+              const { error } = await supabaseAdmin.auth.admin.deleteUser(target.auth_user_id);
+              authDeleteError = error;
+            } catch (err) {
+              authDeleteError = err;
+            }
           }
 
           await recordAuditLog(supabaseAdmin, {
@@ -340,8 +410,16 @@ serve(async (req: Request) => {
             action: "DELETE_ALUMNI_PROFILE",
             entityTable: "alumni_profiles",
             entityId: String(targetId),
-            reason: `Deleted alumnus ${target?.full_name || targetId}`,
+            reason: "Deleted alumnus " + (target.full_name || targetId),
           });
+
+          if (authDeleteError) {
+            console.error("Profile was deleted but its Supabase Auth user could not be deleted:", authDeleteError);
+            return new Response(
+              JSON.stringify({ error: "Profile was deleted, but its Supabase Auth account could not be removed. Manual cleanup is required." }),
+              { status: 502, headers: corsHeaders }
+            );
+          }
 
           return new Response(
             JSON.stringify({ success: true, message: "Profile deleted successfully." }),
@@ -408,13 +486,14 @@ serve(async (req: Request) => {
         institution: r.institution || "",
         city: r.city || "Dhaka",
         country: r.country || "Bangladesh",
-        phone: r.phone || null,
-        phoneOwnershipVerified: Boolean(r.phone_ownership_verified),
-        phoneVerifiedAt: r.phone_verified_at || null,
-        phoneVerifiedByAdmin: r.phone_verified_by_profile_id ? String(r.phone_verified_by_profile_id) : null,
-        phoneVerificationNotes: r.phone_verification_notes || null,
-        whatsapp: r.whatsapp || null,
-        email: r.email || null,
+        // Moderators may manage alumni records but cannot view private contact details.
+        phone: isAdmin ? r.phone || null : null,
+        phoneOwnershipVerified: isAdmin && Boolean(r.phone_ownership_verified),
+        phoneVerifiedAt: isAdmin ? r.phone_verified_at || null : null,
+        phoneVerifiedByAdmin: isAdmin && r.phone_verified_by_profile_id ? String(r.phone_verified_by_profile_id) : null,
+        phoneVerificationNotes: isAdmin ? r.phone_verification_notes || null : null,
+        whatsapp: isAdmin ? r.whatsapp || null : null,
+        email: isAdmin ? r.email || null : null,
         bloodGroup: r.blood_group || null,
         isRegisteredDonor: Boolean(r.is_registered_donor),
         role: r.role || "member",
@@ -432,21 +511,38 @@ serve(async (req: Request) => {
     // ROUTE: VERIFY PHONE OWNERSHIP
     // -------------------------------------------------------------------------
     if (action === "verify-phone") {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: "Only administrators may verify phone ownership." }), { status: 403, headers: corsHeaders });
+      }
+
       const { profileId, notes } = rawBody;
       if (!profileId) {
         return new Response(JSON.stringify({ error: "profileId is required." }), { status: 400, headers: corsHeaders });
       }
 
       const targetProfileId = Number(profileId);
-      const now = new Date().toISOString();
+      if (!Number.isSafeInteger(targetProfileId) || targetProfileId <= 0) {
+        return new Response(JSON.stringify({ error: "profileId must be a valid positive integer." }), { status: 400, headers: corsHeaders });
+      }
+      if (targetProfileId === callerProfile?.id) {
+        return new Response(
+          JSON.stringify({ error: "Administrators cannot verify their own phone ownership." }),
+          { status: 403, headers: corsHeaders }
+        );
+      }
 
+      const now = new Date().toISOString();
       const { data: targetProfile, error: fetchErr } = await supabaseAdmin
         .from("alumni_profiles")
         .select("*")
         .eq("id", targetProfileId)
-        .single();
+        .maybeSingle();
 
-      if (fetchErr || !targetProfile) {
+      if (fetchErr) {
+        console.error("Failed to load target profile for phone verification:", fetchErr);
+        return new Response(JSON.stringify({ error: "Target profile could not be loaded." }), { status: 500, headers: corsHeaders });
+      }
+      if (!targetProfile) {
         return new Response(JSON.stringify({ error: "Target alumni profile not found." }), { status: 404, headers: corsHeaders });
       }
 
@@ -459,9 +555,7 @@ serve(async (req: Request) => {
       }
 
       const normalizedPhone = formatToE164(rawPhone);
-
-      // Check duplicate verified phone
-      const { data: duplicate } = await supabaseAdmin
+      const { data: duplicate, error: duplicateErr } = await supabaseAdmin
         .from("alumni_profiles")
         .select("id, full_name")
         .eq("phone", normalizedPhone)
@@ -469,10 +563,14 @@ serve(async (req: Request) => {
         .neq("id", targetProfileId)
         .maybeSingle();
 
+      if (duplicateErr) {
+        console.error("Failed to check duplicate verified phone:", duplicateErr);
+        return new Response(JSON.stringify({ error: "Phone uniqueness could not be verified." }), { status: 500, headers: corsHeaders });
+      }
       if (duplicate) {
         return new Response(
           JSON.stringify({
-            error: `This phone number (${normalizedPhone}) is already verified for ${duplicate.full_name} (ID: ${duplicate.id}). Dual-account phone reuse is prohibited.`,
+            error: "This phone number is already verified for another account. Dual-account phone reuse is prohibited.",
           }),
           { status: 409, headers: corsHeaders }
         );
@@ -490,21 +588,26 @@ serve(async (req: Request) => {
         })
         .eq("id", targetProfileId)
         .select()
-        .single();
+        .maybeSingle();
 
-      if (updErr) {
+      if (updErr || !updated) {
         console.error("Failed to update profile phone:", updErr);
+        return new Response(
+          JSON.stringify({ error: "Phone verification could not be saved." }),
+          { status: 500, headers: corsHeaders }
+        );
       }
 
-      // Synchronize phone with auth.users
+      let authSyncError: any = null;
       if (targetProfile.auth_user_id) {
         try {
-          await supabaseAdmin.auth.admin.updateUserById(targetProfile.auth_user_id, {
+          const { error } = await supabaseAdmin.auth.admin.updateUserById(targetProfile.auth_user_id, {
             phone: normalizedPhone,
             phone_confirm: true,
           });
-        } catch (syncErr) {
-          console.warn("GoTrue phone confirm notice:", syncErr);
+          authSyncError = error;
+        } catch (err) {
+          authSyncError = err;
         }
       }
 
@@ -514,14 +617,24 @@ serve(async (req: Request) => {
         action: "VERIFY_PHONE_OWNERSHIP",
         entityTable: "alumni_profiles",
         entityId: String(targetProfileId),
-        reason: `Admin verified phone ownership for ${targetProfile.full_name} (${normalizedPhone}). Phone login enabled.`,
+        reason: authSyncError
+          ? "Phone ownership was recorded, but Supabase Auth phone synchronization failed."
+          : "Admin verified phone ownership for " + targetProfile.full_name + " (" + normalizedPhone + "). Phone login enabled.",
       });
+
+      if (authSyncError) {
+        console.error("Profile phone was verified but Supabase Auth phone sync failed:", authSyncError);
+        return new Response(
+          JSON.stringify({ error: "Phone verification was saved, but Supabase Auth could not confirm the phone. Retry the action.", profileUpdated: true }),
+          { status: 502, headers: corsHeaders }
+        );
+      }
 
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Phone ownership verified for ${targetProfile.full_name}. Phone + Password login is active.`,
-          profile: updated || targetProfile,
+          message: "Phone ownership verified for " + targetProfile.full_name + ". Phone + Password login is active.",
+          profile: updated,
         }),
         { status: 200, headers: corsHeaders }
       );
@@ -531,21 +644,42 @@ serve(async (req: Request) => {
     // ROUTE: REVOKE PHONE VERIFICATION
     // -------------------------------------------------------------------------
     if (action === "revoke-phone-verification") {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: "Only administrators may revoke phone verification." }), { status: 403, headers: corsHeaders });
+      }
+
       const { profileId, notes } = rawBody;
       if (!profileId) {
         return new Response(JSON.stringify({ error: "profileId is required." }), { status: 400, headers: corsHeaders });
       }
 
       const targetProfileId = Number(profileId);
-      const now = new Date().toISOString();
+      if (!Number.isSafeInteger(targetProfileId) || targetProfileId <= 0) {
+        return new Response(JSON.stringify({ error: "profileId must be a valid positive integer." }), { status: 400, headers: corsHeaders });
+      }
+      if (targetProfileId === callerProfile?.id) {
+        return new Response(
+          JSON.stringify({ error: "Administrators cannot revoke their own phone verification." }),
+          { status: 403, headers: corsHeaders }
+        );
+      }
 
-      const { data: targetProfile } = await supabaseAdmin
+      const now = new Date().toISOString();
+      const { data: targetProfile, error: targetError } = await supabaseAdmin
         .from("alumni_profiles")
         .select("id, full_name, phone, auth_user_id")
         .eq("id", targetProfileId)
-        .single();
+        .maybeSingle();
 
-      await supabaseAdmin
+      if (targetError) {
+        console.error("Failed to load target profile for phone revocation:", targetError);
+        return new Response(JSON.stringify({ error: "Target profile could not be loaded." }), { status: 500, headers: corsHeaders });
+      }
+      if (!targetProfile) {
+        return new Response(JSON.stringify({ error: "Target alumni profile not found." }), { status: 404, headers: corsHeaders });
+      }
+
+      const { data: updatedProfile, error: profileUpdateError } = await supabaseAdmin
         .from("alumni_profiles")
         .update({
           phone_ownership_verified: false,
@@ -553,16 +687,24 @@ serve(async (req: Request) => {
           phone_verification_notes: notes || "Phone verification revoked by administrator",
           updated_at: now,
         })
-        .eq("id", targetProfileId);
+        .eq("id", targetProfileId)
+        .select("id")
+        .maybeSingle();
 
-      // Revoke phone from auth.users
-      if (targetProfile?.auth_user_id) {
+      if (profileUpdateError || !updatedProfile) {
+        console.error("Failed to revoke profile phone verification:", profileUpdateError);
+        return new Response(JSON.stringify({ error: "Phone verification could not be revoked." }), { status: 500, headers: corsHeaders });
+      }
+
+      let authRevokeError: any = null;
+      if (targetProfile.auth_user_id) {
         try {
-          await supabaseAdmin.auth.admin.updateUserById(targetProfile.auth_user_id, {
+          const { error } = await supabaseAdmin.auth.admin.updateUserById(targetProfile.auth_user_id, {
             phone: null as any,
           });
-        } catch (revAuthErr) {
-          console.warn("GoTrue phone revoke notice:", revAuthErr);
+          authRevokeError = error;
+        } catch (err) {
+          authRevokeError = err;
         }
       }
 
@@ -572,13 +714,23 @@ serve(async (req: Request) => {
         action: "REVOKE_PHONE_OWNERSHIP",
         entityTable: "alumni_profiles",
         entityId: String(targetProfileId),
-        reason: `Revoked phone verification for ${targetProfile?.full_name || targetProfileId}. Phone login disabled.`,
+        reason: authRevokeError
+          ? "Profile phone verification was revoked, but Supabase Auth phone clearing failed."
+          : "Revoked phone verification for " + (targetProfile.full_name || targetProfileId) + ". Phone login disabled.",
       });
+
+      if (authRevokeError) {
+        console.error("Profile phone verification was revoked but Supabase Auth phone clearing failed:", authRevokeError);
+        return new Response(
+          JSON.stringify({ error: "Profile verification was revoked, but Supabase Auth could not clear the phone. Retry the action.", profileUpdated: true }),
+          { status: 502, headers: corsHeaders }
+        );
+      }
 
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Phone verification revoked for ${targetProfile?.full_name || targetProfileId}. Phone login disabled.`,
+          message: "Phone verification revoked for " + (targetProfile.full_name || targetProfileId) + ". Phone login disabled.",
         }),
         { status: 200, headers: corsHeaders }
       );
@@ -595,13 +747,20 @@ serve(async (req: Request) => {
         const finalDecision = decision === "approved" ? "approved" : "rejected";
 
         // Prevent administrators from self-approving their own verification
-        const { data: existingSub } = await supabaseAdmin
+        const { data: existingSub, error: existingSubError } = await supabaseAdmin
           .from("admin_doc_submissions")
           .select("user_id")
           .eq("id", submissionId)
           .maybeSingle();
 
-        if (existingSub && callerProfile?.id && existingSub.user_id === callerProfile.id) {
+        if (existingSubError) {
+          console.error("Failed to load verification submission for review:", existingSubError);
+          return new Response(JSON.stringify({ error: "Verification submission could not be loaded." }), { status: 500, headers: corsHeaders });
+        }
+        if (!existingSub) {
+          return new Response(JSON.stringify({ error: "Verification submission not found." }), { status: 404, headers: corsHeaders });
+        }
+        if (callerProfile?.id && existingSub.user_id === callerProfile.id) {
           return new Response(
             JSON.stringify({ error: "Unauthorized: Administrators cannot review or approve their own verification submissions." }),
             { status: 403, headers: corsHeaders }
@@ -625,7 +784,7 @@ serve(async (req: Request) => {
         }
 
         if (finalDecision === "approved" && updatedSub?.user_id) {
-          await supabaseAdmin
+          const { error: profileVerifyError } = await supabaseAdmin
             .from("alumni_profiles")
             .update({
               verification_status: "verified",
@@ -634,6 +793,14 @@ serve(async (req: Request) => {
               verified_by_profile_id: callerProfile?.id || null,
             })
             .eq("id", updatedSub.user_id);
+
+          if (profileVerifyError) {
+            console.error("Verification submission was approved but profile status update failed:", profileVerifyError);
+            return new Response(
+              JSON.stringify({ error: "The submission was approved, but the alumni profile could not be marked verified. Retry the review." }),
+              { status: 500, headers: corsHeaders }
+            );
+          }
         }
 
         await recordAuditLog(supabaseAdmin, {
@@ -662,13 +829,19 @@ serve(async (req: Request) => {
         let signedUrl = r.storage_object_path;
         if (r.storage_object_path && !r.storage_object_path.startsWith("http")) {
           try {
-            const { data: signedData } = await supabaseAdmin.storage
+            const { data: signedData, error: signedUrlError } = await supabaseAdmin.storage
               .from("verification-documents")
               .createSignedUrl(r.storage_object_path, 3600);
-            if (signedData?.signedUrl) {
-              signedUrl = signedData.signedUrl;
+            if (signedUrlError) {
+              console.warn("Failed to create verification document signed URL:", signedUrlError);
+              signedUrl = null;
+            } else {
+              signedUrl = signedData?.signedUrl || null;
             }
-          } catch {}
+          } catch (signedUrlError) {
+            console.warn("Failed to create verification document signed URL:", signedUrlError);
+            signedUrl = null;
+          }
         }
 
         return {
