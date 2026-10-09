@@ -22,6 +22,7 @@ import {
   fetchFacebookOEmbed,
   type FacebookOEmbedData,
 } from '../services/facebookOEmbedService';
+import { apiUrl } from '../lib/apiConfig';
 
 export type DetectedEmbedType =
   | 'youtube'
@@ -518,7 +519,7 @@ function useLinkUnfurl(url: string, enabled = true) {
     setLoading(true);
 
     // 1. Try our backend OpenGraph crawler proxy first (/api/unfurl) which uses facebookexternalhit UA and bypasses CORS/rate-limits
-    fetch(`/api/unfurl?url=${encodeURIComponent(url)}`)
+    fetch(apiUrl(`/api/unfurl?url=${encodeURIComponent(url)}`))
       .then((res) => {
         if (!res.ok) throw new Error('Backend unfurl failed');
         return res.json();

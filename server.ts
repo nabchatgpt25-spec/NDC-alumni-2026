@@ -34,6 +34,8 @@ import {
   toggleAcademicStreamGroupActive,
   updateAlumniPassword,
   deleteAlumniProfile,
+  adminVerifyAlumniPhoneOwnership,
+  adminRevokeAlumniPhoneOwnership,
 } from './src/db/adminRepository.ts';
 
 dotenv.config();
@@ -42,7 +44,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT: number | string = process.env.PORT
+  ? (isNaN(Number(process.env.PORT)) ? process.env.PORT : Number(process.env.PORT))
+  : 3000;
 
 // 1. Security Headers & Custom Domain CORS Middleware (ndcbogura.alumniworld.xyz)
 const ALLOWED_ORIGINS = new Set([
@@ -183,6 +187,11 @@ function formatAlumniRowToProfile(row: any) {
     city: row.city || 'Dhaka',
     country: row.country || 'Bangladesh',
     phone: row.phone || '',
+    phoneOwnershipVerified: Boolean(row.phoneOwnershipVerified ?? row.phone_ownership_verified),
+    phoneVerifiedAt: row.phoneVerifiedAt || row.phone_verified_at || undefined,
+    phoneVerifiedByProfileId: row.phoneVerifiedByProfileId || row.phone_verified_by_profile_id || undefined,
+    phoneVerificationNotes: row.phoneVerificationNotes || row.phone_verification_notes || undefined,
+    authUserId: row.authUserId || row.auth_user_id || undefined,
     whatsapp: row.whatsapp || '',
     email: row.email || '',
     fbLink: row.fbLink || '',
@@ -294,62 +303,115 @@ app.post('/api/auth/register', rateLimitGuard(25, 60_000), async (req: Request, 
   }
 });
 
-// Global Cross-Device Login Endpoint (verifies credentials against Supabase Auth & Database)
-app.post('/api/auth/login', rateLimitGuard(40, 60_000), async (req: Request, res: Response) => {
+// Helper to normalize phone numbers to E.164
+function formatToE164PhoneServer(raw: string): string {
+  const cleaned = raw.trim();
+  if (cleaned.startsWith('+')) {
+    return cleaned.replace(/[^\d+]/g, '');
+  }
+  const digits = cleaned.replace(/\D/g, '');
+  if (digits.startsWith('880')) {
+    return `+${digits}`;
+  }
+  return `+880${digits.replace(/^0+/, '')}`;
+}
+
+async function handleUnifiedLoginCore(req: Request, res: Response) {
   try {
     const { identifier, password } = req.body;
     if (!identifier?.trim() || !password) {
       return res.status(400).json({ error: 'Please enter your mobile number or email and password.' });
     }
 
-    const cleanId = identifier.trim().toLowerCase();
+    const cleanId = identifier.trim();
+    const isEmail = cleanId.includes('@');
 
-    // 1. Primary: Verify against Supabase Auth for email logins
-    if (isSupabaseServerConfigured && cleanId.includes('@')) {
-      try {
-        // Ensure email is confirmed so login across devices is never blocked
-        const { data: uData } = await supabaseServer.auth.admin.listUsers();
-        const existingU = (uData?.users as any[])?.find((u: any) => u.email?.toLowerCase() === cleanId);
-        if (existingU && !existingU.email_confirmed_at) {
-          await supabaseServer.auth.admin.updateUserById(existingU.id, { email_confirm: true });
+    // =========================================================================
+    // CASE A: EMAIL LOGIN
+    // =========================================================================
+    if (isEmail) {
+      const cleanEmail = cleanId.toLowerCase();
+
+      if (isSupabaseServerConfigured) {
+        try {
+          // Auto-confirm email if needed so cross-device logins succeed
+          const { data: uData } = await supabaseServer.auth.admin.listUsers();
+          const existingU = (uData?.users as any[])?.find((u: any) => u.email?.toLowerCase() === cleanEmail);
+          if (existingU && !existingU.email_confirmed_at) {
+            await supabaseServer.auth.admin.updateUserById(existingU.id, { email_confirm: true });
+          }
+        } catch (confirmErr) {
+          console.warn('Auto-confirm check notice:', confirmErr);
         }
-      } catch (confirmErr) {
-        console.warn('Auto-confirm check failed:', confirmErr);
-      }
 
-      const { data: signInData, error: signInError } = await supabaseServer.auth.signInWithPassword({
-        email: cleanId,
-        password,
-      });
+        const { data: signInData, error: signInError } = await supabaseServer.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
 
-      if (!signInError && signInData?.user) {
-        let alumnus = await findAlumniByCredential(cleanId);
-        if (!alumnus) {
-          alumnus = await createOrRegisterAlumniProfile({
-            userUid: signInData.user.id,
-            rawPassword: password,
-            fullName:
-              (signInData.user.user_metadata as any)?.full_name ||
-              (signInData.user.user_metadata as any)?.name ||
-              cleanId.split('@')[0],
-            batchYear: Number((signInData.user.user_metadata as any)?.batch_year) || 68,
-            email: cleanId,
-            passwordHash: hashPasswordServer(password),
+        if (!signInError && signInData?.user) {
+          let alumnus = await findAlumniByCredential(cleanEmail);
+          if (!alumnus) {
+            alumnus = await createOrRegisterAlumniProfile({
+              userUid: signInData.user.id,
+              rawPassword: password,
+              fullName:
+                (signInData.user.user_metadata as any)?.full_name ||
+                (signInData.user.user_metadata as any)?.name ||
+                cleanEmail.split('@')[0],
+              batchYear: Number((signInData.user.user_metadata as any)?.batch_year) || 68,
+              email: cleanEmail,
+              passwordHash: hashPasswordServer(password),
+            });
+          }
+
+          return res.json({
+            success: true,
+            session: signInData.session,
+            profile: formatAlumniRowToProfile(alumnus),
           });
         }
 
-        return res.json({
-          success: true,
-          session: signInData.session,
-          profile: formatAlumniRowToProfile(alumnus),
-        });
+        if (signInError) {
+          const msg = signInError.message.toLowerCase();
+          if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
+            // Check if user was registered with Google OAuth and has no password
+            const { data: uData } = await supabaseServer.auth.admin.listUsers();
+            const existingU = (uData?.users as any[])?.find((u: any) => u.email?.toLowerCase() === cleanEmail);
+            if (existingU && (existingU.app_metadata?.provider === 'google' || !existingU.encrypted_password)) {
+              return res.status(400).json({
+                error: 'This account was created via Google Sign-In and does not have a password set yet. Please continue with "Sign in with Google" or use "Forgot Password" to set a password.',
+              });
+            }
+            return res.status(401).json({ error: 'Invalid email or password. Please verify your credentials.' });
+          }
+        }
       }
+
+      // In-memory fallback
+      const alumnus = await findAlumniByCredential(cleanEmail);
+      if (!alumnus) {
+        return res.status(404).json({ error: 'No registered account found with this email address.' });
+      }
+      const isValid = verifyPasswordServer(alumnus.passwordHash, password);
+      if (!isValid) {
+        return res.status(401).json({ error: 'Incorrect password. Please try again.' });
+      }
+      return res.json({
+        success: true,
+        profile: formatAlumniRowToProfile(alumnus),
+      });
     }
 
+    // =========================================================================
+    // CASE B: PHONE NUMBER LOGIN
+    // =========================================================================
+    const formattedPhone = formatToE164PhoneServer(cleanId);
     const alumnus = await findAlumniByCredential(cleanId);
+
     if (!alumnus) {
       return res.status(404).json({
-        error: 'No registered account found with this phone number or email. Please register your verified profile first.',
+        error: 'No registered account found with this mobile number. Please register your verified profile first.',
       });
     }
 
@@ -357,26 +419,166 @@ app.post('/api/auth/login', rateLimitGuard(40, 60_000), async (req: Request, res
       return res.status(403).json({ error: 'Your account is currently suspended. Please contact Notre Dame Alumni support.' });
     }
 
+    // 1. Mandatory Admin Phone Verification Check
+    if (!alumnus.phoneOwnershipVerified) {
+      return res.status(403).json({
+        error: `Your mobile number (${alumnus.phone || formattedPhone}) has not been verified by an administrator yet. As an institutional safeguard, phone login requires admin ownership verification. Please sign in using your registered email address in the meantime.`,
+        phoneVerificationRequired: true,
+      });
+    }
+
+    // 2. Authenticate against Supabase Auth using the user's SAME password
+    if (isSupabaseServerConfigured) {
+      let authSession: any = null;
+
+      // Method 1: Try authenticating with user's verified registered email & password
+      if (alumnus.email) {
+        const { data: signInData, error: signInError } = await supabaseServer.auth.signInWithPassword({
+          email: alumnus.email.toLowerCase().trim(),
+          password,
+        });
+
+        if (!signInError && signInData?.session) {
+          authSession = signInData.session;
+        }
+      }
+
+      // Method 2: If email attempt was not applicable or failed, try native phone sign-in
+      if (!authSession) {
+        try {
+          const { data: phoneSignInData, error: phoneSignInErr } = await supabaseServer.auth.signInWithPassword({
+            phone: formattedPhone,
+            password,
+          });
+          if (!phoneSignInErr && phoneSignInData?.session) {
+            authSession = phoneSignInData.session;
+          }
+        } catch {
+          // Phone provider may be disabled in dashboard
+        }
+      }
+
+      if (authSession) {
+        // Keep phone on auth.users synchronized
+        if (alumnus.authUserId) {
+          try {
+            await supabaseServer.auth.admin.updateUserById(alumnus.authUserId, {
+              phone: formattedPhone,
+              phone_confirm: true,
+            });
+          } catch {}
+        }
+
+        return res.json({
+          success: true,
+          session: authSession,
+          profile: formatAlumniRowToProfile(alumnus),
+        });
+      }
+
+      // Check if user was registered via Google OAuth and has no password
+      const { data: usersData } = await supabaseServer.auth.admin.listUsers();
+      const matchedUser = (usersData?.users as any[])?.find(
+        (u: any) =>
+          (alumnus.email && u.email?.toLowerCase() === alumnus.email.toLowerCase().trim()) ||
+          (u.phone && u.phone === formattedPhone)
+      );
+
+      if (matchedUser && (matchedUser.app_metadata?.provider === 'google' || !matchedUser.encrypted_password)) {
+        return res.status(400).json({
+          error:
+            'This account was created via Google Sign-In and does not have a password set yet. Please sign in with Google, or use "Forgot Password" to set a password for phone login.',
+        });
+      }
+
+      return res.status(401).json({ error: 'Incorrect password for this mobile number. Please try again.' });
+    }
+
+    // In-memory fallback
     const isValid = verifyPasswordServer(alumnus.passwordHash, password);
     if (!isValid) {
       return res.status(401).json({ error: 'Incorrect password. Please try again.' });
     }
 
-    // If account was created without a passwordHash, persist it now for seamless cross-device auth
-    if (!alumnus.passwordHash) {
-      const newHash = hashPasswordServer(password);
-      await updateAlumniPassword(alumnus.id, newHash);
-    }
-
-    res.json({
+    return res.json({
       success: true,
       profile: formatAlumniRowToProfile(alumnus),
     });
   } catch (error: any) {
-    console.error('Login failed:', error);
+    console.error('Unified login error:', error);
     res.status(500).json({ error: error.message || 'Login failed. Please try again.' });
   }
-});
+}
+
+// Global Cross-Device Login Endpoint (supports both Email and Phone)
+app.post('/api/auth/login', rateLimitGuard(40, 60_000), handleUnifiedLoginCore);
+app.post('/api/auth/unified-login', rateLimitGuard(40, 60_000), handleUnifiedLoginCore);
+
+// Admin Command Center: Verify Alumnus Phone Ownership (enables Phone + Password login)
+app.post(
+  '/api/admin/verify-phone',
+  rateLimitGuard(40, 60_000),
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { profileId, notes } = req.body;
+      if (!profileId) {
+        return res.status(400).json({ error: 'profileId is required.' });
+      }
+
+      const actor = resolveActor(req);
+      const verified = await adminVerifyAlumniPhoneOwnership({
+        profileId: Number(profileId),
+        notes: typeof notes === 'string' ? notes.trim() : undefined,
+        actorUid: actor.uid,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+      });
+
+      res.json({
+        success: true,
+        message: 'Phone ownership verified successfully. Phone + Password login is now active.',
+        profile: verified,
+      });
+    } catch (error: any) {
+      console.error('admin verify-phone error:', error);
+      res.status(400).json({ error: error.message || 'Failed to verify phone ownership.' });
+    }
+  }
+);
+
+// Admin Command Center: Revoke Alumnus Phone Ownership Verification
+app.post(
+  '/api/admin/revoke-phone-verification',
+  rateLimitGuard(40, 60_000),
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { profileId, notes } = req.body;
+      if (!profileId) {
+        return res.status(400).json({ error: 'profileId is required.' });
+      }
+
+      const actor = resolveActor(req);
+      const revoked = await adminRevokeAlumniPhoneOwnership({
+        profileId: Number(profileId),
+        notes: typeof notes === 'string' ? notes.trim() : undefined,
+        actorUid: actor.uid,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+      });
+
+      res.json({
+        success: true,
+        message: 'Phone ownership verification revoked. Phone login disabled.',
+        profile: revoked,
+      });
+    } catch (error: any) {
+      console.error('admin revoke-phone error:', error);
+      res.status(400).json({ error: error.message || 'Failed to revoke phone verification.' });
+    }
+  }
+);
 
 // Global Cross-Device Password Reset Endpoint
 app.post('/api/auth/reset-password', rateLimitGuard(15, 60_000), async (req: Request, res: Response) => {
@@ -924,6 +1126,7 @@ app.get(
         '002_security_functions_triggers.sql',
         '003_rls_policies.sql',
         '004_reference_seed_data.sql',
+        '005_admin_phone_verification.sql',
       ];
       const parts: string[] = [];
       for (const file of files) {
@@ -998,9 +1201,15 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`NDC Alumni Hardened Server running on http://0.0.0.0:${PORT}`);
-  });
+  if (typeof PORT === 'number') {
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(`NDC Alumni Hardened Server running on http://0.0.0.0:${PORT}`);
+    });
+  } else {
+    httpServer.listen(PORT, () => {
+      console.log(`NDC Alumni Hardened Server running on cPanel socket ${PORT}`);
+    });
+  }
 }
 
 startServer();

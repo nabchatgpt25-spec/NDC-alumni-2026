@@ -64,6 +64,10 @@ export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
     lat: row.latitude ? Number(row.latitude) : undefined,
     lng: row.longitude ? Number(row.longitude) : undefined,
     phone: row.phone || undefined,
+    phoneOwnershipVerified: Boolean(row.phone_ownership_verified),
+    phoneVerifiedAt: row.phone_verified_at ? String(row.phone_verified_at) : undefined,
+    phoneVerifiedByProfileId: row.phone_verified_by_profile_id ? Number(row.phone_verified_by_profile_id) : undefined,
+    phoneVerificationNotes: row.phone_verification_notes || undefined,
     whatsapp: row.whatsapp || undefined,
     fbLink: row.fb_link || undefined,
     email: email || undefined,
@@ -152,6 +156,7 @@ export async function getOrCreateSupabaseProfile(
       country: extraData?.country || 'Bangladesh',
       email: cleanEmail || null,
       phone: extraData?.phone?.trim() || (authUser.user_metadata as any)?.phone || authUser.phone || null,
+      phone_ownership_verified: false,
       whatsapp: extraData?.whatsapp?.trim() || null,
       blood_group: extraData?.bloodGroup || null,
     };

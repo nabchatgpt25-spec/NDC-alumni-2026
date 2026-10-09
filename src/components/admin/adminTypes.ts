@@ -78,6 +78,10 @@ export interface AlumniProfileRow {
   blood_group: string | null;
   is_public: boolean;
   show_contact_to_verified: boolean;
+  phone_ownership_verified?: boolean;
+  phone_verified_at?: string | null;
+  phone_verified_by_profile_id?: number | null;
+  phone_verification_notes?: string | null;
   posts_count: number;
   last_seen_at: string | null;
   created_at: string;
@@ -88,6 +92,10 @@ export interface AlumniContactDetailsRow {
   profile_id: number;
   email: string | null;
   phone: string | null;
+  phone_ownership_verified?: boolean;
+  phone_verified_at?: string | null;
+  phone_verified_by_profile_id?: number | null;
+  phone_verification_notes?: string | null;
   whatsapp: string | null;
   fb_link: string | null;
   college_roll: string | null;

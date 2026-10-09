@@ -173,6 +173,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       'Content-Type': 'application/json',
     };
 
+    const anonKey = (import.meta.env?.VITE_SUPABASE_ANON_KEY || '').trim();
+    if (anonKey) {
+      headers.apikey = anonKey;
+    }
+
     // Primary: Use Supabase session JWT
     if (isSupabaseConfigured) {
       try {
@@ -187,6 +192,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (inMemorySupabaseToken) {
       headers.Authorization = `Bearer ${inMemorySupabaseToken}`;
       return headers;
+    }
+
+    if (anonKey && !headers.Authorization) {
+      headers.Authorization = `Bearer ${anonKey}`;
     }
 
     return headers;
@@ -263,12 +272,126 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authError = res.error;
     } else {
       const formattedPhone = formatToE164Phone(cleanInput);
-      const res = await supabase.auth.signInWithPassword({
-        phone: formattedPhone,
-        password: pass,
-      });
-      authData = res.data;
-      authError = res.error;
+
+      // 1. Primary: Invoke Supabase Edge Function 'unified-phone-login'
+      let edgeSuccess = false;
+      if (isSupabaseConfigured) {
+        try {
+          const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('unified-phone-login', {
+            body: { identifier: formattedPhone, password: pass },
+          });
+
+          if (edgeErr) {
+            // Check if Edge Function returned a JSON error response
+            const contextMsg = (edgeErr as any)?.context?.message || edgeErr.message || '';
+            let parsedErr = contextMsg;
+            try {
+              if (edgeErr.context && typeof edgeErr.context.json === 'function') {
+                const j = await edgeErr.context.json();
+                if (j?.error) parsedErr = j.error;
+              }
+            } catch {}
+
+            if (parsedErr && !parsedErr.includes('Failed to send a request') && !parsedErr.includes('404')) {
+              throw new Error(parsedErr);
+            }
+          }
+
+          if (edgeData?.error) {
+            throw new Error(edgeData.error);
+          }
+
+          if (edgeData?.session?.access_token && edgeData?.session?.refresh_token) {
+            const { data: sessionData, error: sessionErr } = await supabase.auth.setSession({
+              access_token: edgeData.session.access_token,
+              refresh_token: edgeData.session.refresh_token,
+            });
+
+            if (!sessionErr && sessionData?.user) {
+              authData = sessionData;
+            } else {
+              authData = {
+                user: edgeData.session.user,
+                session: edgeData.session,
+              };
+            }
+            edgeSuccess = true;
+          }
+        } catch (edgeCallErr: any) {
+          const errMsg = edgeCallErr?.message || '';
+          if (
+            errMsg.includes('not been verified by an administrator') ||
+            errMsg.includes('Google Sign-In') ||
+            errMsg.includes('Invalid mobile number') ||
+            errMsg.includes('Incorrect password') ||
+            errMsg.includes('Too many login attempts') ||
+            errMsg.includes('No registered account') ||
+            errMsg.includes('suspended') ||
+            errMsg.includes('temporarily unavailable') ||
+            errMsg.includes('security check')
+          ) {
+            throw edgeCallErr;
+          }
+          // If Edge Function not yet deployed on Supabase project, continue to fallback
+        }
+      }
+
+      // 2. Secondary fallback: Backend API endpoint '/api/auth/unified-login'
+      if (!edgeSuccess) {
+        try {
+          const unifiedResp = await fetch(apiUrl('/api/auth/unified-login'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: formattedPhone, password: pass }),
+          });
+
+          const unifiedJson = await unifiedResp.json();
+
+          if (!unifiedResp.ok) {
+            throw new Error(unifiedJson.error || 'Login failed. Please check your credentials.');
+          }
+
+          if (unifiedJson.session?.access_token && unifiedJson.session?.refresh_token) {
+            const { data: sessionData, error: sessionErr } = await supabase.auth.setSession({
+              access_token: unifiedJson.session.access_token,
+              refresh_token: unifiedJson.session.refresh_token,
+            });
+
+            if (!sessionErr && sessionData?.user) {
+              authData = sessionData;
+            } else {
+              authData = {
+                user: unifiedJson.session.user,
+                session: unifiedJson.session,
+              };
+            }
+          } else if (unifiedJson.profile) {
+            setCurrentUser(unifiedJson.profile);
+            setIsAdminUser(unifiedJson.profile.role === 'admin' || isSuperAdminEmail(unifiedJson.profile.email));
+            setIsLoggedIn(true);
+            return true;
+          }
+        } catch (unifiedErr: any) {
+          const errMsg = unifiedErr?.message || '';
+          if (
+            errMsg.includes('not been verified by an administrator') ||
+            errMsg.includes('Google Sign-In') ||
+            errMsg.includes('Incorrect password') ||
+            errMsg.includes('No registered account') ||
+            errMsg.includes('suspended')
+          ) {
+            throw unifiedErr;
+          }
+
+          // 3. Tertiary fallback: Direct Supabase GoTrue phone sign-in
+          const res = await supabase.auth.signInWithPassword({
+            phone: formattedPhone,
+            password: pass,
+          });
+          authData = res.data;
+          authError = res.error;
+        }
+      }
     }
 
     if (authError) {

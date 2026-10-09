@@ -24,8 +24,10 @@ import {
   Eye,
   EyeOff,
   GraduationCap,
+  Phone,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
   apiUrl,
   CUSTOM_DOMAIN,
@@ -93,6 +95,10 @@ interface DbAlumniRecord {
   city: string;
   country: string;
   phone: string | null;
+  phoneOwnershipVerified?: boolean;
+  phoneVerifiedAt?: string | null;
+  phoneVerifiedByAdmin?: string | null;
+  phoneVerificationNotes?: string | null;
   whatsapp: string | null;
   email: string | null;
   bloodGroup: string | null;
@@ -333,6 +339,136 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({
       fetchOverview();
     } catch (err: any) {
       showBanner('error', err?.message || 'Failed to update profile governance.');
+    }
+  };
+
+  const handleVerifyPhoneOwnership = async (
+    profileId: number,
+    fullName: string,
+    phone: string | null
+  ) => {
+    try {
+      const notes = window.prompt(
+        `Verify Phone Ownership for ${fullName} (${phone || 'No Phone'})?\nEnter optional verification notes (e.g. "Called alumnus on mobile / confirmed roll with batch coordinator"):`,
+        'Verified by central administrator'
+      );
+      if (notes === null) return; // User cancelled prompt
+
+      const trimmedNotes = notes.trim() || 'Verified by central administrator';
+      let verifiedPhone = phone || '';
+
+      // 1. Try Supabase Edge Function 'admin-verify-phone'
+      let edgeSuccess = false;
+      if (isSupabaseConfigured) {
+        try {
+          const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('admin-verify-phone', {
+            body: { profileId, action: 'verify', notes: trimmedNotes },
+          });
+
+          if (edgeErr) {
+            let parsedErr = edgeErr.message || '';
+            try {
+              if (edgeErr.context && typeof edgeErr.context.json === 'function') {
+                const j = await edgeErr.context.json();
+                if (j?.error) parsedErr = j.error;
+              }
+            } catch {}
+            if (parsedErr && !parsedErr.includes('404') && !parsedErr.includes('Failed to send a request')) {
+              throw new Error(parsedErr);
+            }
+          }
+
+          if (edgeData?.error) throw new Error(edgeData.error);
+
+          if (edgeData?.success) {
+            edgeSuccess = true;
+            verifiedPhone = edgeData.profile?.phone || verifiedPhone;
+          }
+        } catch (edgeCallErr: any) {
+          const msg = edgeCallErr?.message || '';
+          if (msg.includes('already verified for') || msg.includes('Forbidden') || msg.includes('Unauthorized')) {
+            throw edgeCallErr;
+          }
+        }
+      }
+
+      // 2. Fallback to Express backend endpoint
+      if (!edgeSuccess) {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl('/api/admin/verify-phone'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            profileId,
+            notes: trimmedNotes,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to verify phone ownership');
+        verifiedPhone = data.profile?.phone || verifiedPhone;
+      }
+
+      showBanner(
+        'success',
+        `Phone ownership verified for ${fullName} (${verifiedPhone}). Phone + Password login is now active!`
+      );
+      fetchDirectory(pagination.page);
+      fetchOverview();
+    } catch (err: any) {
+      showBanner('error', err?.message || 'Failed to verify phone ownership.');
+    }
+  };
+
+  const handleRevokePhoneOwnership = async (
+    profileId: number,
+    fullName: string,
+    phone: string | null
+  ) => {
+    try {
+      if (
+        !window.confirm(
+          `Are you sure you want to revoke phone ownership verification for ${fullName} (${phone || 'Alumnus'})?\nThis will disable phone login for this account until verified again.`
+        )
+      ) {
+        return;
+      }
+
+      // 1. Try Supabase Edge Function 'admin-verify-phone'
+      let edgeSuccess = false;
+      if (isSupabaseConfigured) {
+        try {
+          const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('admin-verify-phone', {
+            body: { profileId, action: 'revoke' },
+          });
+
+          if (!edgeErr && edgeData?.success) {
+            edgeSuccess = true;
+          }
+        } catch {
+          // fallback to Express endpoint
+        }
+      }
+
+      // 2. Fallback to Express backend endpoint
+      if (!edgeSuccess) {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl('/api/admin/revoke-phone-verification'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ profileId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to revoke phone verification');
+      }
+
+      showBanner(
+        'success',
+        `Phone ownership verification revoked for ${fullName}. Phone login disabled.`
+      );
+      fetchDirectory(pagination.page);
+      fetchOverview();
+    } catch (err: any) {
+      showBanner('error', err?.message || 'Failed to revoke phone verification.');
     }
   };
 
@@ -1168,8 +1304,29 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({
                     </td>
 
                     <td className="py-3 px-3 font-mono text-[11px] text-slate-600 dark:text-slate-400">
-                      <div>{p.phone || '—'}</div>
-                      <div className="truncate max-w-[150px]">{p.email || '—'}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{p.phone || '—'}</span>
+                        {p.phone && (
+                          p.phoneOwnershipVerified ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded"
+                              title={`Phone verified by admin on ${p.phoneVerifiedAt ? new Date(p.phoneVerifiedAt).toLocaleDateString() : 'N/A'}`}
+                            >
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              <span>Phone Verified</span>
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded"
+                              title="Phone entered at registration. Requires admin ownership verification to activate Phone + Password login."
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5" />
+                              <span>Phone Pending</span>
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <div className="truncate max-w-[150px] text-slate-500">{p.email || '—'}</div>
                     </td>
 
                     <td className="py-3 px-3">
@@ -1201,7 +1358,30 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({
                     </td>
 
                     <td className="py-3 px-4 text-right">
-                      <div className="inline-flex items-center gap-1.5">
+                      <div className="inline-flex items-center gap-1.5 flex-wrap justify-end">
+                        {p.phone && !p.phoneOwnershipVerified && (
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyPhoneOwnership(p.id, p.fullName, p.phone)}
+                            className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                            title="Verify Phone Ownership for Phone + Password login"
+                          >
+                            <Phone className="w-3 h-3" />
+                            <span>Verify Phone</span>
+                          </button>
+                        )}
+
+                        {p.phone && p.phoneOwnershipVerified && (
+                          <button
+                            type="button"
+                            onClick={() => handleRevokePhoneOwnership(p.id, p.fullName, p.phone)}
+                            className="px-1.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-900/30 text-slate-500 hover:text-rose-600 text-[10px] font-bold cursor-pointer"
+                            title="Revoke Phone Ownership Verification"
+                          >
+                            Revoke Phone
+                          </button>
+                        )}
+
                         {p.verificationStatus !== 'verified' ? (
                           <button
                             type="button"

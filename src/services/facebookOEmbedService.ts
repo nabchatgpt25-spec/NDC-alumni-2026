@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { apiUrl } from '../lib/apiConfig';
 
 export interface FacebookOEmbedData {
   originalUrl: string;
@@ -168,7 +169,7 @@ export async function fetchFacebookOEmbed(rawUrl: string): Promise<FacebookOEmbe
 
   // Strategy A: Server-Side Open Graph Crawler (/api/unfurl)
   try {
-    const res = await fetch(`/api/unfurl?url=${encodeURIComponent(normalized)}`);
+    const res = await fetch(apiUrl(`/api/unfurl?url=${encodeURIComponent(normalized)}`));
     if (res.ok) {
       const json = await res.json();
       if (json && (json.imageUrl || json.videoUrl || json.title || json.description)) {

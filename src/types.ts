@@ -121,6 +121,10 @@ export interface AlumniProfile {
   whatsapp?: string;
   fbLink?: string;
   phone?: string;
+  phoneOwnershipVerified?: boolean;
+  phoneVerifiedAt?: string;
+  phoneVerifiedByProfileId?: number;
+  phoneVerificationNotes?: string;
   email?: string;
   bio?: string;
   careerHistory?: string[];

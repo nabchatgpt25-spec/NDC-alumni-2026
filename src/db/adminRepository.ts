@@ -504,6 +504,10 @@ export async function queryPaginatedAlumniProfiles(params: ProfileFilterParams) 
           city: r.city || 'Dhaka',
           country: r.country || 'Bangladesh',
           phone: params.includeSensitivePii ? r.phone : (r.phone ? 'Protected' : null),
+          phoneOwnershipVerified: Boolean(r.phone_ownership_verified),
+          phoneVerifiedAt: r.phone_verified_at || null,
+          phoneVerifiedByAdmin: r.phone_verified_by_profile_id ? String(r.phone_verified_by_profile_id) : null,
+          phoneVerificationNotes: params.includeSensitivePii ? (r.phone_verification_notes || null) : null,
           whatsapp: params.includeSensitivePii ? r.whatsapp : (r.whatsapp ? 'Protected' : null),
           email: params.includeSensitivePii ? r.email : (r.email ? 'Protected' : null),
           bloodGroup: r.blood_group || null,
@@ -808,12 +812,17 @@ export async function findAlumniByCredential(credential: string) {
           city: data.city,
           country: data.country,
           phone: data.phone,
+          phoneOwnershipVerified: Boolean(data.phone_ownership_verified),
+          phoneVerifiedAt: data.phone_verified_at || null,
+          phoneVerifiedByProfileId: data.phone_verified_by_profile_id || null,
+          phoneVerificationNotes: data.phone_verification_notes || null,
           email: data.email,
           bloodGroup: data.blood_group,
           role: data.role,
           verificationStatus: data.verification_status,
           accountStatus: data.is_public ? 'active' : 'suspended',
           passwordHash: null,
+          authUserId: data.auth_user_id || undefined,
           createdAt: data.created_at,
         };
       }
@@ -961,6 +970,176 @@ export async function adminUpdateAlumniGovernance(params: {
     role: params.role || 'member',
     accountStatus: params.accountStatus || 'active',
   };
+}
+
+export async function adminVerifyAlumniPhoneOwnership(params: {
+  profileId: number;
+  notes?: string;
+  actorUid: string;
+  actorEmail: string;
+  actorRole: string;
+}) {
+  const profileId = Number(params.profileId);
+  const now = new Date().toISOString();
+
+  if (isSupabaseServerConfigured && profileId) {
+    try {
+      // 1. Fetch target profile
+      const { data: profile, error: fetchErr } = await supabaseServer
+        .from(SUPABASE_TABLES.ALUMNI_PROFILES)
+        .select('*')
+        .eq('id', profileId)
+        .single();
+
+      if (fetchErr || !profile) {
+        throw new Error('Alumni profile not found.');
+      }
+
+      const rawPhone = (profile.phone || '').trim();
+      if (!rawPhone) {
+        throw new Error('Alumnus does not have a registered mobile number to verify.');
+      }
+
+      // Format to standard E.164
+      const normalizedPhone = rawPhone.startsWith('+')
+        ? rawPhone.replace(/[^\d+]/g, '')
+        : rawPhone.replace(/\D/g, '').startsWith('880')
+        ? `+${rawPhone.replace(/\D/g, '')}`
+        : `+880${rawPhone.replace(/\D/g, '').replace(/^0+/, '')}`;
+
+      // 2. Check if another profile already has this phone verified
+      const { data: duplicate } = await supabaseServer
+        .from(SUPABASE_TABLES.ALUMNI_PROFILES)
+        .select('id, full_name')
+        .eq('phone', normalizedPhone)
+        .eq('phone_ownership_verified', true)
+        .neq('id', profileId)
+        .maybeSingle();
+
+      if (duplicate) {
+        throw new Error(
+          `This phone number (${normalizedPhone}) is already verified for another alumnus (${duplicate.full_name}, ID: ${duplicate.id}). Dual-account phone reuse is prohibited.`
+        );
+      }
+
+      // 3. Update public.alumni_profiles
+      const { data: updated, error: updateErr } = await supabaseServer
+        .from(SUPABASE_TABLES.ALUMNI_PROFILES)
+        .update({
+          phone: normalizedPhone,
+          phone_ownership_verified: true,
+          phone_verified_at: now,
+          phone_verification_notes: params.notes || 'Verified by portal administrator',
+          updated_at: now,
+        })
+        .eq('id', profileId)
+        .select()
+        .single();
+
+      if (updateErr) {
+        console.warn('Failed to update alumni_profiles phone verification:', updateErr);
+      }
+
+      // 4. Synchronize phone into Supabase Auth auth.users via Admin API
+      if (profile.auth_user_id) {
+        try {
+          await supabaseServer.auth.admin.updateUserById(profile.auth_user_id, {
+            phone: normalizedPhone,
+            phone_confirm: true,
+          });
+        } catch (authErr: any) {
+          console.warn('Note: GoTrue phone provider update notice:', authErr?.message || authErr);
+        }
+      }
+
+      await recordSecurityAuditLog({
+        actorUid: params.actorUid,
+        actorEmail: params.actorEmail,
+        actorRole: params.actorRole,
+        action: 'VERIFY_PHONE_OWNERSHIP',
+        targetType: 'alumni_profile',
+        targetId: String(profileId),
+        severity: 'info',
+        summary: `Admin verified phone ownership for ${profile.full_name} (${normalizedPhone}). Phone login enabled.`,
+      });
+
+      return {
+        id: profileId,
+        fullName: profile.full_name,
+        phone: normalizedPhone,
+        phoneOwnershipVerified: true,
+        phoneVerifiedAt: now,
+        phoneVerificationNotes: params.notes || 'Verified by portal administrator',
+      };
+    } catch (err: any) {
+      console.error('adminVerifyAlumniPhoneOwnership error:', err);
+      throw err;
+    }
+  }
+
+  // In-memory fallback
+  const found = inMemoryAlumniProfiles.find((p) => p.id === profileId);
+  if (!found) throw new Error('Alumni profile not found in memory store.');
+  if (!found.phone) throw new Error('Alumnus does not have a phone number to verify.');
+  found.phoneOwnershipVerified = true;
+  found.phoneVerifiedAt = now;
+  found.phoneVerificationNotes = params.notes || 'Verified in memory test';
+  return found;
+}
+
+export async function adminRevokeAlumniPhoneOwnership(params: {
+  profileId: number;
+  notes?: string;
+  actorUid: string;
+  actorEmail: string;
+  actorRole: string;
+}) {
+  const profileId = Number(params.profileId);
+  const now = new Date().toISOString();
+
+  if (isSupabaseServerConfigured && profileId) {
+    try {
+      const { data: profile } = await supabaseServer
+        .from(SUPABASE_TABLES.ALUMNI_PROFILES)
+        .select('*')
+        .eq('id', profileId)
+        .single();
+
+      if (profile) {
+        await supabaseServer
+          .from(SUPABASE_TABLES.ALUMNI_PROFILES)
+          .update({
+            phone_ownership_verified: false,
+            phone_verified_at: null,
+            phone_verification_notes: params.notes || 'Phone verification revoked by administrator',
+            updated_at: now,
+          })
+          .eq('id', profileId);
+
+        await recordSecurityAuditLog({
+          actorUid: params.actorUid,
+          actorEmail: params.actorEmail,
+          actorRole: params.actorRole,
+          action: 'REVOKE_PHONE_OWNERSHIP',
+          targetType: 'alumni_profile',
+          targetId: String(profileId),
+          severity: 'warning',
+          summary: `Admin revoked phone ownership verification for ${profile.full_name} (${profile.phone}). Phone login disabled.`,
+        });
+      }
+      return { id: profileId, phoneOwnershipVerified: false };
+    } catch (err: any) {
+      console.error('adminRevokeAlumniPhoneOwnership error:', err);
+      throw err;
+    }
+  }
+
+  const found = inMemoryAlumniProfiles.find((p) => p.id === profileId);
+  if (found) {
+    found.phoneOwnershipVerified = false;
+    found.phoneVerifiedAt = null;
+  }
+  return { id: profileId, phoneOwnershipVerified: false };
 }
 
 export async function getVerificationQueue(statusFilter?: string) {
