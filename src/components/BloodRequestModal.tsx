@@ -48,7 +48,11 @@ export const BloodRequestModal: React.FC<BloodRequestModalProps> = ({
   const [hospitalName, setHospitalName] = useState<string>('');
   const [hospitalArea, setHospitalArea] = useState<string>(DONATION_AREAS_LIST[0]);
   const [customHospitalArea, setCustomHospitalArea] = useState<string>('');
-  const [requiredDateTime, setRequiredDateTime] = useState<string>('Today, within 6 hours');
+  const [requiredDateTime, setRequiredDateTime] = useState<string>(() => {
+    const target = new Date(Date.now() + 6 * 60 * 60 * 1000);
+    target.setMinutes(target.getMinutes() - target.getTimezoneOffset());
+    return target.toISOString().slice(0, 16);
+  });
   const [emergencyLevel, setEmergencyLevel] = useState<BloodEmergencyLevel>('urgent');
   const [contactMethod, setContactMethod] = useState<BloodContactMethod>(
     'Portal Secure Coordination'
@@ -59,6 +63,7 @@ export const BloodRequestModal: React.FC<BloodRequestModalProps> = ({
   );
   const [description, setDescription] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
     if (initialBloodGroup) {
@@ -74,15 +79,16 @@ export const BloodRequestModal: React.FC<BloodRequestModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
     const resolvedArea =
       hospitalArea === 'Custom Area' ? customHospitalArea.trim() : hospitalArea;
 
+    setIsSubmitting(true);
     try {
-      const { request, matchedDonorsCount } = createEmergencyBloodRequest(currentUser, {
+      const { request, matchedDonorsCount } = await createEmergencyBloodRequest(currentUser, {
         bloodGroup,
         unitsRequired,
         hospitalName,
@@ -100,6 +106,8 @@ export const BloodRequestModal: React.FC<BloodRequestModalProps> = ({
       onClose();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Please check all required fields.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -254,11 +262,11 @@ export const BloodRequestModal: React.FC<BloodRequestModalProps> = ({
               <div className="relative">
                 <Clock className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  type="text"
-                  placeholder="e.g. Today by 6:00 PM / Tomorrow 9:00 AM"
+                  type="datetime-local"
                   value={requiredDateTime}
                   onChange={(e) => setRequiredDateTime(e.target.value)}
                   className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
                 />
               </div>
             </div>
