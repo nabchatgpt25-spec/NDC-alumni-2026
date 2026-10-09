@@ -1,6 +1,7 @@
 import { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, ALUMNI_PUBLIC_COLUMNS } from './supabase.ts';
 import { AlumniProfile, UserRole } from '../types.ts';
+import { formatToE164Phone } from '../utils/phone.ts';
 
 const SUPER_ADMIN_EMAILS = new Set([
   'nurulanambashirdamian@gmail.com',
@@ -155,7 +156,9 @@ export async function getOrCreateSupabaseProfile(
       city: extraData?.city || 'Dhaka',
       country: extraData?.country || 'Bangladesh',
       email: cleanEmail || null,
-      phone: extraData?.phone?.trim() || (authUser.user_metadata as any)?.phone || authUser.phone || null,
+      phone: extraData?.phone
+        ? formatToE164Phone(extraData.phone)
+        : ((authUser.user_metadata as any)?.phone ? formatToE164Phone((authUser.user_metadata as any).phone) : (authUser.phone ? formatToE164Phone(authUser.phone) : null)),
       phone_ownership_verified: false,
       whatsapp: extraData?.whatsapp?.trim() || null,
       blood_group: extraData?.bloodGroup || null,

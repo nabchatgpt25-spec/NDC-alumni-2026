@@ -17,18 +17,9 @@ import {
   submitDocumentForAdminReview,
 } from '../utils/verificationService';
 import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
+import { formatToE164Phone, normalizePhoneNumber } from '../utils/phone';
 
-export function formatToE164Phone(raw: string): string {
-  const cleaned = raw.trim();
-  if (cleaned.startsWith('+')) {
-    return cleaned.replace(/[^\d+]/g, '');
-  }
-  const digits = cleaned.replace(/\D/g, '');
-  if (digits.startsWith('880')) {
-    return `+${digits}`;
-  }
-  return `+880${digits.replace(/^0+/, '')}`;
-}
+export { formatToE164Phone, normalizePhoneNumber };
 
 interface PendingOtpEntry {
   otp: string;
@@ -271,148 +262,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authData = res.data;
       authError = res.error;
     } else {
-      const formattedPhone = formatToE164Phone(cleanInput);
+      const norm = normalizePhoneNumber(cleanInput);
+      if (!norm.isValid) {
+        throw new Error(
+          norm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx or +8801xxxxxxxx).'
+        );
+      }
+      const formattedPhone = norm.formatted;
 
-      // 1. Primary: Invoke Supabase Edge Function 'unified-phone-login'
-      let edgeSuccess = false;
-      if (isSupabaseConfigured) {
+      // Invoke Supabase Edge Function 'unified-phone-login' exclusively
+      const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('unified-phone-login', {
+        body: { identifier: formattedPhone, password: pass },
+      });
+
+      if (edgeErr) {
+        let parsedErr = '';
         try {
-          const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('unified-phone-login', {
-            body: { identifier: formattedPhone, password: pass },
-          });
-
-          if (edgeErr) {
-            // Check if Edge Function returned a JSON error response
-            const contextMsg = (edgeErr as any)?.context?.message || edgeErr.message || '';
-            let parsedErr = contextMsg;
-            try {
-              if (edgeErr.context && typeof edgeErr.context.json === 'function') {
-                const j = await edgeErr.context.json();
-                if (j?.error) parsedErr = j.error;
-              }
-            } catch {}
-
-            if (parsedErr && !parsedErr.includes('Failed to send a request') && !parsedErr.includes('404')) {
-              throw new Error(parsedErr);
-            }
+          if (edgeErr.context && typeof edgeErr.context.json === 'function') {
+            const j = await edgeErr.context.json();
+            if (j?.error) parsedErr = j.error;
+            else if (j?.message) parsedErr = j.message;
           }
+        } catch {}
 
-          if (edgeData?.error) {
-            throw new Error(edgeData.error);
-          }
-
-          if (edgeData?.session?.access_token && edgeData?.session?.refresh_token) {
-            const { data: sessionData, error: sessionErr } = await supabase.auth.setSession({
-              access_token: edgeData.session.access_token,
-              refresh_token: edgeData.session.refresh_token,
-            });
-
-            if (!sessionErr && sessionData?.user) {
-              authData = sessionData;
-            } else {
-              authData = {
-                user: edgeData.session.user,
-                session: edgeData.session,
-              };
-            }
-            edgeSuccess = true;
-          }
-        } catch (edgeCallErr: any) {
-          const errMsg = edgeCallErr?.message || '';
-          if (
-            errMsg.includes('not been verified by an administrator') ||
-            errMsg.includes('Google Sign-In') ||
-            errMsg.includes('Invalid mobile number') ||
-            errMsg.includes('Incorrect password') ||
-            errMsg.includes('Too many login attempts') ||
-            errMsg.includes('No registered account') ||
-            errMsg.includes('suspended') ||
-            errMsg.includes('temporarily unavailable') ||
-            errMsg.includes('security check')
-          ) {
-            throw edgeCallErr;
-          }
-          // If Edge Function not yet deployed on Supabase project, continue to fallback
+        if (!parsedErr) {
+          const contextMsg = (edgeErr as any)?.context?.message || edgeErr.message || '';
+          parsedErr = contextMsg;
         }
+
+        if (parsedErr.includes('Failed to send a request') || parsedErr.includes('FunctionsFetchError')) {
+          throw new Error(
+            'Unable to connect to authentication service. Please check your internet connection or sign in using your registered email address.'
+          );
+        }
+
+        throw new Error(parsedErr || 'Invalid mobile number or incorrect password.');
       }
 
-      // 2. Secondary fallback: Backend API endpoint '/api/auth/unified-login'
-      if (!edgeSuccess) {
-        try {
-          const unifiedResp = await fetch(apiUrl('/api/auth/unified-login'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ identifier: formattedPhone, password: pass }),
-          });
+      if (edgeData?.error) {
+        throw new Error(edgeData.error);
+      }
 
-          const unifiedJson = await unifiedResp.json();
+      if (!edgeData?.session?.access_token || !edgeData?.session?.refresh_token) {
+        throw new Error('Invalid authentication response. Please check your credentials.');
+      }
 
-          if (!unifiedResp.ok) {
-            throw new Error(unifiedJson.error || 'Login failed. Please check your credentials.');
-          }
+      const { data: sessionData, error: sessionErr } = await supabase.auth.setSession({
+        access_token: edgeData.session.access_token,
+        refresh_token: edgeData.session.refresh_token,
+      });
 
-          if (unifiedJson.session?.access_token && unifiedJson.session?.refresh_token) {
-            const { data: sessionData, error: sessionErr } = await supabase.auth.setSession({
-              access_token: unifiedJson.session.access_token,
-              refresh_token: unifiedJson.session.refresh_token,
-            });
+      if (sessionErr) {
+        throw new Error(sessionErr.message || 'Failed to establish authenticated session.');
+      }
 
-            if (!sessionErr && sessionData?.user) {
-              authData = sessionData;
-            } else {
-              authData = {
-                user: unifiedJson.session.user,
-                session: unifiedJson.session,
-              };
-            }
-          } else if (unifiedJson.profile) {
-            setCurrentUser(unifiedJson.profile);
-            setIsAdminUser(unifiedJson.profile.role === 'admin' || isSuperAdminEmail(unifiedJson.profile.email));
-            setIsLoggedIn(true);
-            return true;
-          }
-        } catch (unifiedErr: any) {
-          const errMsg = unifiedErr?.message || '';
-          if (
-            errMsg.includes('not been verified by an administrator') ||
-            errMsg.includes('Google Sign-In') ||
-            errMsg.includes('Incorrect password') ||
-            errMsg.includes('No registered account') ||
-            errMsg.includes('suspended')
-          ) {
-            throw unifiedErr;
-          }
-
-          // 3. Tertiary fallback: Direct Supabase GoTrue phone sign-in
-          const res = await supabase.auth.signInWithPassword({
-            phone: formattedPhone,
-            password: pass,
-          });
-          authData = res.data;
-          authError = res.error;
-        }
+      if (sessionData?.user) {
+        authData = sessionData;
+      } else {
+        authData = {
+          user: edgeData.session.user,
+          session: edgeData.session,
+        };
       }
     }
 
     if (authError) {
       const msg = authError.message.toLowerCase();
-      if (msg.includes('phone provider is disabled') || msg.includes('unsupported phone provider')) {
-        throw new Error(
-          'Phone provider is currently disabled in your Supabase project. To use Phone login, please enable the Phone Provider in Supabase Dashboard (Authentication > Providers > Phone) or sign in using your registered Email Address.'
-        );
-      }
       if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
-        throw new Error(
-          isEmail
-            ? 'Invalid email or password. Please verify your credentials or reset your password.'
-            : 'Invalid phone or password. If your account was originally registered with an email address, please sign in using your email address, or verify your mobile number via SMS OTP.'
-        );
+        throw new Error('Invalid email or password. Please verify your credentials or reset your password.');
       }
       if (msg.includes('email not confirmed')) {
         throw new Error('Your email address has not been confirmed yet. Please check your inbox or spam folder for the Supabase confirmation link.');
-      }
-      if (msg.includes('phone not confirmed')) {
-        throw new Error('Your phone number has not been confirmed yet. Please verify your phone number via SMS code.');
       }
       throw new Error(authError.message || 'Login failed. Please check your credentials.');
     }
@@ -471,104 +391,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   };
 
-  const loginWithPhoneOtp = async (phone: string): Promise<boolean> => {
-    if (!phone?.trim()) {
-      throw new Error('Please enter your mobile number.');
-    }
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase client is not configured.');
-    }
-
-    const formattedPhone = formatToE164Phone(phone);
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: formattedPhone,
-    });
-
-    if (error) {
-      const msg = error.message.toLowerCase();
-      if (msg.includes('phone provider is disabled') || msg.includes('unsupported phone provider')) {
-        throw new Error(
-          'Supabase Phone Provider is not enabled. In Supabase Dashboard, go to Authentication > Providers > Phone and configure an SMS provider (e.g. Twilio, MessageBird, or Vonage). Alternatively, sign in using Email & Password.'
-        );
-      }
-      if (msg.includes('rate limit')) {
-        throw new Error('SMS verification rate limit reached. Please wait a few minutes before requesting another code.');
-      }
-      throw new Error(error.message);
-    }
-
-    return true;
+  const loginWithPhoneOtp = async (_phone: string): Promise<boolean> => {
+    throw new Error(
+      'SMS verification is disabled. Please sign in using your Mobile Number (or Email) and your password.'
+    );
   };
 
-  const verifyPhoneOtp = async (phone: string, token: string): Promise<boolean> => {
-    if (!phone?.trim() || !token?.trim()) {
-      throw new Error('Please enter both your mobile number and the 6-digit SMS verification code.');
-    }
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase client is not configured.');
-    }
-
-    const formattedPhone = formatToE164Phone(phone);
-    const { data: authData, error: authError } = await supabase.auth.verifyOtp({
-      phone: formattedPhone,
-      token: token.trim(),
-      type: 'sms',
-    });
-
-    if (authError) {
-      throw new Error(authError.message || 'Invalid or expired SMS code. Please try again.');
-    }
-
-    if (!authData?.user) {
-      throw new Error('Unable to verify phone number.');
-    }
-
-    if (authData.session?.access_token) {
-      inMemorySupabaseToken = authData.session.access_token;
-      setSupabaseToken(authData.session.access_token);
-    }
-
-    const profile = await getOrCreateSupabaseProfile(authData.user, {
-      phone: formattedPhone,
-    });
-
-    if (profile) {
-      setCurrentUser(profile);
-      setIsAdminUser(profile.role === 'admin' || isSuperAdminEmail(profile.email));
-      setIsLoggedIn(true);
-      return true;
-    }
-
-    const fallbackProfile: AlumniProfile = {
-      id: Number(authData.user.id.replace(/[^0-9]/g, '').slice(0, 10)) || Date.now(),
-      userId: Number(authData.user.id.replace(/[^0-9]/g, '').slice(0, 10)) || Date.now(),
-      authUserId: authData.user.id,
-      fullName: (authData.user.user_metadata as any)?.full_name || 'Notredamian Alumnus',
-      avatarUrl: (authData.user.user_metadata as any)?.avatar_url || '/ndc-logo.png',
-      batchYear: Number((authData.user.user_metadata as any)?.batch_year) || 68,
-      academicStream: 'Science',
-      academicGroup: null,
-      section: 'Group 4',
-      verificationStatus: 'unverified',
-      vouchesCount: 0,
-      vouchTargetCount: 2,
-      profession: '',
-      position: '',
-      institution: '',
-      specialty: [],
-      degree: ['HSC'],
-      city: 'Dhaka',
-      country: 'Bangladesh',
-      phone: formattedPhone,
-      role: 'member',
-      isPublic: true,
-      online: true,
-      badges: [],
-    };
-    setCurrentUser(fallbackProfile);
-    setIsAdminUser(false);
-    setIsLoggedIn(true);
-    return true;
+  const verifyPhoneOtp = async (_phone: string, _token: string): Promise<boolean> => {
+    throw new Error(
+      'SMS verification is disabled. Please sign in using your Mobile Number (or Email) and your password.'
+    );
   };
 
   const logout = () => {
@@ -582,7 +414,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
     const cleanEmail = (profileData.email || '').trim().toLowerCase();
-    const cleanPhone = (profileData.phone || '').trim();
+    const rawPhone = (profileData.phone || '').trim();
     const rawBatch = profileData.batchYear || 68;
     const normalizedBatch = rawBatch > 1900 ? rawBatch - 1950 : (rawBatch > 0 ? rawBatch : 68);
 
@@ -593,6 +425,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Please provide your email address and a password.');
     }
 
+    let cleanPhone = '';
+    if (rawPhone) {
+      const norm = normalizePhoneNumber(rawPhone);
+      if (!norm.isValid) {
+        throw new Error(
+          norm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx or +8801xxxxxxxx).'
+        );
+      }
+      cleanPhone = norm.formatted;
+
+      // Safe pre-check: verify phone availability if RPC is installed
+      try {
+        const { data: isAvailable, error: rpcErr } = await supabase.rpc('check_phone_available', {
+          p_phone: cleanPhone,
+        });
+        if (!rpcErr && isAvailable === false) {
+          throw new Error('This mobile number is already registered to another alumni account. Please sign in directly or use your registered email.');
+        }
+      } catch (checkErr: any) {
+        if (checkErr.message?.includes('already registered')) {
+          throw checkErr;
+        }
+        // Continue if RPC is not deployed yet; database unique constraint serves as authoritative guardrail
+      }
+    }
+
     const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
       email: cleanEmail,
       password: profileData.password,
@@ -600,7 +458,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data: {
           full_name: profileData.fullName?.trim(),
           batch_year: normalizedBatch,
-          phone: cleanPhone,
+          phone: cleanPhone || undefined,
         },
       },
     });
@@ -608,7 +466,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (signUpErr) {
       const msg = signUpErr.message.toLowerCase();
       if (msg.includes('rate limit')) {
-        throw new Error('Supabase email rate limit exceeded. If you are project admin, disable "Confirm email" in Supabase Authentication settings or use custom SMTP.');
+        throw new Error('Supabase email rate limit reached. Please wait a moment before trying again.');
       }
       if (msg.includes('already registered') || msg.includes('user already exists')) {
         throw new Error('An account with this email already exists. Please sign in directly.');
@@ -630,7 +488,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile = await getOrCreateSupabaseProfile(signUpData.user, {
         ...profileData,
         email: cleanEmail,
-        phone: cleanPhone,
+        phone: cleanPhone || undefined,
         batchYear: normalizedBatch,
       });
 
@@ -646,28 +504,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateProfile = async (updated: Partial<AlumniProfile>) => {
-    setCurrentUser((prev) => ({ ...prev, ...updated }));
+    let cleanPhone = updated.phone;
+    if (cleanPhone) {
+      const norm = normalizePhoneNumber(cleanPhone);
+      if (norm.isValid) {
+        cleanPhone = norm.formatted;
+      }
+    }
+
+    setCurrentUser((prev) => ({ ...prev, ...updated, phone: cleanPhone ?? prev.phone }));
     if (isSupabaseConfigured && currentUser.authUserId) {
       try {
-        await supabase
+        const updatePayload: Record<string, any> = {
+          full_name: updated.fullName,
+          avatar_url: updated.avatarUrl,
+          cover_url: updated.coverUrl,
+          profession: updated.profession,
+          position: updated.position,
+          institution: updated.institution,
+          city: updated.city,
+          country: updated.country,
+          bio: updated.bio,
+          whatsapp: updated.whatsapp,
+          fb_link: updated.fbLink,
+        };
+
+        if (cleanPhone !== undefined) {
+          updatePayload.phone = cleanPhone;
+          // Protect against identifier hijacking: changing phone clears verification
+          updatePayload.phone_ownership_verified = false;
+        }
+
+        const { error: updateErr } = await supabase
           .from('alumni_profiles')
-          .update({
-            full_name: updated.fullName,
-            avatar_url: updated.avatarUrl,
-            cover_url: updated.coverUrl,
-            profession: updated.profession,
-            position: updated.position,
-            institution: updated.institution,
-            city: updated.city,
-            country: updated.country,
-            bio: updated.bio,
-            phone: updated.phone,
-            whatsapp: updated.whatsapp,
-            fb_link: updated.fbLink,
-          })
+          .update(updatePayload)
           .eq('auth_user_id', currentUser.authUserId);
+
+        if (updateErr) {
+          if (updateErr.message.toLowerCase().includes('unique') || updateErr.message.toLowerCase().includes('phone')) {
+            throw new Error('This mobile number is already registered to another alumni account.');
+          }
+          console.warn('Supabase profile update warning:', updateErr);
+        }
       } catch (err) {
         console.warn('Supabase profile update warning:', err);
+        throw err;
       }
     }
   };
@@ -706,16 +587,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: true, emailSent: true };
     }
-    const key = normalizePhoneDigits(phoneOrEmail);
-    if (key.length < 6) {
-      throw new Error('Please enter your registered email address or mobile number.');
-    }
-    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStoreRef.current.set(key, {
-      otp: generatedOtp,
-      expiresAt: Date.now() + 10 * 60 * 1000,
-    });
-    return { success: true, debugOtp: generatedOtp };
+
+    // Security requirement: mobile numbers are only alternative login identifiers, NOT verified identities.
+    // They must never be used for password reset or account recovery.
+    throw new Error(
+      'For account security, password recovery instructions are sent exclusively to registered email addresses. Please enter your registered email address to receive password reset instructions.'
+    );
   };
 
   const resetPasswordWithOtp = async (phoneOrEmail: string, otp: string, newPass: string) => {
@@ -728,15 +605,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw new Error(error.message);
       return true;
     }
-    const key = normalizePhoneDigits(phoneOrEmail);
-    const entry = otpStoreRef.current.get(key);
-    if (!entry || Date.now() > entry.expiresAt) {
-      throw new Error('OTP has expired or was not requested. Please request a new OTP.');
+
+    // Direct password update requires authenticated recovery session
+    const { error } = await supabase.auth.updateUser({ password: newPass });
+    if (error) {
+      throw new Error(error.message || 'Please use the password reset link sent to your registered email address.');
     }
-    if (entry.otp !== otp.trim()) {
-      throw new Error('Invalid OTP code. Please check the 6-digit code and try again.');
-    }
-    otpStoreRef.current.delete(key);
     return true;
   };
 

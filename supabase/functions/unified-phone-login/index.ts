@@ -1,42 +1,214 @@
 // =============================================================================
 // SUPABASE EDGE FUNCTION: unified-phone-login
-// Project: Notre Dame College Alumni Network (NDC Dhaka)
+// Project: Notre Dame College Alumni Network (NDC Dhaka / Bogura)
+// Live Domain: https://ndcbogura.alumniworld.xyz
 // Runtime: Deno (Supabase Edge Runtime)
-// Description: Authenticates users via Phone + Password using their SAME
-//              Supabase Auth account, enforcing Admin Phone Ownership Verification,
-//              atomic distributed PostgreSQL rate limiting, and zero-enumeration defenses.
+// Description: Authenticates alumni via Mobile Number + Password WITHOUT requiring
+//              the Supabase Phone Provider, Twilio, or SMS OTP.
+//
+// Architecture & Security:
+// 1. Accepts { identifier, password }.
+// 2. Strict CORS origin validation against live domain (https://ndcbogura.alumniworld.xyz),
+//    authorized subdomains, and development environments before returning CORS headers.
+// 3. Complete OPTIONS preflight handling with HTTP 204 and cached preflight headers.
+// 4. Normalizes Bangladesh mobile numbers (+8801XXXXXXXXX) and international formats.
+// 5. Distributed atomic rate limiting via PostgreSQL RPC check_and_increment_rate_limit.
+//    Fails closed if the limiter RPC fails or is unavailable.
+// 6. Resolves registered mobile number to the associated alumni profile and email.
+//    (Mobile number is an alternative login identifier; NOT a verified identity.
+//     Admin phone verification is NOT required for sign-in).
+// 7. Zero-enumeration defense: returns identical generic error response for
+//    nonexistent accounts or incorrect passwords, with randomized timing jitter.
+// 8. Enforces mandatory Supabase Email Confirmation per project configuration.
+// 9. Authenticates using SUPABASE_ANON_KEY with signInWithPassword({ email, password }).
+//    Never uses SUPABASE_SERVICE_ROLE_KEY to authenticate or bypass password checks.
+// 10. Verifies that authenticated user.id strictly matches profile.auth_user_id.
+// 11. Does NOT update, modify, or automatically confirm phone numbers during login.
+// 12. Returns the official Supabase Auth session for client session establishment.
 // =============================================================================
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Content-Type": "application/json",
-};
+// Primary live production domain
+const PRIMARY_LIVE_DOMAIN = "https://ndcbogura.alumniworld.xyz";
 
-// Unified error response across nonexistent, unverified, and incorrect-password attempts
-// Completely prevents phone enumeration attacks while providing clear instructions.
-const GENERIC_AUTH_ERROR =
-  "Invalid mobile number or password. Note: Mobile number sign-in requires prior administrator verification. You may always sign in using your registered email address.";
+// Explicit institutional allowed domains
+const ALLOWED_EXACT_ORIGINS = new Set([
+  "https://ndcbogura.alumniworld.xyz",
+  "https://alumniworld.xyz",
+  "https://www.alumniworld.xyz",
+]);
 
-// Normalize Bangladeshi / International phone to standard E.164 (+8801XXXXXXXXX)
-function formatToE164(raw: string): string {
-  const cleaned = raw.trim();
-  if (cleaned.startsWith("+")) {
-    return cleaned.replace(/[^\d+]/g, "");
+/**
+ * Strictly validates the incoming Origin header against the live domain and authorized environments.
+ * Returns the canonical validated origin string if authorized, or null if unauthorized.
+ */
+function getValidatedOrigin(req: Request): string | null {
+  const origin = req.headers.get("origin");
+  if (!origin) {
+    // Direct server-side / curl invocations without Origin header default to live domain
+    return PRIMARY_LIVE_DOMAIN;
   }
-  const digits = cleaned.replace(/\D/g, "");
-  if (digits.startsWith("880")) {
-    return `+${digits}`;
+
+  const normalized = origin.trim().replace(/\/+$/, "");
+
+  // 1. Strict exact match for live domain & institutional roots
+  if (ALLOWED_EXACT_ORIGINS.has(normalized)) {
+    return normalized;
   }
-  return `+880${digits.replace(/^0+/, "")}`;
+
+  // 2. HTTPS subdomains of alumniworld.xyz
+  if (/^https:\/\/([a-zA-Z0-9-]+\.)*alumniworld\.xyz$/.test(normalized)) {
+    return normalized;
+  }
+
+  // 3. Localhost development environments
+  if (/^https?:\/\/localhost(:[0-9]+)?$/.test(normalized)) {
+    return normalized;
+  }
+  if (/^https?:\/\/127\.0\.0\.1(:[0-9]+)?$/.test(normalized)) {
+    return normalized;
+  }
+
+  // 4. AI Studio preview environments / Google Cloud Run containers
+  if (/^https:\/\/([a-zA-Z0-9-]+\.)*run\.app$/.test(normalized)) {
+    return normalized;
+  }
+  if (/^https:\/\/([a-zA-Z0-9-]+\.)*googleusercontent\.com$/.test(normalized)) {
+    return normalized;
+  }
+
+  // Unauthorized origin
+  return null;
 }
 
-// Atomic distributed rate limit via PostgreSQL SECURITY DEFINER RPC.
-// Fails closed: if the database RPC fails or is missing, rejects safely to prevent unthrottled brute force.
+/**
+ * Generates strict CORS headers based on Origin validation.
+ * If Origin is unauthorized, Access-Control-Allow-Origin is omitted.
+ */
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin");
+  const validatedOrigin = getValidatedOrigin(req);
+
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, accept, x-requested-with, prefer",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
+  };
+
+  if (validatedOrigin) {
+    headers["Access-Control-Allow-Origin"] = validatedOrigin;
+    headers["Access-Control-Allow-Credentials"] = "true";
+  } else if (!origin) {
+    headers["Access-Control-Allow-Origin"] = PRIMARY_LIVE_DOMAIN;
+  }
+
+  return headers;
+}
+
+// Generic zero-enumeration error message
+const GENERIC_AUTH_ERROR =
+  "Invalid mobile number or incorrect password. Please check your credentials or sign in using your registered email address.";
+
+/**
+ * Normalizes Bangladeshi and International phone numbers to canonical E.164.
+ * Bangladeshi Mobile Operators (11 digits):
+ *   013, 017 -> Grameenphone / Skitto
+ *   014, 019 -> Banglalink
+ *   015      -> Teletalk
+ *   016, 018 -> Robi / Airtel
+ */
+function normalizePhoneNumber(raw: string): { formatted: string; isValid: boolean; isBD: boolean; error?: string } {
+  if (!raw || typeof raw !== "string") {
+    return { formatted: "", isValid: false, isBD: false, error: "Mobile number is required." };
+  }
+
+  const trimmed = raw.trim();
+  const digitsOnly = trimmed.replace(/\D/g, "");
+
+  if (!digitsOnly) {
+    return { formatted: "", isValid: false, isBD: false, error: "Mobile number must contain digits." };
+  }
+
+  // 13-digit BD format (8801XXXXXXXXX)
+  if (digitsOnly.startsWith("8801") && digitsOnly.length === 13) {
+    const operator = digitsOnly.charAt(4);
+    if ("3456789".includes(operator)) {
+      return { formatted: `+${digitsOnly}`, isValid: true, isBD: true };
+    }
+    return { formatted: `+${digitsOnly}`, isValid: false, isBD: true, error: "Invalid BD mobile operator prefix." };
+  }
+
+  // 11-digit BD format (01XXXXXXXXX)
+  if (digitsOnly.startsWith("01") && digitsOnly.length === 11) {
+    const operator = digitsOnly.charAt(2);
+    if ("3456789".includes(operator)) {
+      return { formatted: `+88${digitsOnly}`, isValid: true, isBD: true };
+    }
+    return { formatted: `+88${digitsOnly}`, isValid: false, isBD: true, error: "Invalid BD mobile operator prefix." };
+  }
+
+  // 10-digit BD format (1XXXXXXXXX, omitted leading 0)
+  if (digitsOnly.startsWith("1") && digitsOnly.length === 10) {
+    const operator = digitsOnly.charAt(1);
+    if ("3456789".includes(operator)) {
+      return { formatted: `+880${digitsOnly}`, isValid: true, isBD: true };
+    }
+  }
+
+  // International with leading '+'
+  if (trimmed.startsWith("+") && digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+    return { formatted: `+${digitsOnly}`, isValid: true, isBD: digitsOnly.startsWith("880") };
+  }
+
+  // International digits only (7 to 15 digits)
+  if (digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+    return { formatted: `+${digitsOnly}`, isValid: true, isBD: digitsOnly.startsWith("880") };
+  }
+
+  return { formatted: trimmed, isValid: false, isBD: false, error: "Invalid phone number format." };
+}
+
+/**
+ * Generate canonical phone search variants to match existing database storage formats:
+ * - Canonical E.164: +8801XXXXXXXXX
+ * - Local 11 digits: 01XXXXXXXXX
+ * - 13 digits: 8801XXXXXXXXX
+ * - 10 digits: 1XXXXXXXXX
+ */
+function getPhoneSearchVariants(raw: string): string[] {
+  const norm = normalizePhoneNumber(raw);
+  const variants = new Set<string>();
+  const trimmed = raw.trim();
+  const digits = raw.replace(/\D/g, "");
+
+  if (trimmed) variants.add(trimmed);
+  if (norm.formatted) variants.add(norm.formatted);
+
+  if (norm.isBD && norm.formatted.startsWith("+880")) {
+    const local11 = "0" + norm.formatted.slice(4); // 017...
+    const full13 = norm.formatted.slice(1);        // 88017...
+    const local10 = norm.formatted.slice(4);       // 17...
+    variants.add(local11);
+    variants.add(full13);
+    variants.add(local10);
+  }
+
+  if (digits) {
+    variants.add(digits);
+    if (!digits.startsWith("+")) variants.add(`+${digits}`);
+  }
+
+  return Array.from(variants);
+}
+
+/**
+ * Distributed rate limiter via PostgreSQL RPC check_and_increment_rate_limit.
+ * Fails closed: if the RPC fails or is missing, rejects safely to prevent brute force attacks.
+ */
 async function checkDistributedRateLimit(
   supabaseAdmin: any,
   rateKey: string,
@@ -66,25 +238,75 @@ async function checkDistributedRateLimit(
   }
 }
 
-// Dummy timing jitter to equalize response latency against timing side-channel attacks
+/**
+ * Timing jitter to equalize response latency against timing side-channel attacks
+ */
 async function timingJitter() {
   const jitterMs = 120 + Math.floor(Math.random() * 80);
   await new Promise((resolve) => setTimeout(resolve, jitterMs));
 }
 
 serve(async (req: Request) => {
+  const origin = req.headers.get("origin");
+  const validatedOrigin = getValidatedOrigin(req);
+
+  // 1. Strictly process CORS preflight (OPTIONS) requests immediately
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    // If an Origin was explicitly passed and failed validation, block preflight
+    if (origin && !validatedOrigin) {
+      return new Response(JSON.stringify({ error: "Origin not allowed by CORS policy." }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Return standard preflight 204 No Content with validated CORS headers
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(req),
+    });
+  }
+
+  // 2. Helper to construct JSON responses with validated CORS headers for this request
+  const respond = (body: unknown, status = 200): Response => {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: {
+        ...getCorsHeaders(req),
+        "Content-Type": "application/json",
+      },
+    });
+  };
+
+  // 3. Strictly verify that the handler only accepts POST requests
+  if (req.method !== "POST") {
+    return respond({ error: "Method not allowed. Only POST and OPTIONS are accepted." }, 405);
+  }
+
+  // 4. Strict Origin check on POST requests
+  if (origin && !validatedOrigin) {
+    return new Response(JSON.stringify({ error: "Origin not allowed by CORS policy." }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      return new Response(
-        JSON.stringify({ error: "Supabase service credentials not configured in Edge Runtime." }),
-        { status: 500, headers: corsHeaders }
+      return respond(
+        { error: "Supabase service credentials not configured in Edge Runtime." },
+        500
+      );
+    }
+
+    if (!supabaseAnonKey) {
+      return respond(
+        { error: "SUPABASE_ANON_KEY must be configured in Edge Function environment for public auth." },
+        500
       );
     }
 
@@ -95,7 +317,7 @@ serve(async (req: Request) => {
       },
     });
 
-    // 1. Client IP Identification
+    // 5. Client IP Identification
     const clientIp =
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       req.headers.get("cf-connecting-ip") ||
@@ -105,152 +327,182 @@ serve(async (req: Request) => {
     const { identifier, password } = body;
 
     if (!identifier || typeof identifier !== "string" || !password || typeof password !== "string") {
-      return new Response(
-        JSON.stringify({ error: "Please enter your mobile number and password." }),
-        { status: 400, headers: corsHeaders }
+      return respond(
+        { error: "Please enter your mobile number and password." },
+        400
       );
     }
 
     const cleanInput = identifier.trim();
-    const normalizedPhone = formatToE164(cleanInput);
+    const phoneNorm = normalizePhoneNumber(cleanInput);
 
-    // 2. Strict Distributed Rate Limiting (Server-side atomic via PostgreSQL RPC)
+    if (!phoneNorm.isValid) {
+      return respond(
+        { error: phoneNorm.error || "Please enter a valid mobile number (e.g. 017xxxxxxxx or +8801xxxxxxxx)." },
+        400
+      );
+    }
+
+    const normalizedPhone = phoneNorm.formatted;
+
+    // 6. Distributed Atomic Rate Limiting (Server-side via PostgreSQL RPC)
     // Rate limit per IP (15 attempts / min) and per Phone identifier (5 attempts / min)
     const ipCheck = await checkDistributedRateLimit(supabaseAdmin, `login_ip:${clientIp}`, 15, 60);
     const phoneCheck = await checkDistributedRateLimit(supabaseAdmin, `login_phone:${normalizedPhone}`, 5, 60);
 
-    // Safety check: if rate-limiting RPC failed, reject safely (fail closed)
+    // Fail closed if rate limiter RPC failed
     if (ipCheck.rpcError || phoneCheck.rpcError) {
       console.error("Rate limiter verification failed. Rejecting login safely.");
-      return new Response(
-        JSON.stringify({
-          error: "Authentication service security check temporarily unavailable. Please try again shortly.",
-        }),
-        { status: 503, headers: corsHeaders }
+      return respond(
+        { error: "Authentication security check temporarily unavailable. Please try again shortly." },
+        503
       );
     }
 
     // Rate limit exceeded check
     if (!ipCheck.allowed || !phoneCheck.allowed) {
-      return new Response(
-        JSON.stringify({
-          error: "Too many login attempts. For institutional security, please wait 60 seconds before trying again.",
-        }),
-        { status: 429, headers: corsHeaders }
+      return respond(
+        { error: "Too many login attempts. For institutional security, please wait 60 seconds before trying again." },
+        429
       );
     }
 
-    // 3. Query public.alumni_profiles by phone number
-    const { data: profile, error: profileErr } = await supabaseAdmin
+    // 7. Resolve registered mobile number to alumni profile
+    // Uses canonical search variants to match any legacy format stored in the database
+    const variants = getPhoneSearchVariants(cleanInput);
+    const orCondition = variants.map((v) => `phone.eq.${v}`).join(",");
+
+    let { data: profile, error: profileErr } = await supabaseAdmin
       .from("alumni_profiles")
-      .select("id, auth_user_id, email, phone, full_name, phone_ownership_verified, is_public")
-      .or(`phone.eq.${normalizedPhone},phone.eq.${cleanInput}`)
+      .select("id, auth_user_id, email, phone, full_name, phone_ownership_verified")
+      .or(orCondition)
+      .order("id", { ascending: true })
+      .limit(1)
       .maybeSingle();
 
     if (profileErr) {
       console.warn("Database lookup notice:", profileErr.message);
     }
 
-    // Anti-enumeration defense Case A: Account does not exist
+    // Secondary fallback for numbers with spaces or hyphens
+    if (!profile) {
+      const digits = cleanInput.replace(/\D/g, "");
+      if (digits.length >= 10) {
+        const last10 = digits.slice(-10);
+        const { data: candidates } = await supabaseAdmin
+          .from("alumni_profiles")
+          .select("id, auth_user_id, email, phone, full_name, phone_ownership_verified")
+          .ilike("phone", `%${last10}%`)
+          .limit(5);
+
+        if (candidates && candidates.length > 0) {
+          profile = candidates.find((c) => {
+            const cDigits = (c.phone || "").replace(/\D/g, "");
+            return cDigits.endsWith(last10);
+          }) || null;
+        }
+      }
+    }
+
+    // Anti-enumeration defense: Account does not exist
+    // (Note: Admin phone verification is NOT required; mobile number is only an alternative login identifier)
     if (!profile) {
       await timingJitter();
-      return new Response(
-        JSON.stringify({ error: GENERIC_AUTH_ERROR }),
-        { status: 401, headers: corsHeaders }
-      );
+      return respond({ error: GENERIC_AUTH_ERROR }, 401);
     }
 
-    // Suspended account check
-    if (profile.is_public === false) {
-      return new Response(
-        JSON.stringify({
-          error: "Your account is currently suspended. Please contact Notre Dame Alumni support.",
-        }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
+    // 8. Retrieve registered email for this alumni profile
+    let registeredEmail = profile.email?.trim().toLowerCase() || "";
 
-    // Anti-enumeration defense Case B: Phone ownership not verified by administrator
-    // Returns identical generic error response to prevent phone enumeration
-    if (!profile.phone_ownership_verified) {
-      await timingJitter();
-      return new Response(
-        JSON.stringify({ error: GENERIC_AUTH_ERROR }),
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    // 4. Authenticate against Supabase Auth using the user's registered credentials
-    let authSession: any = null;
-    let authUser: any = null;
-
-    // Method A: Authenticate using verified registered email + password
-    if (profile.email) {
-      const { data: signInData, error: signInErr } = await supabaseAdmin.auth.signInWithPassword({
-        email: profile.email.toLowerCase().trim(),
-        password,
-      });
-
-      if (!signInErr && signInData?.session) {
-        authSession = signInData.session;
-        authUser = signInData.user;
-      }
-    }
-
-    // Method B: If email sign-in did not succeed, try phone directly
-    if (!authSession) {
+    // Guarantee exact email by querying auth.users via auth_user_id if available
+    if (profile.auth_user_id) {
       try {
-        const { data: phoneData, error: phoneErr } = await supabaseAdmin.auth.signInWithPassword({
-          phone: normalizedPhone,
-          password,
-        });
-
-        if (!phoneErr && phoneData?.session) {
-          authSession = phoneData.session;
-          authUser = phoneData.user;
+        const { data: authUserData, error: authUserErr } = await supabaseAdmin.auth.admin.getUserById(
+          profile.auth_user_id
+        );
+        if (!authUserErr && authUserData?.user?.email) {
+          registeredEmail = authUserData.user.email.trim().toLowerCase();
         }
-      } catch {
-        // Native phone provider may not be configured in GoTrue
+      } catch (lookupErr) {
+        console.warn("Notice retrieving auth user by ID:", lookupErr);
       }
     }
 
-    // 5. Successful Authentication
-    if (authSession) {
-      // Synchronize verified phone with auth.users via Admin API
-      if (profile.auth_user_id) {
-        try {
-          await supabaseAdmin.auth.admin.updateUserById(profile.auth_user_id, {
-            phone: normalizedPhone,
-            phone_confirm: true,
-          });
-        } catch (syncErr) {
-          console.warn("GoTrue phone sync notice:", syncErr);
-        }
+    if (!registeredEmail) {
+      await timingJitter();
+      return respond({ error: GENERIC_AUTH_ERROR }, 401);
+    }
+
+    // 9. Authenticate against Supabase Auth using SUPABASE_ANON_KEY
+    // Authenticates using registered email + user's password.
+    // NEVER uses SERVICE_ROLE_KEY for user password verification.
+    const publicAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+
+    const { data: signInData, error: signInErr } = await publicAuthClient.auth.signInWithPassword({
+      email: registeredEmail,
+      password: password,
+    });
+
+    // Check email confirmation status (preserve mandatory email verification)
+    if (signInErr) {
+      const errMsg = signInErr.message.toLowerCase();
+      if (errMsg.includes("email not confirmed")) {
+        await timingJitter();
+        return respond(
+          {
+            error: "Your email address has not been confirmed yet. Please check your inbox or spam folder for the Supabase confirmation link.",
+          },
+          401
+        );
       }
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          session: authSession,
-          user: authUser,
-          profileId: profile.id,
-        }),
-        { status: 200, headers: corsHeaders }
+      // Generic authentication error on bad password
+      await timingJitter();
+      return respond({ error: GENERIC_AUTH_ERROR }, 401);
+    }
+
+    if (!signInData?.session || !signInData?.user) {
+      await timingJitter();
+      return respond({ error: GENERIC_AUTH_ERROR }, 401);
+    }
+
+    // 10. Security verification: Ensure the authenticated user ID strictly matches profile.auth_user_id
+    if (profile.auth_user_id && signInData.user.id !== profile.auth_user_id) {
+      console.error(
+        `User ID mismatch: authenticated ${signInData.user.id} does not match profile auth_user_id ${profile.auth_user_id}`
       );
+      await timingJitter();
+      return respond({ error: GENERIC_AUTH_ERROR }, 401);
     }
 
-    // Anti-enumeration defense Case C & D: Incorrect password or Google OAuth account
-    // All return identical generic authentication error with timing jitter
-    await timingJitter();
-    return new Response(
-      JSON.stringify({ error: GENERIC_AUTH_ERROR }),
-      { status: 401, headers: corsHeaders }
+    // Link profile to auth_user_id if not previously linked (without touching phone verification status)
+    if (!profile.auth_user_id && signInData.user.id) {
+      await supabaseAdmin
+        .from("alumni_profiles")
+        .update({ auth_user_id: signInData.user.id, updated_at: new Date().toISOString() })
+        .eq("id", profile.id);
+    }
+
+    // 11. Return official Supabase session to client
+    return respond(
+      {
+        success: true,
+        session: signInData.session,
+        user: signInData.user,
+        profileId: profile.id,
+      },
+      200
     );
   } catch (err: any) {
     console.error("unified-phone-login exception:", err);
-    return new Response(
-      JSON.stringify({ error: "Authentication service temporarily unavailable. Please try again." }),
-      { status: 500, headers: corsHeaders }
+    return respond(
+      { error: "Authentication service temporarily unavailable. Please try again." },
+      500
     );
   }
 });

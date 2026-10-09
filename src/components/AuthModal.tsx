@@ -29,6 +29,7 @@ import { BATCH_LIST } from '../data/mockData';
 import { WhatsAppIcon } from './SocialIcons';
 import { NDCLogo } from './NDCLogo';
 import { compressImageFileToDataUrl } from '../utils/mediaStorage';
+import { formatToE164Phone } from '../utils/phone';
 
 interface AuthModalProps {
   initialMode: 'login' | 'register' | 'forgot';
@@ -334,16 +335,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     } catch (err: unknown) {
       const error = err as Error;
       const msg = error.message || '';
-      if (
-        msg.toLowerCase().includes('phone provider is disabled') ||
-        msg.toLowerCase().includes('unsupported phone provider')
-      ) {
-        setProviderNotice(
-          'Supabase Phone Provider is not enabled on this project. In the Supabase Dashboard, navigate to Authentication > Providers > Phone, toggle it ON, and configure an SMS provider (Twilio, MessageBird, Vonage, or AWS SNS). In the meantime, you can sign in directly using your registered Email & Password.'
-        );
-      } else {
-        setErrorMessage(msg || 'Invalid credentials. Please try again.');
-      }
+      setErrorMessage(msg || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -448,9 +440,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     setLoading(true);
     try {
-      const formattedPhone = phone.startsWith('+880')
-        ? phone
-        : `+880${phone.replace(/^0+/, '')}`;
+      const formattedPhone = formatToE164Phone(phone);
 
       const degreeArray = degreeInput
         .split(',')
@@ -462,11 +452,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const cleanWhatsapp = whatsapp.trim()
-        ? whatsapp.trim().startsWith('+880')
-          ? whatsapp.trim()
-          : `+880${whatsapp.trim().replace(/^0+/, '')}`
-        : '';
+      const cleanWhatsapp = whatsapp.trim() ? formatToE164Phone(whatsapp) : '';
 
       const isIdVerified = verificationMethod === 'id_card_upload' && Boolean(idProofPreview);
 
@@ -517,25 +503,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Handle Request OTP
+  // Handle Request Password Reset Link via Supabase Auth
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-    if (!forgotPhone.trim()) {
-      setErrorMessage('Please enter your registered mobile number.');
+    const input = forgotPhone.trim();
+    if (!input) {
+      setErrorMessage('Please enter your registered mobile number or email address.');
       return;
     }
     setLoading(true);
     try {
-      const res = await requestOtp(forgotPhone);
-      setForgotStep(2);
-      if (res.debugOtp) {
-        setDebugOtp(res.debugOtp);
+      const res = await requestOtp(input);
+      if (res.emailSent) {
+        setSuccessMessage('Password reset link sent! Please check your registered email inbox or spam folder.');
+      } else {
+        setForgotStep(2);
+        if (res.debugOtp) {
+          setDebugOtp(res.debugOtp);
+        }
+        setSuccessMessage('Verification details processed.');
       }
-      setSuccessMessage('A 6-digit OTP code has been generated for your phone number.');
     } catch (err: unknown) {
       const error = err as Error;
-      setErrorMessage(error.message || 'Unable to send OTP. Please try again.');
+      setErrorMessage(error.message || 'Unable to initiate password reset. Please try again.');
     } finally {
       setLoading(false);
     }

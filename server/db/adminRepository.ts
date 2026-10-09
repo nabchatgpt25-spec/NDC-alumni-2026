@@ -3,7 +3,7 @@ import {
   isSupabaseServerConfigured,
   SUPABASE_TABLES,
 } from '../lib/supabase-server.ts';
-import { OFFICIAL_NOTICES } from '../data/noticesData.ts';
+import { OFFICIAL_NOTICES } from '../../src/data/noticesData.ts';
 
 export interface ProfileFilterParams {
   page?: number;

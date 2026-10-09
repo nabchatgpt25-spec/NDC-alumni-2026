@@ -15,8 +15,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import * as dotenv from 'dotenv';
-import { supabaseServer, isSupabaseServerConfigured } from './src/lib/supabase-server.ts';
-import { requireAuth, requireAdmin, optionalAuth, type AuthRequest } from './src/middleware/auth.ts';
+import { supabaseServer, isSupabaseServerConfigured } from './server/lib/supabase-server.ts';
+import { requireAuth, requireAdmin, optionalAuth, type AuthRequest } from './server/middleware/auth.ts';
 import {
   adminUpdateAlumniGovernance,
   createOrRegisterAlumniProfile,
@@ -36,7 +36,7 @@ import {
   deleteAlumniProfile,
   adminVerifyAlumniPhoneOwnership,
   adminRevokeAlumniPhoneOwnership,
-} from './src/db/adminRepository.ts';
+} from './server/db/adminRepository.ts';
 
 dotenv.config();
 
@@ -1176,6 +1176,12 @@ app.get(
     }
   }
 );
+
+// Direct download route for the cPanel deployment zip
+app.get(['/download/ndc-alumni-dist.zip', '/ndc-alumni-dist.zip'], (_req: Request, res: Response) => {
+  const zipPath = path.resolve(__dirname, 'ndc-alumni-dist.zip');
+  res.download(zipPath, 'ndc-alumni-dist.zip');
+});
 
 // ---------------------------------------------------------------------------
 // VITE DEV SERVER / STATIC ASSET SERVING
