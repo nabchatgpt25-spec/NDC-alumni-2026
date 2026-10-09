@@ -73,9 +73,7 @@ serve(async (req: Request) => {
       .eq("auth_user_id", caller.id)
       .maybeSingle();
 
-    const isAuthorized =
-      callerProfile?.role === "super_admin" ||
-      callerProfile?.role === "admin";
+    const isAuthorized = callerProfile?.role === "admin";
 
     if (!isAuthorized) {
       return new Response(
@@ -109,6 +107,13 @@ serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ error: "Target alumni profile not found." }),
         { status: 404, headers: corsHeaders }
+      );
+    }
+
+    if (callerProfile?.id === targetProfileId) {
+      return new Response(
+        JSON.stringify({ error: "Administrators cannot verify or revoke their own phone ownership." }),
+        { status: 403, headers: corsHeaders }
       );
     }
 
@@ -159,8 +164,12 @@ serve(async (req: Request) => {
         .select()
         .single();
 
-      if (updateErr) {
+      if (updateErr || !updated) {
         console.error("Update profile error:", updateErr);
+        return new Response(
+          JSON.stringify({ error: "Phone verification could not be saved." }),
+          { status: 500, headers: corsHeaders }
+        );
       }
 
       // Sync phone with auth.users
