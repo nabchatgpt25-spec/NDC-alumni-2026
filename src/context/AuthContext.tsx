@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import {
   getOrCreateSupabaseProfile,
@@ -26,6 +27,8 @@ interface PendingOtpEntry {
 }
 
 interface AuthContextType {
+  isAuthInitializing: boolean;
+  authInitializationError: string | null;
   isLoggedIn: boolean;
   currentUser: AlumniProfile;
   firebaseToken: string | null;
@@ -46,7 +49,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_STORAGE_KEY = 'ndc_alumni_auth';
 const PROFILE_STORAGE_KEY = 'ndc_alumni_current_user';
 
 // In-memory token reference (never persisted to localStorage per security guidelines)
@@ -63,14 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supabaseToken, setSupabaseToken] = useState<string | null>(null);
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
 
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-      return stored === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [isAuthInitializing, setIsAuthInitializing] = useState(true);
+  const [authInitializationError, setAuthInitializationError] = useState<string | null>(null);
+  const authResolutionIdRef = useRef(0);
+  const resolvedAuthUserIdRef = useRef<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<AlumniProfile>(() => {
     try {
@@ -87,65 +86,116 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return DEFAULT_BLANK_USER;
   });
 
-  // 1. Primary Production Auth: Listen to Supabase Auth state & sync alumni_profiles
+  // Restore only the Supabase session; profile errors remain distinct from signed-out state.
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    let active = true;
+    let authEventReceived = false;
 
-    // Check active Supabase session on startup
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        inMemorySupabaseToken = session.access_token;
-        setSupabaseToken(session.access_token);
-        try {
-          const profile = await getOrCreateSupabaseProfile(session.user);
-          if (profile) {
-            setCurrentUser(profile);
-            setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
-            setIsLoggedIn(true);
-          }
-        } catch (err) {
-          console.warn('Failed to load profile for Supabase session:', err);
+    const applySession = async (session: Session | null, requestId: number) => {
+      if (!active || requestId !== authResolutionIdRef.current) return;
+
+      if (!session?.user) {
+        resolvedAuthUserIdRef.current = null;
+        inMemorySupabaseToken = null;
+        setSupabaseToken(null);
+        setIsAdminUser(false);
+        setCurrentUser(DEFAULT_BLANK_USER);
+        setIsLoggedIn(false);
+        setAuthInitializationError(null);
+        setIsAuthInitializing(false);
+        return;
+      }
+
+      if (resolvedAuthUserIdRef.current !== session.user.id) {
+        resolvedAuthUserIdRef.current = null;
+        setIsAdminUser(false);
+        setCurrentUser(DEFAULT_BLANK_USER);
+        setIsLoggedIn(false);
+      }
+
+      inMemorySupabaseToken = session.access_token;
+      setSupabaseToken(session.access_token);
+      setAuthInitializationError(null);
+
+      try {
+        const profile = await getOrCreateSupabaseProfile(session.user);
+        if (!active || requestId !== authResolutionIdRef.current) return;
+        if (!profile) {
+          throw new Error('The authenticated alumni profile could not be loaded.');
+        }
+
+        resolvedAuthUserIdRef.current = session.user.id;
+        setCurrentUser(profile);
+        setIsAdminUser(profile.role === 'admin');
+        setIsLoggedIn(true);
+      } catch (err) {
+        if (!active || requestId !== authResolutionIdRef.current) return;
+        console.warn('Failed to load profile for Supabase session:', err);
+        setAuthInitializationError(
+          'Your Supabase session is still active, but your alumni profile could not be loaded. Refresh this page to retry.'
+        );
+        // Keep an already-resolved session active; an initial profile error is not a logout.
+      } finally {
+        if (active && requestId === authResolutionIdRef.current) {
+          setIsAuthInitializing(false);
         }
       }
-    }).catch((err) => {
-      console.warn('Supabase getSession warning:', err);
+    };
+
+    if (!isSupabaseConfigured) {
+      setIsLoggedIn(false);
+      setIsAdminUser(false);
+      setSupabaseToken(null);
+      setAuthInitializationError(null);
+      setIsAuthInitializing(false);
+      return () => {
+        active = false;
+        authResolutionIdRef.current += 1;
+      };
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      authEventReceived = true;
+      const requestId = ++authResolutionIdRef.current;
+      // Supabase Auth callbacks must return before profile queries run.
+      window.setTimeout(() => {
+        void applySession(session, requestId);
+      }, 0);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session?.user) {
-          inMemorySupabaseToken = session.access_token;
-          setSupabaseToken(session.access_token);
-          try {
-            const profile = await getOrCreateSupabaseProfile(session.user);
-            if (profile) {
-              setCurrentUser(profile);
-              setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
-              setIsLoggedIn(true);
-            }
-          } catch (err) {
-            console.warn('Failed to sync profile on Supabase auth change:', err);
-          }
-        } else if (event === 'SIGNED_OUT') {
-          inMemorySupabaseToken = null;
-          setSupabaseToken(null);
-        }
-      }
-    );
+    void supabase.auth
+      .getSession()
+      .then(({ data: { session }, error }) => {
+        if (authEventReceived) return;
+        if (error) throw error;
+        const requestId = ++authResolutionIdRef.current;
+        void applySession(session, requestId);
+      })
+      .catch((err) => {
+        if (!active || authEventReceived) return;
+        console.warn('Supabase getSession warning:', err);
+        setAuthInitializationError(
+          'Your Supabase session could not be restored. Refresh this page to retry.'
+        );
+        setIsAuthInitializing(false);
+      });
 
     return () => {
+      active = false;
+      authResolutionIdRef.current += 1;
       subscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem(AUTH_STORAGE_KEY, String(isLoggedIn));
       localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(currentUser));
     } catch {
       // safe ignore
     }
-  }, [isLoggedIn, currentUser]);
+  }, [currentUser]);
 
   useEffect(() => {
     const handleAdminUserUpdate = (e: Event) => {
@@ -348,7 +398,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const profile = await getOrCreateSupabaseProfile(authData.user);
     if (profile) {
       setCurrentUser(profile);
-      setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
+      setIsAdminUser(profile.role === 'admin');
       setIsLoggedIn(true);
       return true;
     }
@@ -427,7 +477,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile = await getOrCreateSupabaseProfile(data.user);
       if (profile) {
         setCurrentUser(profile);
-        setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
+        setIsAdminUser(profile.role === 'admin');
         setIsLoggedIn(true);
       }
     }
@@ -435,6 +485,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
+    authResolutionIdRef.current += 1;
+    resolvedAuthUserIdRef.current = null;
+    setAuthInitializationError(null);
+    setIsAdminUser(false);
+    setCurrentUser(DEFAULT_BLANK_USER);
     setIsLoggedIn(false);
     inMemorySupabaseToken = null;
     setSupabaseToken(null);
@@ -525,7 +580,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (profile) {
         setCurrentUser(profile);
-        setIsAdminUser(profile.role === 'admin' || profile.role === 'moderator');
+        setIsAdminUser(profile.role === 'admin');
         setIsLoggedIn(true);
         return true;
       }
@@ -599,10 +654,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     }
 
+    authResolutionIdRef.current += 1;
+    resolvedAuthUserIdRef.current = null;
     inMemorySupabaseToken = null;
     setSupabaseToken(null);
     setCurrentUser(DEFAULT_BLANK_USER);
     setIsAdminUser(false);
+    setAuthInitializationError(null);
     setIsLoggedIn(false);
     return true;
   };
@@ -648,6 +706,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
+        isAuthInitializing,
+        authInitializationError,
         isLoggedIn,
         currentUser,
         firebaseToken: null,
