@@ -13,7 +13,6 @@ import {
   BLOOD_GROUPS_LIST,
   NotificationItem,
 } from '../types';
-import { NOTIFICATIONS_LIST } from '../data/mockData';
 import { matchDonorsForRequest } from './bloodMatching';
 import {
   createBloodRequestInDb,
@@ -122,7 +121,7 @@ export function getDonorProfileByUserId(userId: number): BloodDonorProfile | und
 /**
  * Create or update a user's Blood Donor Profile (privacy-safe: never stores phone/email/home address).
  */
-export function upsertBloodDonorProfile(
+export async function upsertBloodDonorProfile(
   user: AlumniProfile,
   input: {
     bloodGroup: BloodGroup;
@@ -133,7 +132,7 @@ export function upsertBloodDonorProfile(
     emergencyAlertPreference: BloodAlertPreference;
     donationHistory?: BloodDonationHistoryItem[];
   }
-): BloodDonorProfile {
+): Promise<BloodDonorProfile> {
   if (!BLOOD_GROUPS_LIST.includes(input.bloodGroup)) {
     throw new Error('Please select a valid blood group.');
   }
@@ -164,27 +163,27 @@ export function upsertBloodDonorProfile(
     updatedAt: 'Just now',
   };
 
-  if (existingIdx > -1) {
-    donors[existingIdx] = updatedDonor;
-  } else {
-    donors.unshift(updatedDonor);
-  }
-
-  saveBloodDonors(donors);
-
-  // Persist to Supabase blood_donors table
-  registerBloodDonorInDb({
+  const savedToSupabase = await registerBloodDonorInDb({
     userId: user.id,
     bloodGroup: input.bloodGroup,
+    isRegisteredDonor: input.isRegisteredDonor,
     availability: input.availability,
     preferredArea: cleanArea,
     city: sanitizeInputText(user.city || 'Dhaka', 60),
     lastDonationDate: input.lastDonationDate,
     emergencyAlertPreference: input.emergencyAlertPreference,
-  }).catch((err) => {
-    console.warn('registerBloodDonorInDb fallback:', err);
+    donationHistory: updatedDonor.donationHistory,
   });
+  if (!savedToSupabase) {
+    throw new Error('Could not save donor settings to Supabase. Please try again.');
+  }
 
+  if (existingIdx > -1) {
+    donors[existingIdx] = updatedDonor;
+  } else {
+    donors.unshift(updatedDonor);
+  }
+  saveBloodDonors(donors);
   return updatedDonor;
 }
 
@@ -251,7 +250,7 @@ export function saveBloodRequests(requests: BloodEmergencyRequest[]): void {
  * Loads and persists notifications into the single portal notification list used by Header.tsx.
  */
 export function loadPortalNotifications(): NotificationItem[] {
-  if (typeof window === 'undefined') return [...NOTIFICATIONS_LIST];
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(PORTAL_NOTIFICATIONS_STORAGE_KEY);
     if (raw) {
@@ -263,7 +262,7 @@ export function loadPortalNotifications(): NotificationItem[] {
   } catch (e) {
     console.warn('Failed to load notifications from storage', e);
   }
-  return [...NOTIFICATIONS_LIST];
+  return [];
 }
 
 export function savePortalNotifications(items: NotificationItem[]): void {
@@ -321,7 +320,7 @@ export function canModifyBloodRequest(
 /**
  * Create a new Emergency Blood Request with strict input validation and automatic donor matching notifications.
  */
-export function createEmergencyBloodRequest(
+export async function createEmergencyBloodRequest(
   requester: AlumniProfile,
   input: {
     bloodGroup: BloodGroup;
@@ -336,7 +335,7 @@ export function createEmergencyBloodRequest(
     description: string;
     patientRelation?: string;
   }
-): { request: BloodEmergencyRequest; matchedDonorsCount: number } {
+): Promise<{ request: BloodEmergencyRequest; matchedDonorsCount: number }> {
   if (!BLOOD_GROUPS_LIST.includes(input.bloodGroup)) {
     throw new Error('Please select a valid blood group.');
   }
@@ -367,7 +366,7 @@ export function createEmergencyBloodRequest(
   const initialStatus: BloodRequestStatus = isRequesterVerified ? 'Active' : 'Pending Verification';
 
   const newRequest: BloodEmergencyRequest = {
-    id: `blood-req-${Date.now()}`,
+    id: '',
     bloodGroup: input.bloodGroup,
     unitsRequired: units,
     unitsFulfilled: 0,
@@ -390,15 +389,10 @@ export function createEmergencyBloodRequest(
     updatedAt: 'Just now',
     expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
     responses: [],
-    verifiedByAdmin: isRequesterVerified ? 'Verified Alumnus Auto-Activation' : undefined,
+    verifiedByAdmin: undefined,
   };
 
-  const requests = loadBloodRequests();
-  const updatedRequests = [newRequest, ...requests];
-  saveBloodRequests(updatedRequests);
-
-  // Persist to Supabase blood_requests table
-  createBloodRequestInDb({
+  const persistedRequestId = await createBloodRequestInDb({
     requesterId: requester.id,
     bloodGroup: input.bloodGroup,
     unitsRequired: units,
@@ -409,9 +403,18 @@ export function createEmergencyBloodRequest(
     emergencyLevel: input.emergencyLevel,
     contactMethod: input.contactMethod,
     description,
-  }).catch((err) => {
-    console.warn('createBloodRequestInDb fallback:', err);
+    status: initialStatus,
+    coordinationRef: input.coordinationRef,
+    patientRelation: input.patientRelation,
   });
+  if (!persistedRequestId) {
+    throw new Error('Could not publish the blood request to Supabase. Please verify the required date/time and try again.');
+  }
+
+  newRequest.id = persistedRequestId;
+  const requests = loadBloodRequests();
+  const updatedRequests = [newRequest, ...requests];
+  saveBloodRequests(updatedRequests);
 
   const donors = loadBloodDonors();
   const matched = matchDonorsForRequest(newRequest, donors);
@@ -432,11 +435,11 @@ export function createEmergencyBloodRequest(
  * Record a donor's "I Can Donate" response, update request status if appropriate,
  * and notify the requester via the existing notification system.
  */
-export function respondToBloodRequest(
+export async function respondToBloodRequest(
   requestId: string,
   donorUser: AlumniProfile,
   note?: string
-): BloodEmergencyRequest {
+): Promise<BloodEmergencyRequest> {
   const requests = loadBloodRequests();
   const idx = requests.findIndex((r) => r.id === requestId);
   if (idx === -1) {
@@ -487,18 +490,18 @@ export function respondToBloodRequest(
     responses: [responseItem, ...target.responses],
   };
 
-  requests[idx] = updatedRequest;
-  saveBloodRequests(requests);
-
-  // Persist to Supabase blood_request_responses table
-  respondToBloodRequestInDb({
+  const persisted = await respondToBloodRequestInDb({
     requestId: target.id,
     donorUserId: donorUser.id,
     status: 'offered',
     note: responseItem.note,
-  }).catch((err) => {
-    console.warn('respondToBloodRequestInDb fallback:', err);
   });
+  if (!persisted) {
+    throw new Error('Could not save your donor response to Supabase. Please try again.');
+  }
+
+  requests[idx] = updatedRequest;
+  saveBloodRequests(requests);
 
   // Send notification via the EXISTING notification system
   pushPortalNotification({
