@@ -1,16 +1,13 @@
 -- =============================================================================
--- SUPABASE STORAGE SECURITY & RLS POLICIES FOR PRODUCTION BUCKETS
--- Project: Notre Dame College (NDC) Alumni Platform
--- Target: Supabase Storage (`storage.objects`)
---
--- Configured Buckets:
---   1. avatars                 — Public  (Profile avatars)
---   2. post-media              — Public  (Alumni feed attachments & photos)
---   3. gallery                 — Public  (Campus archives & albums)
---   4. verification-documents  — Private (Sensitive institutional IDs & transcripts)
+-- Migration 009: tighten Storage ownership and phone availability RPC access
+-- This migration is committed for review only; it must be applied through the
+-- project’s controlled migration process after staging validation.
 -- =============================================================================
 
 BEGIN;
+
+REVOKE ALL ON FUNCTION public.check_phone_available(TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_phone_available(TEXT) TO service_role;
 
 -- -----------------------------------------------------------------------------
 -- 0. ENSURE RLS IS ENABLED ON storage.objects
@@ -172,5 +169,3 @@ USING (
     OR public.is_admin_or_mod()
   )
 );
-
-COMMIT;

@@ -15,10 +15,10 @@ import {
   Phone,
   Mail,
 } from 'lucide-react';
-import { BATCH_LIST, ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
+import { BATCH_LIST } from '../data/mockData';
 import { BatchSummary, AlumniProfile } from '../types';
 import { NDCLogo } from './NDCLogo';
-import { fetchBatchesFromDb } from '../services/supabaseService';
+import { fetchBatchesFromDb, fetchBatchAlumniProfilesFromDb } from '../services/supabaseService';
 
 interface BatchesViewProps {
   onSelectBatch: (batchYear: number) => void;
@@ -27,14 +27,10 @@ interface BatchesViewProps {
 
 function getGroupAlumniList(
   batch: BatchSummary,
-  groupValue: string
+  groupValue: string,
+  profiles: AlumniProfile[]
 ): AlumniProfile[] {
-  const stored = loadStoredAlumniProfiles();
-  const allReal = [...stored, ...ALUMNI_PROFILES].filter(
-    (v, i, a) => a.findIndex((t) => t.id === v.id) === i
-  );
-
-  return allReal.filter(
+  return profiles.filter(
     (p) =>
       (p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear) &&
       p.group?.toLowerCase() === groupValue.toLowerCase()
@@ -47,89 +43,56 @@ const SCIENCE_GROUPS = Array.from({ length: 17 }, (_, i) =>
 const HUMANITIES_GROUPS = ['G', 'H', 'L', 'W'];
 const COMMERCE_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
-function computeBatchGroupCounts(batch: BatchSummary) {
-  const realBatchProfiles = ALUMNI_PROFILES.filter(
+function computeBatchGroupCounts(batch: BatchSummary, profiles: AlumniProfile[]) {
+  const realBatchProfiles = profiles.filter(
     (p) => p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear
   );
-
   const scienceCounts: Record<string, number> = {};
   const humanitiesCounts: Record<string, number> = {};
   const commerceCounts: Record<string, number> = {};
 
-  const totalTarget = batch.total;
-  const scienceTarget = Math.round(totalTarget * 0.62);
-  const commerceTarget = Math.round(totalTarget * 0.22);
-  const humanitiesTarget = Math.max(0, totalTarget - scienceTarget - commerceTarget);
+  SCIENCE_GROUPS.forEach((code) => { scienceCounts[code] = 0; });
+  HUMANITIES_GROUPS.forEach((code) => { humanitiesCounts[code] = 0; });
+  COMMERCE_GROUPS.forEach((code) => { commerceCounts[code] = 0; });
 
-  // Distribute Science across 01–17 deterministically
-  let scienceSum = 0;
-  SCIENCE_GROUPS.forEach((code, idx) => {
-    const base = Math.floor(scienceTarget / 17);
-    const variation = ((batch.batchYear * 3 + idx * 5) % 7) - 3;
-    const realCount = realBatchProfiles.filter(
-      (p) => p.group?.toLowerCase() === `science ${code}`.toLowerCase()
-    ).length;
-    const val = Math.max(2, base + variation) + realCount;
-    scienceCounts[code] = val;
-    scienceSum += val;
-  });
-  // Adjust group 05 / 01 slightly so total stays balanced
-  const sciDiff = scienceTarget - scienceSum;
-  scienceCounts['01'] = Math.max(2, scienceCounts['01'] + sciDiff);
+  for (const profile of realBatchProfiles) {
+    const groupName = (profile.group || `${profile.academicStream || ''} ${profile.academicGroup || ''}`)
+      .trim()
+      .toLowerCase();
+    const scienceMatch = groupName.match(/^science\s+0?(\d{1,2})$/);
+    const humanitiesMatch = groupName.match(/^(?:humanities|arts)\s+([ghlw])$/);
+    const commerceMatch = groupName.match(/^(?:commerce|business studies)\s+([a-h])$/);
 
-  // Distribute Humanities across G, H, L, W
-  let humanitiesSum = 0;
-  HUMANITIES_GROUPS.forEach((code, idx) => {
-    const base = Math.floor(humanitiesTarget / HUMANITIES_GROUPS.length);
-    const variation = ((batch.batchYear * 2 + idx * 3) % 5) - 2;
-    const realCount = realBatchProfiles.filter(
-      (p) =>
-        p.group?.toLowerCase() === `humanities ${code}`.toLowerCase() ||
-        p.group?.toLowerCase() === `arts ${code}`.toLowerCase()
-    ).length;
-    const val = Math.max(1, base + variation) + realCount;
-    humanitiesCounts[code] = val;
-    humanitiesSum += val;
-  });
-  const humanitiesDiff = humanitiesTarget - humanitiesSum;
-  humanitiesCounts['G'] = Math.max(1, humanitiesCounts['G'] + humanitiesDiff);
+    if (scienceMatch) {
+      const code = scienceMatch[1].padStart(2, '0');
+      if (code in scienceCounts) scienceCounts[code] += 1;
+    } else if (humanitiesMatch) {
+      humanitiesCounts[humanitiesMatch[1].toUpperCase()] += 1;
+    } else if (commerceMatch) {
+      commerceCounts[commerceMatch[1].toUpperCase()] += 1;
+    }
+  }
 
-  // Distribute Commerce across A–H
-  let commSum = 0;
-  COMMERCE_GROUPS.forEach((code, idx) => {
-    const base = Math.floor(commerceTarget / COMMERCE_GROUPS.length);
-    const variation = ((batch.batchYear * 5 + idx * 2) % 5) - 2;
-    const realCount = realBatchProfiles.filter(
-      (p) =>
-        p.group?.toLowerCase() === `commerce ${code}`.toLowerCase() ||
-        p.group?.toLowerCase() === `business studies ${code}`.toLowerCase()
-    ).length;
-    const val = Math.max(2, base + variation) + realCount;
-    commerceCounts[code] = val;
-    commSum += val;
-  });
-  const commDiff = commerceTarget - commSum;
-  commerceCounts['A'] = Math.max(2, commerceCounts['A'] + commDiff);
-
-  const scienceTotal = Object.values(scienceCounts).reduce((a, b) => a + b, 0);
-  const humanitiesTotal = Object.values(humanitiesCounts).reduce((a, b) => a + b, 0);
-  const commerceTotal = Object.values(commerceCounts).reduce((a, b) => a + b, 0);
+  const scienceTotal = Object.values(scienceCounts).reduce((sum, count) => sum + count, 0);
+  const humanitiesTotal = Object.values(humanitiesCounts).reduce((sum, count) => sum + count, 0);
+  const commerceTotal = Object.values(commerceCounts).reduce((sum, count) => sum + count, 0);
 
   return {
     scienceCounts,
     humanitiesCounts,
     commerceCounts,
-    artsCounts: humanitiesCounts, // backward compatibility
+    artsCounts: humanitiesCounts,
     scienceTotal,
     humanitiesTotal,
-    artsTotal: humanitiesTotal, // backward compatibility
+    artsTotal: humanitiesTotal,
     commerceTotal,
-    grandTotal: scienceTotal + humanitiesTotal + commerceTotal,
+    grandTotal: realBatchProfiles.length,
   };
 }
 
 export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewProfile }) => {
   const [batchesList, setBatchesList] = useState<BatchSummary[]>(BATCH_LIST);
+  const [batchAlumniProfiles, setBatchAlumniProfiles] = useState<AlumniProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [rangeFilter, setRangeFilter] = useState<'all' | '1-20' | '21-40' | '41-60' | '61-78'>('all');
   const [activeBatchYear, setActiveBatchYear] = useState<number | null>(null);
@@ -165,14 +128,31 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
     return batchesList.find((b) => b.batchYear === activeBatchYear) || null;
   }, [activeBatchYear, batchesList]);
 
+  React.useEffect(() => {
+    let isMounted = true;
+    if (activeBatchYear === null) {
+      setBatchAlumniProfiles([]);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    fetchBatchAlumniProfilesFromDb(activeBatchYear).then((profiles) => {
+      if (isMounted) setBatchAlumniProfiles(profiles);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [activeBatchYear]);
+
   const activeBatchGroupStats = useMemo(() => {
     if (!activeBatch) return null;
-    return computeBatchGroupCounts(activeBatch);
-  }, [activeBatch]);
+    return computeBatchGroupCounts(activeBatch, batchAlumniProfiles);
+  }, [activeBatch, batchAlumniProfiles]);
 
   const selectedGroupAlumni = useMemo(() => {
     if (!activeBatch || !activeBatchGroupStats || !selectedGroup) return [];
-    const list = getGroupAlumniList(activeBatch, selectedGroup);
+    const list = getGroupAlumniList(activeBatch, selectedGroup, batchAlumniProfiles);
     if (!groupSearch.trim()) return list;
     const q = groupSearch.toLowerCase().trim();
     return list.filter(
@@ -183,7 +163,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
         p.position.toLowerCase().includes(q) ||
         p.city.toLowerCase().includes(q)
     );
-  }, [activeBatch, activeBatchGroupStats, selectedGroup, groupSearch]);
+  }, [activeBatch, activeBatchGroupStats, selectedGroup, groupSearch, batchAlumniProfiles]);
 
   // Resolve direct quick-jump target batch when user types a batch number (1-78) or 4-digit HSC year (e.g. 2016)
   const quickJumpBatch = useMemo(() => {
@@ -889,9 +869,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredBatches.map((batch) => {
-            const hasRegisteredAlumni = ALUMNI_PROFILES.some(
-              (p) => p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear
-            );
+            const hasRegisteredAlumni = batch.total !== null && batch.total > 0;
             const isSelectedBatch = activeBatchYear === batch.batchYear;
 
             return (
@@ -939,7 +917,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                   {/* Registered count */}
                   <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
                     <Users className="w-3.5 h-3.5" />
-                    <span>{batch.total} Registered Alumni</span>
+                    <span>{batch.total === null ? 'Count unavailable' : `${batch.total} Registered Alumni`}</span>
                   </div>
 
                   {/* Representative */}
@@ -956,7 +934,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                   {hasRegisteredAlumni && (
                     <div className="mt-2.5 flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
                       <Sparkles className="w-3 h-3" />
-                      <span>Verified profiles available</span>
+                      <span>Registered alumni available</span>
                     </div>
                   )}
                 </div>

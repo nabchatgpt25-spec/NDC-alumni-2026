@@ -285,8 +285,9 @@ export interface NotificationItem {
 export interface BatchSummary {
   batchYear: number;
   session: string;
-  total: number;
+  total: number | null;
   representative?: string;
+  specialNote?: string;
 }
 
 export interface GalleryPhoto {
