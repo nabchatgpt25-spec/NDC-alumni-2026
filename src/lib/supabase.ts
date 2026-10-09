@@ -20,6 +20,9 @@ export const isSupabaseConfigured = Boolean(
 const effectiveUrl = isSupabaseConfigured ? rawUrl : DEFAULT_SUPABASE_URL;
 const effectiveAnonKey = isSupabaseConfigured ? rawAnonKey : DEFAULT_SUPABASE_ANON_KEY;
 
+export const SUPABASE_API_URL = effectiveUrl;
+export const SUPABASE_API_ANON_KEY = effectiveAnonKey;
+
 export const supabase: SupabaseClient = createClient(effectiveUrl, effectiveAnonKey, {
   auth: {
     persistSession: true,
