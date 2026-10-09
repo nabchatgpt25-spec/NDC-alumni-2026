@@ -78,6 +78,8 @@ interface FeedViewProps {
 
 type PostCategory = 'General Update' | 'Tech & Innovation' | 'Professional Insights' | 'Reunion' | 'Achievement';
 
+const FEED_PAGE_SIZE = 12;
+
 const CATEGORIES: { label: PostCategory; icon: typeof MessageSquare; color: string; bg: string }[] = [
   { label: 'General Update', icon: MessageSquare, color: 'text-slate-600 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' },
   { label: 'Tech & Innovation', icon: Sparkles, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/40' },
@@ -115,24 +117,38 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(true);
+  const [isLoadingMorePosts, setIsLoadingMorePosts] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const nextFeedOffsetRef = useRef(0);
+  const loadMoreInFlightRef = useRef(false);
   const [isSubmittingPost, setIsSubmittingPost] = useState<boolean>(false);
 
-  // Supabase is the ONLY source of truth: load from Supabase on mount
+  // Supabase is the ONLY source of truth: load the first page from Supabase on mount.
   useEffect(() => {
     let isMounted = true;
+    nextFeedOffsetRef.current = 0;
+    setPosts([]);
+    setHasMorePosts(false);
+    setFeedError(null);
     setIsLoadingPosts(true);
-    fetchFeedPostsFromDb(50, currentUser.id)
+
+    fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, 0)
       .then((dbPosts) => {
-        if (isMounted) {
-          setPosts(dbPosts || []);
-          setIsLoadingPosts(false);
-        }
+        if (!isMounted) return;
+        const loadedPosts = dbPosts || [];
+        nextFeedOffsetRef.current = loadedPosts.length;
+        setPosts(loadedPosts);
+        setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
       })
       .catch((err) => {
         console.error('FeedView: failed to fetch Supabase posts:', err);
         if (isMounted) {
-          setIsLoadingPosts(false);
+          setFeedError('We could not load the feed. Check your connection and try again.');
         }
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingPosts(false);
       });
 
     return () => {
@@ -823,19 +839,52 @@ export const FeedView: React.FC<FeedViewProps> = ({
     });
   };
 
-  // Refresh Feed directly from Supabase
+  // Refresh the first page directly from Supabase.
   const handleRefreshFeed = async () => {
     setHasNewPosts(false);
+    setFeedError(null);
     setIsLoadingPosts(true);
     try {
-      const dbPosts = await fetchFeedPostsFromDb(50, currentUser.id);
-      setPosts(dbPosts || []);
+      const dbPosts = await fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, 0);
+      const loadedPosts = dbPosts || [];
+      nextFeedOffsetRef.current = loadedPosts.length;
+      setPosts(loadedPosts);
+      setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       showToast('Feed refreshed from Supabase!');
-    } catch {
+    } catch (err) {
+      console.error('FeedView: failed to refresh Supabase posts:', err);
+      if (posts.length === 0) {
+        setFeedError('We could not load the feed. Check your connection and try again.');
+      }
       showToast('Failed to refresh feed from database.');
     } finally {
       setIsLoadingPosts(false);
+    }
+  };
+
+  const handleLoadMorePosts = async () => {
+    if (loadMoreInFlightRef.current || !hasMorePosts) return;
+
+    loadMoreInFlightRef.current = true;
+    setIsLoadingMorePosts(true);
+    setFeedError(null);
+    const offset = nextFeedOffsetRef.current;
+
+    try {
+      const nextPage = await fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, offset);
+      nextFeedOffsetRef.current = offset + nextPage.length;
+      setPosts((previousPosts) => {
+        const existingIds = new Set(previousPosts.map((post) => post.id));
+        return [...previousPosts, ...nextPage.filter((post) => !existingIds.has(post.id))];
+      });
+      setHasMorePosts(nextPage.length === FEED_PAGE_SIZE);
+    } catch (err) {
+      console.error('FeedView: failed to load more Supabase posts:', err);
+      setFeedError('More posts could not be loaded. Check your connection and try again.');
+    } finally {
+      loadMoreInFlightRef.current = false;
+      setIsLoadingMorePosts(false);
     }
   };
 
@@ -1827,9 +1876,50 @@ export const FeedView: React.FC<FeedViewProps> = ({
         {(() => {
           if (isLoadingPosts) {
             return (
-              <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 border border-slate-200/80 dark:border-slate-800 text-center shadow-xs">
-                <RefreshCw className="w-6 h-6 mx-auto text-blue-500 animate-spin mb-3" />
-                <p className="text-xs text-slate-500 dark:text-slate-400">Loading live feed from Supabase...</p>
+              <>
+                {[0, 1, 2].map((placeholder) => (
+                  <article
+                    key={placeholder}
+                    aria-hidden="true"
+                    className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs animate-pulse"
+                  >
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 w-40 max-w-full rounded-full bg-slate-200 dark:bg-slate-700" />
+                        <div className="h-2.5 w-24 rounded-full bg-slate-100 dark:bg-slate-800" />
+                      </div>
+                    </div>
+                    <div className="space-y-2 mb-4">
+                      <div className="h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800" />
+                      <div className="h-3 w-4/5 rounded-full bg-slate-100 dark:bg-slate-800" />
+                    </div>
+                    <div className="h-40 rounded-2xl bg-slate-100 dark:bg-slate-800" />
+                  </article>
+                ))}
+                <p role="status" className="text-xs text-center text-slate-500 dark:text-slate-400">
+                  Loading feed posts...
+                </p>
+              </>
+            );
+          }
+
+          if (feedError && posts.length === 0) {
+            return (
+              <div
+                role="alert"
+                className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-amber-200 dark:border-amber-900 text-center shadow-xs"
+              >
+                <AlertTriangle className="w-6 h-6 mx-auto text-amber-500 mb-3" />
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">Feed unavailable</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{feedError}</p>
+                <button
+                  type="button"
+                  onClick={() => void handleRefreshFeed()}
+                  className="mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  Try again
+                </button>
               </div>
             );
           }
@@ -1849,7 +1939,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   Welcome to the Alumni Feed
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                  No posts have been published yet. Share a professional milestone, career update, or reunion announcement using the box above!
+                  {posts.length > 0
+                    ? `No ${activeFilterCategory} posts have loaded yet. Load more posts to continue searching.`
+                    : 'No posts have been published yet. Share a professional milestone, career update, or reunion announcement using the box above!'}
                 </p>
               </div>
             );
@@ -2307,6 +2399,35 @@ export const FeedView: React.FC<FeedViewProps> = ({
             );
           });
         })()}
+        {feedError && posts.length > 0 && (
+          <div
+            role="alert"
+            className="bg-amber-50 dark:bg-amber-950/30 rounded-2xl p-4 border border-amber-200 dark:border-amber-900 text-center"
+          >
+            <p className="text-xs text-amber-800 dark:text-amber-200">{feedError}</p>
+            <button
+              type="button"
+              onClick={() => void handleLoadMorePosts()}
+              disabled={isLoadingMorePosts}
+              className="mt-2 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-100 text-xs font-bold disabled:opacity-50 cursor-pointer"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+        {hasMorePosts && !feedError && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => void handleLoadMorePosts()}
+              disabled={isLoadingMorePosts}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-bold hover:border-blue-400 disabled:opacity-60 cursor-pointer"
+            >
+              {isLoadingMorePosts && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              {isLoadingMorePosts ? 'Loading more posts...' : 'Load more posts'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* EDIT POST MODAL */}

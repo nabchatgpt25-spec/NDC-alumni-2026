@@ -240,12 +240,19 @@ function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
   } as unknown as PostItem;
 }
 
-export async function fetchFeedPostsFromDb(limit = 50, currentUserId?: number): Promise<PostItem[]> {
+export async function fetchFeedPostsFromDb(
+  limit = 12,
+  currentUserId?: number,
+  offset = 0
+): Promise<PostItem[]> {
   if (!isSupabaseConfigured) {
     return [];
   }
 
-  // 1. Directly fetch posts from public.posts table (avoids brittle PostgREST nested joins)
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 12;
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+
+  // Fetch one stable page of posts so the feed does not hydrate the full history at startup.
   const { data: postsData, error: postsError } = await supabase
     .from('posts')
     .select(`
@@ -263,7 +270,8 @@ export async function fetchFeedPostsFromDb(limit = 50, currentUserId?: number): 
     `)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .order('id', { ascending: false })
+    .range(safeOffset, safeOffset + safeLimit - 1);
 
   if (postsError) {
     console.error('Supabase fetchFeedPosts error loading posts:', postsError);
@@ -274,31 +282,22 @@ export async function fetchFeedPostsFromDb(limit = 50, currentUserId?: number): 
     return [];
   }
 
-  // 2. Collect author IDs and post IDs for batched queries
+  const postIds = postsData.map((post) => Number(post.id));
   const authorIds = Array.from(
-    new Set(postsData.map((p) => Number(p.author_id)).filter((id) => id > 0))
+    new Set(postsData.map((post) => Number(post.author_id)).filter((id) => id > 0))
   );
-  const postIds = postsData.map((p) => Number(p.id));
 
-  // 3. Batch fetch author profiles
-  const authorMap = new Map<number, any>();
-  if (authorIds.length > 0) {
-    const { data: profiles, error: profilesError } = await supabase
-      .from('alumni_profiles')
-      .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
-      .in('id', authorIds);
+  // These three batched lookups depend on the page IDs, but not on each other.
+  const authorProfilesRequest = authorIds.length > 0
+    ? supabase
+        .from('alumni_profiles')
+        .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
+        .in('id', authorIds)
+    : Promise.resolve({ data: null, error: null });
 
-    if (profilesError) {
-      console.warn('Supabase fetchFeedPosts warning loading author profiles:', profilesError.message);
-    } else if (profiles) {
-      profiles.forEach((p: any) => authorMap.set(Number(p.id), p));
-    }
-  }
-
-  // 4. Batch fetch comments for these posts
-  const commentsByPost = new Map<number, any[]>();
-  if (postIds.length > 0) {
-    const { data: comments, error: commentsError } = await supabase
+  const [profilesResult, commentsResult, likesResult] = await Promise.all([
+    authorProfilesRequest,
+    supabase
       .from('post_comments')
       .select(`
         id,
@@ -310,69 +309,80 @@ export async function fetchFeedPostsFromDb(limit = 50, currentUserId?: number): 
       `)
       .in('post_id', postIds)
       .eq('is_deleted', false)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true }),
+    currentUserId
+      ? supabase
+          .from('post_likes')
+          .select('post_id')
+          .eq('user_id', currentUserId)
+          .in('post_id', postIds)
+      : Promise.resolve({ data: null, error: null }),
+  ]);
 
-    if (commentsError) {
-      console.warn('Supabase fetchFeedPosts warning loading post comments:', commentsError.message);
-    } else if (comments && comments.length > 0) {
-      // Find any commenters whose profiles we don't have yet
-      const commenterIds = Array.from(
-        new Set(
-          comments
-            .map((c: any) => Number(c.user_id))
-            .filter((id: number) => id > 0 && !authorMap.has(id))
-        )
-      );
+  if (profilesResult.error) {
+    console.warn('Supabase fetchFeedPosts warning loading author profiles:', profilesResult.error.message);
+  }
+  if (commentsResult.error) {
+    console.warn('Supabase fetchFeedPosts warning loading post comments:', commentsResult.error.message);
+  }
+  if (likesResult.error) {
+    console.warn('Supabase fetchFeedPosts warning loading user likes:', likesResult.error.message);
+  }
 
-      if (commenterIds.length > 0) {
-        const { data: commenterProfiles } = await supabase
-          .from('alumni_profiles')
-          .select('id, full_name, avatar_url, batch_year, verification_status')
-          .in('id', commenterIds);
+  const authorMap = new Map<number, any>();
+  if (profilesResult.data) {
+    profilesResult.data.forEach((profile: any) => authorMap.set(Number(profile.id), profile));
+  }
 
-        if (commenterProfiles) {
-          commenterProfiles.forEach((cp: any) => authorMap.set(Number(cp.id), cp));
-        }
-      }
+  const comments = commentsResult.data || [];
+  const commenterIds = Array.from(
+    new Set(
+      comments
+        .map((comment) => Number(comment.user_id))
+        .filter((id) => id > 0 && !authorMap.has(id))
+    )
+  );
 
-      // Group comments with attached author profile
-      for (const c of comments) {
-        const pId = Number(c.post_id);
-        const cAuthor = authorMap.get(Number(c.user_id)) || {};
-        const commentWithAuthor = { ...c, author: cAuthor };
-        const list = commentsByPost.get(pId) || [];
-        list.push(commentWithAuthor);
-        commentsByPost.set(pId, list);
-      }
+  // Commenter IDs are only known after the comments query; fetch all missing profiles in one batch.
+  if (commenterIds.length > 0) {
+    const { data: commenterProfiles, error: commenterProfilesError } = await supabase
+      .from('alumni_profiles')
+      .select('id, full_name, avatar_url, batch_year, verification_status')
+      .in('id', commenterIds);
+
+    if (commenterProfilesError) {
+      console.warn('Supabase fetchFeedPosts warning loading commenter profiles:', commenterProfilesError.message);
+    } else if (commenterProfiles) {
+      commenterProfiles.forEach((profile: any) => authorMap.set(Number(profile.id), profile));
     }
   }
 
-  // 5. Batch fetch likes for active user (if currentUserId provided)
+  const commentsByPost = new Map<number, any[]>();
+  for (const comment of comments) {
+    const postId = Number(comment.post_id);
+    const author = authorMap.get(Number(comment.user_id)) || {};
+    const commentWithAuthor = { ...comment, author };
+    const list = commentsByPost.get(postId) || [];
+    list.push(commentWithAuthor);
+    commentsByPost.set(postId, list);
+  }
+
   const userLikesSet = new Set<number>();
-  if (currentUserId && postIds.length > 0) {
-    const { data: likes, error: likesError } = await supabase
-      .from('post_likes')
-      .select('post_id')
-      .eq('user_id', currentUserId)
-      .in('post_id', postIds);
-
-    if (!likesError && likes) {
-      likes.forEach((l: any) => userLikesSet.add(Number(l.post_id)));
-    }
+  if (!likesResult.error && likesResult.data) {
+    likesResult.data.forEach((like: any) => userLikesSet.add(Number(like.post_id)));
   }
 
-  // 6. Map and combine into complete PostItem array
   return postsData.map((row: any) => {
-    const pId = Number(row.id);
+    const postId = Number(row.id);
     const author = authorMap.get(Number(row.author_id)) || {};
-    const comments = commentsByPost.get(pId) || [];
-    const isLiked = userLikesSet.has(pId);
+    const postComments = commentsByPost.get(postId) || [];
+    const isLiked = userLikesSet.has(postId);
 
     return mapRowToFeedPost(
       {
         ...row,
         author,
-        post_comments: comments,
+        post_comments: postComments,
         post_likes: isLiked ? [{ user_id: currentUserId }] : [],
       },
       currentUserId

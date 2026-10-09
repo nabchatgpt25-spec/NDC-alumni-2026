@@ -4,7 +4,6 @@ import {
   Volume2,
   VolumeX,
   Play,
-  Pause,
   Globe,
   Video as VideoIcon,
   Share2,
@@ -600,8 +599,6 @@ export const AutoPlayVideoPlayer: React.FC<{
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isMuted, setIsMuted] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isInView, setIsInView] = useState(false);
 
   useEffect(() => {
     const videoEl = videoRef.current;
@@ -611,7 +608,6 @@ export const AutoPlayVideoPlayer: React.FC<{
     if (!autoPlayOnScroll) {
       if (!videoEl.paused) {
         videoEl.pause();
-        setIsPlaying(false);
       }
       return;
     }
@@ -620,7 +616,6 @@ export const AutoPlayVideoPlayer: React.FC<{
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
-            setIsInView(true);
             document.querySelectorAll('video').forEach((otherVid) => {
               if (otherVid !== videoEl && !otherVid.paused) {
                 otherVid.pause();
@@ -628,26 +623,14 @@ export const AutoPlayVideoPlayer: React.FC<{
             });
 
             videoEl.muted = isMuted;
-            const playPromise = videoEl.play();
-            if (playPromise !== undefined) {
-              playPromise
-                .then(() => {
-                  setIsPlaying(true);
-                })
-                .catch(() => {
-                  videoEl.muted = true;
-                  setIsMuted(true);
-                  videoEl
-                    .play()
-                    .then(() => setIsPlaying(true))
-                    .catch(() => {});
-                });
-            }
+            videoEl.play().catch(() => {
+              videoEl.muted = true;
+              setIsMuted(true);
+              videoEl.play().catch(() => {});
+            });
           } else if (!entry.isIntersecting || entry.intersectionRatio < 0.25) {
-            setIsInView(false);
             if (!videoEl.paused) {
               videoEl.pause();
-              setIsPlaying(false);
             }
           }
         });
@@ -687,43 +670,22 @@ export const AutoPlayVideoPlayer: React.FC<{
         muted={isMuted}
         loop
         preload="metadata"
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
         className="w-full max-h-[520px] object-contain bg-black"
       />
 
-      {/* Top Overlay: Auto-Scroll Status Badge + Mute/Unmute Toggle */}
-      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/75 backdrop-blur-xs text-white text-[10px] font-bold shadow-sm">
-          {isPlaying ? (
-            <>
-              <Play className="w-3 h-3 fill-emerald-400 text-emerald-400" />
-              <span>{isInView && autoPlayOnScroll ? 'Auto-Play ON (In View)' : 'Playing'}</span>
-            </>
-          ) : (
-            <>
-              <Pause className="w-3 h-3 text-slate-300" />
-              <span>{autoPlayOnScroll ? 'Auto-Paused (Scroll into view)' : 'Paused'}</span>
-            </>
-          )}
-        </span>
-
+      {/* Mute/unmute control; autoplay remains managed by the visibility observer. */}
+      <div className="absolute top-3 right-3 flex items-center pointer-events-none z-10">
         <button
           type="button"
           onClick={toggleMute}
-          className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-black/80 hover:bg-black text-white text-[11px] font-bold transition-colors cursor-pointer shadow-md"
+          aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+          className="pointer-events-auto inline-flex items-center justify-center p-2 rounded-full bg-black/80 hover:bg-black text-white transition-colors cursor-pointer shadow-md"
           title={isMuted ? 'Unmute video' : 'Mute video'}
         >
           {isMuted ? (
-            <>
-              <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-              <span>Muted · Tap for sound</span>
-            </>
+            <VolumeX className="w-3.5 h-3.5 text-rose-400" />
           ) : (
-            <>
-              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Sound On</span>
-            </>
+            <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
           )}
         </button>
       </div>
