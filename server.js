@@ -54,68 +54,34 @@ var SUPABASE_TABLES = {
 
 // server/middleware/auth.ts
 async function verifyAuthToken(token) {
-  if (!token) return null;
-  if (token.startsWith("mock_oauth_") || token.startsWith("dev_") || token.startsWith("test_")) {
+  if (!token || !isSupabaseServerConfigured) return null;
+  try {
+    const { data, error } = await supabaseServer.auth.getUser(token);
+    if (error || !data?.user) return null;
+    const user = data.user;
+    const cleanEmail = (user.email || "").toLowerCase().trim();
+    const { data: profile, error: profileError } = await supabaseServer
+      .from(SUPABASE_TABLES.ALUMNI_PROFILES)
+      .select("id, auth_user_id, email, full_name, role")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+    if (profileError || !profile?.id) return null;
+    const role = profile.role === "admin" || profile.role === "moderator" ? profile.role : "member";
     return {
-      user: { id: "dev-admin-uid", email: "nurulanambashirdamian@gmail.com" },
+      user,
       dbUser: {
-        id: 1,
-        uid: "dev-admin-uid",
-        email: "nurulanambashirdamian@gmail.com",
-        fullName: "Central Admin",
-        role: "admin",
+        id: Number(profile.id),
+        uid: user.id,
+        email: cleanEmail || `${user.id}@ndcalumni.org`,
+        fullName: profile.full_name || user.user_metadata?.full_name || "Notredamian Alumnus",
+        role,
         accountStatus: "active"
       }
     };
+  } catch (err) {
+    console.warn("Supabase token verification error:", err);
+    return null;
   }
-  if (isSupabaseServerConfigured) {
-    try {
-      const { data, error } = await supabaseServer.auth.getUser(token);
-      if (!error && data?.user) {
-        const user = data.user;
-        const cleanEmail = (user.email || "").toLowerCase().trim();
-        const { data: profile } = await supabaseServer.from(SUPABASE_TABLES.ALUMNI_PROFILES).select("id, auth_user_id, email, full_name, role, verification_status").eq("auth_user_id", user.id).maybeSingle();
-        const role = profile?.role === "admin" || profile?.role === "super_admin" ? "admin" : profile?.role || "member";
-        return {
-          user,
-          dbUser: {
-            id: profile?.id ? Number(profile.id) : 1,
-            uid: user.id,
-            email: cleanEmail || `${user.id}@ndcalumni.org`,
-            fullName: profile?.full_name || user.user_metadata?.full_name || "Notredamian Alumnus",
-            role,
-            accountStatus: "active"
-          }
-        };
-      }
-    } catch (err) {
-      console.warn("Supabase token verification error:", err);
-    }
-  }
-  try {
-    const parts = token.split(".");
-    if (parts.length === 3) {
-      const payloadStr = Buffer.from(parts[1], "base64").toString("utf-8");
-      const payload = JSON.parse(payloadStr);
-      if (payload && (payload.iss?.includes("firebase") || payload.iss?.includes("securetoken.google.com") || payload.user_id || payload.sub)) {
-        const email = (payload.email || "").toLowerCase().trim();
-        const uid = payload.user_id || payload.sub || payload.uid || "fb-user";
-        return {
-          user: { id: uid, uid, email },
-          dbUser: {
-            id: 1,
-            uid,
-            email: email || `${uid}@ndcalumni.org`,
-            fullName: payload.name || payload.displayName || "Notredamian Alumnus",
-            role: "member",
-            accountStatus: "active"
-          }
-        };
-      }
-    }
-  } catch (jwtErr) {
-  }
-  return null;
 }
 var requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -143,7 +109,7 @@ var requireAdmin = async (req, res, next) => {
     req.supabaseUser = authResult.user;
     req.user = authResult.user;
     req.dbUser = authResult.dbUser;
-    const isAuthorizedAdmin = authResult.dbUser.role === "admin" || authResult.dbUser.role === "super_admin";
+    const isAuthorizedAdmin = authResult.dbUser.role === "admin";
     if (!isAuthorizedAdmin) {
       return res.status(403).json({ error: "Forbidden: Admin access restricted to backend authority" });
     }
@@ -308,145 +274,7 @@ var DEFAULT_STREAM_GROUPS = [
   { id: 10, stream: "Business Studies", group_code: "E", groupCode: "E", expected_group_count: 6, expectedGroupCount: 6, is_active: true, isActive: true },
   { id: 11, stream: "Business Studies", group_code: "F", groupCode: "F", expected_group_count: 6, expectedGroupCount: 6, is_active: true, isActive: true }
 ];
-var inMemoryAlumniProfiles = [
-  {
-    id: 1,
-    fullName: "Nurul Anam Bashir",
-    avatarUrl: "/ndc-logo.png",
-    batchYear: 68,
-    session: "2016-18 (HSC 2018)",
-    collegeRoll: "118042",
-    academicStream: "Science",
-    academicGroup: "Group 4",
-    section: "Group 4",
-    profession: "Senior Software Engineer & Portal Administrator",
-    position: "Lead Systems Architect",
-    institution: "Notre Dame College Alumni Association",
-    specialty: ["Computer Science & Software", "Artificial Intelligence & Data"],
-    degree: ["HSC", "BSc Engineering"],
-    city: "Dhaka",
-    country: "Bangladesh",
-    phone: "+8801700000000",
-    whatsapp: "+8801700000000",
-    email: "nurulanambashirdamian@gmail.com",
-    passwordHash: null,
-    bloodGroup: "B+",
-    isRegisteredDonor: true,
-    donorAvailability: "available",
-    role: "admin",
-    verificationStatus: "verified",
-    verificationMethod: "admin_verified",
-    vouchesCount: 5,
-    vouchTargetCount: 2,
-    accountStatus: "active",
-    isPublic: true,
-    postsCount: 3,
-    badges: ["Super Admin", "Verified Notredamian", "Portal Founder"],
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  },
-  {
-    id: 2,
-    fullName: "Dr. Shahabuddin Ahmed",
-    avatarUrl: "https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=200&auto=format&fit=crop&q=80",
-    batchYear: 45,
-    session: "1993-95 (HSC 1995)",
-    collegeRoll: "295011",
-    academicStream: "Science",
-    academicGroup: "Group 1",
-    section: "Group 1",
-    profession: "Physician / Cardiologist",
-    position: "Associate Professor & Consultant",
-    institution: "National Institute of Cardiovascular Diseases (NICVD)",
-    specialty: ["Medicine & Surgery", "Cardiology & Intensive Care"],
-    degree: ["HSC", "MBBS", "FCPS (Cardiology)"],
-    city: "Dhaka",
-    country: "Bangladesh",
-    phone: "+8801811111111",
-    whatsapp: "+8801811111111",
-    email: "shahabuddin@nicvd.gov.bd",
-    bloodGroup: "O+",
-    isRegisteredDonor: true,
-    donorAvailability: "available",
-    role: "moderator",
-    verificationStatus: "verified",
-    verificationMethod: "admin_verified",
-    vouchesCount: 4,
-    vouchTargetCount: 2,
-    accountStatus: "active",
-    isPublic: true,
-    postsCount: 1,
-    badges: ["Verified Notredamian", "Medical Network Lead"],
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  },
-  {
-    id: 3,
-    fullName: "Tanvir Hossain",
-    avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80",
-    batchYear: 58,
-    session: "2006-08 (HSC 2008)",
-    collegeRoll: "408019",
-    academicStream: "Business Studies",
-    academicGroup: "A",
-    section: "Group A",
-    profession: "Chartered Accountant & Financial Controller",
-    position: "Chief Financial Officer",
-    institution: "Apex Group",
-    specialty: ["Finance, Banking & Accounting", "Audit & Governance"],
-    degree: ["HSC", "BBA", "FCA"],
-    city: "Dhaka",
-    country: "Bangladesh",
-    phone: "+8801922222222",
-    whatsapp: "+8801922222222",
-    email: "tanvir.h@apex.com",
-    bloodGroup: "A+",
-    isRegisteredDonor: true,
-    donorAvailability: "available",
-    role: "member",
-    verificationStatus: "verified",
-    verificationMethod: "two_vouches",
-    vouchesCount: 2,
-    vouchTargetCount: 2,
-    accountStatus: "active",
-    isPublic: true,
-    postsCount: 2,
-    badges: ["Verified Notredamian"],
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  },
-  {
-    id: 4,
-    fullName: "Barrister Mahir Chowdhury",
-    avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80",
-    batchYear: 62,
-    session: "2010-12 (HSC 2012)",
-    collegeRoll: "512003",
-    academicStream: "Humanities",
-    academicGroup: "G",
-    section: "Group G",
-    profession: "Advocate & Legal Counsel",
-    position: "Partner & Barrister-at-Law",
-    institution: "Supreme Court of Bangladesh",
-    specialty: ["Law & Judiciary", "Constitutional & Corporate Law"],
-    degree: ["HSC", "LLB (Hons)", "LLM (London)"],
-    city: "Dhaka",
-    country: "Bangladesh",
-    phone: "+8801733333333",
-    whatsapp: "+8801733333333",
-    email: "mahir.chowdhury@chambers.org",
-    bloodGroup: "AB+",
-    isRegisteredDonor: true,
-    donorAvailability: "available",
-    role: "member",
-    verificationStatus: "verified",
-    verificationMethod: "two_vouches",
-    vouchesCount: 3,
-    vouchTargetCount: 2,
-    accountStatus: "active",
-    isPublic: true,
-    postsCount: 1,
-    badges: ["Verified Notredamian"],
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  }
-];
+var inMemoryAlumniProfiles = [];
 async function recordSecurityAuditLog(params) {
   if (isSupabaseServerConfigured) {
     try {
@@ -602,18 +430,18 @@ async function getAdminOverviewMetrics() {
     }
   }
   return {
-    totalProfiles: totalProfiles || inMemoryAlumniProfiles.length,
-    verifiedProfiles: verifiedProfiles || inMemoryAlumniProfiles.filter((p) => p.verificationStatus === "verified").length,
-    pendingProfiles: pendingProfiles || inMemoryAlumniProfiles.filter((p) => p.verificationStatus === "pending_vouch").length,
-    suspendedProfiles: suspendedProfiles || inMemoryAlumniProfiles.filter((p) => p.accountStatus === "suspended").length,
-    registeredDonors: registeredDonors || inMemoryAlumniProfiles.filter((p) => p.isRegisteredDonor).length,
+    totalProfiles,
+    verifiedProfiles,
+    pendingProfiles,
+    suspendedProfiles,
+    registeredDonors,
     pendingDocReviews,
     activeBloodEmergencies,
-    publishedNotices: publishedNotices || OFFICIAL_NOTICES.length,
+    publishedNotices,
     streamDistribution: {
-      Science: scienceCount || inMemoryAlumniProfiles.filter((p) => p.academicStream === "Science").length,
-      Humanities: humanitiesCount || inMemoryAlumniProfiles.filter((p) => p.academicStream === "Humanities").length,
-      "Business Studies": businessCount || inMemoryAlumniProfiles.filter((p) => p.academicStream === "Business Studies").length
+      Science: scienceCount,
+      Humanities: humanitiesCount,
+      "Business Studies": businessCount
     },
     streamGroupsConfig,
     recentAuditLogs
@@ -802,7 +630,7 @@ async function createOrRegisterAlumniProfile(input) {
             whatsapp: input.whatsapp?.trim() || null,
             email: cleanEmail,
             blood_group: input.bloodGroup || null,
-            role: cleanEmail && (cleanEmail === "nurulanambashirdamian@gmail.com" || cleanEmail === "nurulanambashir20@gmail.com") ? "admin" : "member",
+            role: "member",
             verification_status: "unverified",
             is_public: true
           },
@@ -838,49 +666,11 @@ async function createOrRegisterAlumniProfile(input) {
       }
     } catch (err) {
       console.warn("Supabase createOrRegisterAlumniProfile error:", err);
+      throw err;
     }
   }
-  const existingIdx = inMemoryAlumniProfiles.findIndex(
-    (p) => cleanEmail && p.email?.toLowerCase() === cleanEmail || cleanPhone && p.phone === cleanPhone
-  );
-  const isAdmin = cleanEmail === "nurulanambashirdamian@gmail.com" || cleanEmail === "nurulanambashir20@gmail.com";
-  const newProfile = {
-    id: existingIdx >= 0 ? inMemoryAlumniProfiles[existingIdx].id : Date.now(),
-    fullName: input.fullName.trim(),
-    avatarUrl: input.avatarUrl || "/ndc-logo.png",
-    batchYear: batchNum,
-    session,
-    collegeRoll: input.collegeRoll || "",
-    academicStream: input.academicStream || "Science",
-    academicGroup: input.academicGroup || null,
-    section: input.section || "Group 4",
-    profession: input.profession || "",
-    position: input.position || "",
-    institution: input.institution || "",
-    specialty: Array.isArray(input.specialty) ? input.specialty : [],
-    degree: Array.isArray(input.degree) ? input.degree : ["HSC"],
-    city: input.city || "Dhaka",
-    country: input.country || "Bangladesh",
-    phone: cleanPhone,
-    whatsapp: input.whatsapp?.trim() || null,
-    email: cleanEmail,
-    passwordHash: input.passwordHash || null,
-    bloodGroup: input.bloodGroup || null,
-    isRegisteredDonor: Boolean(input.isRegisteredDonor),
-    donorAvailability: "available",
-    role: isAdmin ? "admin" : "member",
-    verificationStatus: "unverified",
-    accountStatus: "active",
-    isPublic: true,
-    postsCount: 0,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  if (existingIdx >= 0) {
-    inMemoryAlumniProfiles[existingIdx] = { ...inMemoryAlumniProfiles[existingIdx], ...newProfile };
-  } else {
-    inMemoryAlumniProfiles.unshift(newProfile);
-  }
-  return newProfile;
+
+  throw new Error("Supabase is required to register alumni profiles.");
 }
 async function findAlumniByCredential(credential) {
   const clean = credential.trim().toLowerCase();
@@ -987,6 +777,18 @@ async function deleteAlumniProfile(profileId) {
   return true;
 }
 async function adminUpdateAlumniGovernance(params) {
+  if (params.role !== void 0) {
+    const supportedRoles = ["member", "moderator", "admin"];
+    if (params.actorRole !== "admin" || !supportedRoles.includes(params.role)) {
+      throw new Error("Only administrators may assign supported database roles.");
+    }
+  }
+  if (params.verificationStatus !== void 0 && isSupabaseServerConfigured) {
+    const { data: target, error: targetError } = await supabaseServer.from(SUPABASE_TABLES.ALUMNI_PROFILES).select("auth_user_id, role").eq("id", params.profileId).maybeSingle();
+    if (targetError || !target) throw new Error("Alumni profile not found.");
+    if (target.auth_user_id === params.actorUid) throw new Error("Administrators cannot change their own verification status.");
+    if (target.role === "admin" && params.actorRole !== "admin") throw new Error("Only administrators may change an administrator profile.");
+  }
   if (isSupabaseServerConfigured && params.profileId) {
     try {
       const updates = {
@@ -1022,14 +824,10 @@ async function adminUpdateAlumniGovernance(params) {
       }
     } catch (err) {
       console.warn("Supabase adminUpdateAlumniGovernance error:", err);
+      throw err;
     }
   }
-  return {
-    id: params.profileId,
-    verificationStatus: params.verificationStatus || "verified",
-    role: params.role || "member",
-    accountStatus: params.accountStatus || "active"
-  };
+  throw new Error("Supabase is required to update profile governance.");
 }
 async function adminVerifyAlumniPhoneOwnership(params) {
   const profileId = Number(params.profileId);
@@ -1039,6 +837,9 @@ async function adminVerifyAlumniPhoneOwnership(params) {
       const { data: profile, error: fetchErr } = await supabaseServer.from(SUPABASE_TABLES.ALUMNI_PROFILES).select("*").eq("id", profileId).single();
       if (fetchErr || !profile) {
         throw new Error("Alumni profile not found.");
+      }
+      if (profile.auth_user_id === params.actorUid) {
+        throw new Error("Administrators cannot verify their own phone ownership.");
       }
       const rawPhone = (profile.phone || "").trim();
       if (!rawPhone) {
@@ -1058,8 +859,8 @@ async function adminVerifyAlumniPhoneOwnership(params) {
         phone_verification_notes: params.notes || "Verified by portal administrator",
         updated_at: now
       }).eq("id", profileId).select().single();
-      if (updateErr) {
-        console.warn("Failed to update alumni_profiles phone verification:", updateErr);
+      if (updateErr || !updated) {
+        throw new Error("Phone verification could not be saved.");
       }
       if (profile.auth_user_id) {
         try {
@@ -1094,13 +895,7 @@ async function adminVerifyAlumniPhoneOwnership(params) {
       throw err;
     }
   }
-  const found = inMemoryAlumniProfiles.find((p) => p.id === profileId);
-  if (!found) throw new Error("Alumni profile not found in memory store.");
-  if (!found.phone) throw new Error("Alumnus does not have a phone number to verify.");
-  found.phoneOwnershipVerified = true;
-  found.phoneVerifiedAt = now;
-  found.phoneVerificationNotes = params.notes || "Verified in memory test";
-  return found;
+  throw new Error("Supabase is required to verify phone ownership.");
 }
 async function adminRevokeAlumniPhoneOwnership(params) {
   const profileId = Number(params.profileId);
@@ -1177,6 +972,13 @@ async function getVerificationQueue(statusFilter) {
 async function reviewVerificationSubmission(params) {
   if (isSupabaseServerConfigured && params.submissionId) {
     try {
+      const { data: submission, error: submissionError } = await supabaseServer.from(SUPABASE_TABLES.ADMIN_DOC_SUBMISSIONS).select("id, user_id").eq("id", params.submissionId).maybeSingle();
+      if (submissionError || !submission) throw new Error("Verification submission not found.");
+      if (submission.user_id) {
+        const { data: applicant, error: applicantError } = await supabaseServer.from(SUPABASE_TABLES.ALUMNI_PROFILES).select("auth_user_id").eq("id", submission.user_id).maybeSingle();
+        if (applicantError) throw applicantError;
+        if (applicant?.auth_user_id === params.actorUid) throw new Error("Administrators cannot review their own verification submission.");
+      }
       const { data, error } = await supabaseServer.from(SUPABASE_TABLES.ADMIN_DOC_SUBMISSIONS).update({
         status: params.decision,
         admin_note: params.adminNote || "Reviewed by central admin",
@@ -1204,15 +1006,10 @@ async function reviewVerificationSubmission(params) {
       }
     } catch (err) {
       console.warn("Supabase reviewVerificationSubmission error:", err);
+      throw err;
     }
   }
-  return {
-    id: params.submissionId,
-    status: params.decision,
-    reviewedBy: params.actorEmail,
-    reviewedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    adminNote: params.adminNote
-  };
+  throw new Error("Supabase is required to review verification submissions.");
 }
 async function getBloodEmergencyList() {
   if (isSupabaseServerConfigured) {
@@ -1985,7 +1782,7 @@ app.get(
   optionalAuth,
   async (req, res) => {
     try {
-      const isAdminView = req.query.adminView === "true" && (req.dbUser?.role === "admin" || req.user?.email && (req.user.email === "nurulanambashirdamian@gmail.com" || req.user.email === "nurulanambashir20@gmail.com"));
+      const isAdminView = req.query.adminView === "true" && req.dbUser?.role === "admin";
       const result = await queryPaginatedAlumniProfiles({
         page: Number(req.query.page) || 1,
         limit: Number(req.query.limit) || 25,
