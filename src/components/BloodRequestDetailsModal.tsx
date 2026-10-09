@@ -80,10 +80,10 @@ export const BloodRequestDetailsModal: React.FC<BloodRequestDetailsModalProps> =
     request.status === 'Cancelled' ||
     request.status === 'Expired';
 
-  const handleICanDonate = () => {
+  const handleICanDonate = async () => {
     setErrorMsg(null);
     try {
-      const updated = respondToBloodRequest(request.id, currentUser, responseNote);
+      const updated = await respondToBloodRequest(request.id, currentUser, responseNote);
       setResponseNote('');
       setFeedbackMsg(
         'Your "I Can Donate" response has been recorded and the requester has been notified via the portal notification system.'
