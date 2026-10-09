@@ -72,7 +72,11 @@ function AlumniAppContent() {
   const [selectedBatchFilter, setSelectedBatchFilter] = useState<number | null>(null);
 
   // Auth modal state
-  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot' | null>(null);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot' | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('recovery') === '1' ? 'forgot' : null;
+  });
 
   // Verification Center Modal state
   const [verificationModalState, setVerificationModalState] = useState<{
