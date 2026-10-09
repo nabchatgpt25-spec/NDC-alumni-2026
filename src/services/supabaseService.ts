@@ -4,6 +4,7 @@ import {
   AlumniProfile,
   BatchSummary,
   BloodDonorProfile,
+  BloodDonationHistoryItem,
   BloodEmergencyRequest,
   GalleryAlbum,
   GalleryPhoto,
@@ -127,15 +128,39 @@ export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
       batchYear: b.batch_year,
       hscYear: b.hsc_year || (b.batch_year > 1900 ? b.batch_year : 1950 + b.batch_year),
       session: b.session || `${b.batch_year - 2}-${String(b.batch_year).slice(-2)}`,
-      total: b.estimated_total || 450,
-      registeredCount: b.registered_count || 0,
-      totalAlumni: b.estimated_total || 450,
+      total: Number(b.registered_count ?? 0),
       representative: b.representative_name || undefined,
       specialNote: b.special_note || undefined,
     }));
   } catch (err) {
-    console.warn('Supabase fetchBatches fallback:', err);
+    console.warn('Supabase fetchBatches error:', err);
     return BATCH_LIST;
+  }
+}
+
+export async function fetchBatchAlumniProfilesFromDb(batchYear: number): Promise<AlumniProfile[]> {
+  if (!isSupabaseConfigured || !Number.isFinite(batchYear)) return [];
+
+  try {
+    const profiles: AlumniProfile[] = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase
+        .from('alumni_profiles')
+        .select(ALUMNI_PUBLIC_COLUMNS)
+        .eq('is_public', true)
+        .eq('batch_year', batchYear)
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+
+      if (error || !data) return [];
+      profiles.push(...data.map(mapSupabaseRowToAlumniProfile));
+      if (data.length < pageSize) break;
+    }
+    return profiles;
+  } catch (err) {
+    console.warn('Supabase batch profile statistics error:', err);
+    return [];
   }
 }
 
@@ -423,12 +448,14 @@ async function resolveAndUploadMediaToStorage(
       if (uploadRes?.publicUrl) {
         return uploadRes.publicUrl;
       }
+      throw new Error('Supabase Storage did not return a permanent media URL.');
     }
   } catch (err) {
-    console.warn('Failed to upload post media to storage bucket, retaining fallback:', err);
+    console.warn('Failed to upload post media to Supabase Storage:', err);
+    throw new Error(`Could not upload the attached ${mediaType}. Please try again.`);
   }
 
-  return urlOrData;
+  throw new Error(`Could not upload the attached ${mediaType}. Please try again.`);
 }
 
 export async function createFeedPostInDb(params: {
@@ -936,8 +963,16 @@ export async function createBloodRequestInDb(params: {
   emergencyLevel: string;
   contactMethod: string;
   description: string;
-}): Promise<boolean> {
-  if (!isSupabaseConfigured) return false;
+  status: string;
+  coordinationRef?: string;
+  patientRelation?: string;
+}): Promise<string | null> {
+  if (!isSupabaseConfigured) return null;
+
+  const requiredDate = new Date(params.requiredDateTime);
+  if (Number.isNaN(requiredDate.getTime()) || requiredDate.getTime() <= Date.now()) {
+    return null;
+  }
 
   const validEmergencyLevels = ['critical', 'urgent', 'standard'];
   const normalizedLevel = (params.emergencyLevel || 'urgent').toLowerCase();
@@ -954,35 +989,47 @@ export async function createBloodRequestInDb(params: {
     : 'Portal Secure Coordination';
 
   try {
-    const { error } = await supabase.from('blood_requests').insert({
-      requester_id: params.requesterId,
-      blood_group: params.bloodGroup,
-      units_required: params.unitsRequired,
-      hospital_name: params.hospitalName,
-      hospital_area: params.hospitalArea,
-      city: params.city || 'Dhaka',
-      required_datetime: params.requiredDateTime,
-      emergency_level: emergencyLevel,
-      contact_method: contactMethod,
-      description: params.description,
-      status: 'Active',
-    });
+    const { data, error } = await supabase
+      .from('blood_requests')
+      .insert({
+        requester_id: params.requesterId,
+        blood_group: params.bloodGroup,
+        units_required: params.unitsRequired,
+        hospital_name: params.hospitalName,
+        hospital_area: params.hospitalArea,
+        city: params.city || 'Dhaka',
+        required_datetime: requiredDate.toISOString(),
+        emergency_level: emergencyLevel,
+        contact_method: contactMethod,
+        coordination_ref: params.coordinationRef || null,
+        patient_relation: params.patientRelation || null,
+        description: params.description,
+        status: params.status,
+      })
+      .select('id')
+      .single();
 
-    return !error;
+    if (error || !data?.id) {
+      console.warn('Failed to insert blood request:', error?.message);
+      return null;
+    }
+    return String(data.id);
   } catch (err) {
     console.warn('Failed to insert blood request:', err);
-    return false;
+    return null;
   }
 }
 
 export async function registerBloodDonorInDb(params: {
   userId: number;
   bloodGroup: string;
+  isRegisteredDonor: boolean;
   availability: string;
   preferredArea: string;
   city: string;
   lastDonationDate?: string;
   emergencyAlertPreference: string;
+  donationHistory?: BloodDonationHistoryItem[];
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
@@ -990,16 +1037,21 @@ export async function registerBloodDonorInDb(params: {
     const { error } = await supabase.from('blood_donors').upsert({
       user_id: params.userId,
       blood_group: params.bloodGroup,
-      is_registered_donor: true,
+      is_registered_donor: params.isRegisteredDonor,
       availability: params.availability,
       preferred_area: params.preferredArea,
       city: params.city,
       last_donation_date: params.lastDonationDate || null,
       emergency_alert_preference: params.emergencyAlertPreference,
+      donation_history: params.donationHistory || [],
       updated_at: new Date().toISOString(),
     });
 
-    return !error;
+    if (error) {
+      console.warn('Failed to upsert blood donor in Supabase:', error.message);
+      return false;
+    }
+    return true;
   } catch (err) {
     console.warn('Failed to upsert blood donor in Supabase:', err);
     return false;
