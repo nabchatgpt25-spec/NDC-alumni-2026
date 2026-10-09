@@ -97,12 +97,10 @@ serve(async (req: Request) => {
       .eq("auth_user_id", caller.id)
       .maybeSingle();
 
-    const isAdmin =
-      callerProfile?.role === "admin" ||
-      callerProfile?.role === "super_admin" ||
-      callerProfile?.role === "moderator";
+    const isAdmin = callerProfile?.role === "admin";
+    const isAuthorized = isAdmin || callerProfile?.role === "moderator";
 
-    if (!isAdmin) {
+    if (!isAuthorized) {
       return new Response(
         JSON.stringify({ error: "Forbidden: Administrator permissions required." }),
         { status: 403, headers: corsHeaders }
@@ -239,24 +237,30 @@ serve(async (req: Request) => {
           // Update profile governance
           const { verificationStatus, role, accountStatus, academicStream, academicGroup, adminReviewNote } = rawBody;
 
-          // Prevent privilege escalation: only super admins can change user roles
-          if (role !== undefined && !isSuperAdmin) {
+          const allowedRoles = ["member", "moderator", "admin"];
+          if (role !== undefined && (!isAdmin || !allowedRoles.includes(role))) {
             return new Response(
-              JSON.stringify({ error: "Forbidden: Only Super Administrators can alter user roles." }),
+              JSON.stringify({ error: "Forbidden: Only administrators can assign a supported database role." }),
               { status: 403, headers: corsHeaders }
             );
           }
 
-          // Protect existing Super Administrator profiles from modification by standard admins
           const { data: targetCheck } = await supabaseAdmin
             .from("alumni_profiles")
             .select("role")
             .eq("id", targetId)
             .maybeSingle();
 
-          if (targetCheck?.role === "super_admin" && !isSuperAdmin) {
+          if (targetCheck?.role === "admin" && !isAdmin) {
             return new Response(
-              JSON.stringify({ error: "Forbidden: Super Administrator accounts cannot be modified by standard administrators." }),
+              JSON.stringify({ error: "Forbidden: Moderator accounts cannot modify administrator profiles." }),
+              { status: 403, headers: corsHeaders }
+            );
+          }
+
+          if (verificationStatus !== undefined && targetId === callerProfile?.id) {
+            return new Response(
+              JSON.stringify({ error: "Forbidden: Administrators cannot approve or change their own verification status." }),
               { status: 403, headers: corsHeaders }
             );
           }
@@ -309,7 +313,7 @@ serve(async (req: Request) => {
 
         if (method === "DELETE") {
           // Delete alumnus
-          if (!isSuperAdmin) {
+          if (!isAdmin) {
             return new Response(
               JSON.stringify({ error: "Forbidden: Super Administrator rights required to delete profiles." }),
               { status: 403, headers: corsHeaders }
@@ -888,7 +892,7 @@ serve(async (req: Request) => {
     // ROUTE: BULK COHORT SAMPLE SEEDER (Guarded)
     // -------------------------------------------------------------------------
     if (action === "bulk-cohort") {
-      if (!isSuperAdmin) {
+      if (!isAdmin) {
         return new Response(JSON.stringify({ error: "Forbidden: Super Administrator required." }), { status: 403, headers: corsHeaders });
       }
 
@@ -911,7 +915,7 @@ serve(async (req: Request) => {
     // ROUTE: DATABASE BACKUP EXPORT (Strict Super Admin Only)
     // -------------------------------------------------------------------------
     if (action === "export-full-backup") {
-      if (!isSuperAdmin) {
+      if (!isAdmin) {
         return new Response(
           JSON.stringify({ error: "Forbidden: Strict Super Administrator clearance required for full database export." }),
           { status: 403, headers: corsHeaders }
@@ -951,7 +955,7 @@ serve(async (req: Request) => {
     // ROUTE: SQL MIGRATIONS BUNDLE EXPORT (Strict Super Admin Only)
     // -------------------------------------------------------------------------
     if (action === "export-sql-bundle") {
-      if (!isSuperAdmin) {
+      if (!isAdmin) {
         return new Response(
           JSON.stringify({ error: "Forbidden: Strict Super Administrator clearance required for SQL bundle export." }),
           { status: 403, headers: corsHeaders }
