@@ -1,19 +1,12 @@
+import { SUPABASE_API_URL, SUPABASE_API_ANON_KEY } from './supabase';
+
 export const CUSTOM_DOMAIN = 'https://ndcbogura.alumniworld.xyz';
 export const PUBLISHED_AI_STUDIO_URL = 'https://ndc-alumni-2026.ai.studio';
 export const CLOUD_RUN_BACKEND_URL =
   'https://ais-pre-siz5cxwdtehl5ayj3qiu3s-456498149201.asia-southeast1.run.app';
 
-const SUPABASE_URL = (
-  typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL
-    ? import.meta.env.VITE_SUPABASE_URL
-    : ''
-).replace(/\/$/, '');
-
-const SUPABASE_ANON_KEY = (
-  typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY
-    ? import.meta.env.VITE_SUPABASE_ANON_KEY
-    : ''
-);
+const SUPABASE_URL = SUPABASE_API_URL.replace(/\/$/, '');
+const SUPABASE_ANON_KEY = SUPABASE_API_ANON_KEY;
 
 export function getEdgeFunctionUrl(functionName: string): string {
   if (SUPABASE_URL) {
