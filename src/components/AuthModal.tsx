@@ -320,13 +320,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setSuccessMessage('');
     setProviderNotice(null);
 
-    const input = loginTab === 'email' ? loginIdentifier.trim() : loginPhone.trim();
+    const input = loginIdentifier.trim();
     if (!input || !loginPassword.trim()) {
-      setErrorMessage(
-        loginTab === 'email'
-          ? 'Please enter your email and password.'
-          : 'Please enter your mobile number and password.'
-      );
+      setErrorMessage('Please enter your email or phone number and password.');
       return;
     }
 
@@ -681,47 +677,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {/* =========================================================================
-              VIEW 1: SIGN IN (LOGIN - EMAIL OR SECURE PHONE AUTH)
+              VIEW 1: SIGN IN (UNIFIED LOGIN - EMAIL OR PHONE)
              ========================================================================= */}
           {mode === 'login' && (
             <div className="space-y-4 max-w-md mx-auto py-1">
-              {/* Login Method Sub-Tabs: Email vs Mobile Phone */}
-              <div className="flex p-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginTab('email');
-                    setErrorMessage('');
-                    setProviderNotice(null);
-                  }}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    loginTab === 'email'
-                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Mail className="w-3.5 h-3.5" />
-                  <span>Email &amp; Password</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginTab('phone');
-                    setErrorMessage('');
-                    setProviderNotice(null);
-                  }}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    loginTab === 'phone'
-                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>Mobile Number</span>
-                </button>
-              </div>
-
               {/* Exact Supabase Provider Setup Notice (Shown if Phone provider is not yet enabled) */}
               {providerNotice && (
                 <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs space-y-2 animate-in fade-in">
@@ -729,343 +688,103 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     <div>
                       <div className="font-extrabold text-slate-900 dark:text-white">
-                        Supabase SMS/Phone Provider Setting Required
+                        Provider Notice
                       </div>
                       <p className="mt-1 leading-relaxed text-[11px] text-slate-700 dark:text-slate-300">
                         {providerNotice}
                       </p>
                     </div>
                   </div>
-                  <div className="pt-1 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginTab('email');
-                        setProviderNotice(null);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] cursor-pointer transition-colors"
-                    >
-                      Sign In with Email Instead
-                    </button>
-                  </div>
                 </div>
               )}
 
-              {/* -------------------------------------------------------------
-                  SUB-VIEW A: EMAIL & PASSWORD
-                 ------------------------------------------------------------- */}
-              {loginTab === 'email' && (
-                <form onSubmit={handleLogin} className="space-y-3.5">
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25 }}
-                  >
-                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
-                      Email Address
-                    </label>
-                    <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                      <div className="pl-3.5 text-slate-500 dark:text-slate-400">
-                        <Mail className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="e.g. name@example.com"
-                        value={loginIdentifier}
-                        onChange={(e) => setLoginIdentifier(e.target.value)}
-                        className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                        autoFocus
-                      />
+              <form onSubmit={handleLogin} className="space-y-3.5">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                    Email or Phone
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                    <div className="pl-3.5 text-slate-500 dark:text-slate-400">
+                      <Mail className="w-4 h-4" />
                     </div>
-                  </motion.div>
-
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, delay: 0.05 }}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                        Password
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMode('forgot');
-                          setErrorMessage('');
-                        }}
-                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                      >
-                        Forgot Password?
-                      </button>
-                    </div>
-                    <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                      <div className="pl-3.5 text-slate-500 dark:text-slate-400">
-                        <Lock className="w-4 h-4" />
-                      </div>
-                      <input
-                        type={showLoginPassword ? 'text' : 'password'}
-                        placeholder="Enter your password"
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowLoginPassword(!showLoginPassword)}
-                        className="pr-3.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
-                        aria-label="Toggle password visibility"
-                      >
-                        {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </motion.div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700 dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
-                      />
-                      <span>Remember me on this browser</span>
-                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. name@example.com or 017xxxxxxxx"
+                      value={loginIdentifier}
+                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                      autoFocus
+                    />
                   </div>
+                </motion.div>
 
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 min-h-[44px]"
-                  >
-                    <span>{loading ? 'Signing in...' : 'Sign In to Portal'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </form>
-              )}
-
-              {/* -------------------------------------------------------------
-                  SUB-VIEW B: PHONE NUMBER (SMS OTP OR PHONE+PASSWORD)
-                 ------------------------------------------------------------- */}
-              {loginTab === 'phone' && (
-                <div className="space-y-3.5">
-                  {/* Phone login mode selector */}
-                  <div className="flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400 pb-1">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: 0.05 }}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Password
+                    </label>
                     <button
                       type="button"
                       onClick={() => {
-                        setPhoneLoginMode('otp');
+                        setMode('forgot');
                         setErrorMessage('');
                       }}
-                      className={`px-3 py-1 rounded-full cursor-pointer transition-colors ${
-                        phoneLoginMode === 'otp'
-                          ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold'
-                          : 'hover:text-slate-900 dark:hover:text-white'
-                      }`}
+                      className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                     >
-                      SMS Code (OTP)
-                    </button>
-                    <span>·</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPhoneLoginMode('password');
-                        setErrorMessage('');
-                      }}
-                      className={`px-3 py-1 rounded-full cursor-pointer transition-colors ${
-                        phoneLoginMode === 'password'
-                          ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold'
-                          : 'hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      Mobile &amp; Password
+                      Forgot Password?
                     </button>
                   </div>
-
-                  {phoneLoginMode === 'otp' ? (
-                    <form
-                      onSubmit={phoneOtpSent ? handleVerifyPhoneOtp : handleRequestPhoneOtp}
-                      className="space-y-3.5"
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                    <div className="pl-3.5 text-slate-500 dark:text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showLoginPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPassword(!showLoginPassword)}
+                      className="pr-3.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+                      aria-label="Toggle password visibility"
                     >
-                      <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25 }}
-                      >
-                        <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
-                          Alumni Mobile Number
-                        </label>
-                        <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                          <div className="pl-3.5 flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-bold shrink-0">
-                            <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                            <span className="text-slate-600 dark:text-slate-300 border-r border-slate-300 dark:border-slate-700 pr-2">
-                              +880
-                            </span>
-                          </div>
-                          <input
-                            type="tel"
-                            placeholder="e.g. 01712345678"
-                            value={loginPhone}
-                            onChange={(e) => setLoginPhone(e.target.value)}
-                            disabled={phoneOtpSent}
-                            className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none disabled:opacity-60"
-                            autoFocus
-                          />
-                          {phoneOtpSent && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPhoneOtpSent(false);
-                                setLoginPhoneOtp('');
-                              }}
-                              className="pr-3 text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer shrink-0"
-                            >
-                              Change
-                            </button>
-                          )}
-                        </div>
-                      </motion.div>
+                      {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </motion.div>
 
-                      {phoneOtpSent && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.25 }}
-                          className="space-y-1.5"
-                        >
-                          <div className="flex items-center justify-between">
-                            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                              6-Digit SMS Verification Code
-                            </label>
-                            {phoneCountdown > 0 ? (
-                              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                                Resend in {phoneCountdown}s
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={handleRequestPhoneOtp}
-                                disabled={loading}
-                                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                              >
-                                Resend SMS Code
-                              </button>
-                            )}
-                          </div>
-                          <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                            <div className="pl-3.5 text-slate-500 dark:text-slate-400">
-                              <KeyRound className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                            </div>
-                            <input
-                              type="text"
-                              maxLength={6}
-                              placeholder="Enter 6-digit code (e.g. 123456)"
-                              value={loginPhoneOtp}
-                              onChange={(e) => setLoginPhoneOtp(e.target.value.replace(/\D/g, ''))}
-                              className="w-full px-3 py-3 text-xs sm:text-sm font-mono tracking-widest text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                              autoFocus
-                            />
-                          </div>
-                        </motion.div>
-                      )}
-
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 min-h-[44px]"
-                      >
-                        {phoneOtpSent ? (
-                          <>
-                            <span>{loading ? 'Verifying...' : 'Verify Code & Sign In'}</span>
-                            <ArrowRight className="w-4 h-4" />
-                          </>
-                        ) : (
-                          <>
-                            <span>{loading ? 'Sending SMS Code...' : 'Send SMS Verification Code'}</span>
-                            <ArrowRight className="w-4 h-4" />
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  ) : (
-                    <form onSubmit={handleLogin} className="space-y-3.5">
-                      <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25 }}
-                      >
-                        <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
-                          Alumni Mobile Number
-                        </label>
-                        <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                          <div className="pl-3.5 text-slate-500 dark:text-slate-400">
-                            <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                          </div>
-                          <input
-                            type="tel"
-                            placeholder="e.g. 01712345678"
-                            value={loginPhone}
-                            onChange={(e) => setLoginPhone(e.target.value)}
-                            className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                            autoFocus
-                          />
-                        </div>
-                      </motion.div>
-
-                      <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25, delay: 0.05 }}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                            Password
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMode('forgot');
-                              setErrorMessage('');
-                            }}
-                            className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                          >
-                            Forgot Password?
-                          </button>
-                        </div>
-                        <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                          <div className="pl-3.5 text-slate-500 dark:text-slate-400">
-                            <Lock className="w-4 h-4" />
-                          </div>
-                          <input
-                            type={showLoginPassword ? 'text' : 'password'}
-                            placeholder="Enter your password"
-                            value={loginPassword}
-                            onChange={(e) => setLoginPassword(e.target.value)}
-                            className="w-full px-3 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowLoginPassword(!showLoginPassword)}
-                            className="pr-3.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
-                            aria-label="Toggle password visibility"
-                          >
-                            {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </motion.div>
-
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 min-h-[44px]"
-                      >
-                        <span>{loading ? 'Signing in...' : 'Sign In with Mobile'}</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                    </form>
-                  )}
+                <div className="flex items-center justify-between pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Remember me on this browser</span>
+                  </label>
                 </div>
-              )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 min-h-[44px]"
+                >
+                  <span>{loading ? 'Signing in...' : 'Sign In to Portal'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
 
               {/* Helper for new users */}
               <div className="pt-3 border-t border-white/35 dark:border-white/10 text-center">

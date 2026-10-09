@@ -60,7 +60,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     origin &&
     (ALLOWED_ORIGINS.has(origin) ||
       origin.endsWith('.alumniworld.xyz') ||
-      origin.endsWith('.ai.studio'))
+      origin.endsWith('.ai.studio') ||
+      origin.endsWith('.run.app') ||
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1'))
   ) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');

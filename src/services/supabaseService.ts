@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured, ALUMNI_PUBLIC_COLUMNS } from '../lib/supabase';
-import { mapSupabaseRowToAlumniProfile } from '../lib/supabase-auth';
+import { mapSupabaseRowToAlumniProfile, getOrCreateSupabaseProfile } from '../lib/supabase-auth';
 import {
   AlumniProfile,
   BatchSummary,
@@ -8,23 +8,15 @@ import {
   GalleryAlbum,
   GalleryPhoto,
   NotificationItem,
+  OfficialNotice,
   PostItem,
   PostComment,
   VouchRequest,
 } from '../types';
 import {
-  ALUMNI_PROFILES,
   BATCH_LIST,
-  NOTIFICATIONS_LIST,
-  saveStoredAlumniProfiles,
+  loadStoredAlumniProfiles,
 } from '../data/mockData';
-import { INITIAL_OFFLINE_SAVED_POSTS } from '../utils/offlineStorage';
-import { INITIAL_ALBUMS } from '../data/galleryData';
-import { OFFICIAL_NOTICES, OfficialNotice } from '../data/noticesData';
-import {
-  INITIAL_BLOOD_DONORS,
-  INITIAL_BLOOD_REQUESTS,
-} from '../utils/bloodDonationService';
 
 // =============================================================================
 // 1. ALUMNI DIRECTORY & BATCHES
@@ -38,7 +30,7 @@ export async function fetchAlumniProfilesFromDb(params?: {
   offset?: number;
 }): Promise<AlumniProfile[]> {
   if (!isSupabaseConfigured) {
-    return ALUMNI_PROFILES;
+    return loadStoredAlumniProfiles();
   }
 
   try {
@@ -68,14 +60,18 @@ export async function fetchAlumniProfilesFromDb(params?: {
     }
 
     const { data, error } = await query;
-    if (error || !data || data.length === 0) {
-      return ALUMNI_PROFILES;
+    if (error) {
+      console.warn('Supabase fetchAlumniProfiles error:', error.message);
+      return loadStoredAlumniProfiles();
+    }
+    if (!data || data.length === 0) {
+      return [];
     }
 
     return data.map(mapSupabaseRowToAlumniProfile);
   } catch (err) {
-    console.warn('Supabase fetchAlumniProfiles fallback to mock:', err);
-    return ALUMNI_PROFILES;
+    console.warn('Supabase fetchAlumniProfiles fallback:', err);
+    return loadStoredAlumniProfiles();
   }
 }
 
@@ -98,9 +94,9 @@ export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
       batchYear: b.batch_year,
       hscYear: b.hsc_year || (b.batch_year > 1900 ? b.batch_year : 1950 + b.batch_year),
       session: b.session || `${b.batch_year - 2}-${String(b.batch_year).slice(-2)}`,
+      total: b.estimated_total || 450,
       registeredCount: b.registered_count || 0,
       totalAlumni: b.estimated_total || 450,
-      total: b.estimated_total || 450,
       representative: b.representative_name || undefined,
       specialNote: b.special_note || undefined,
     }));
@@ -133,16 +129,463 @@ export async function fetchAcademicStreamGroupsFromDb(): Promise<any[]> {
 // 2. THE QUAD / SOCIAL FEED & POSTS
 // =============================================================================
 
-export async function fetchFeedPostsFromDb(limit = 30, currentUserId?: number): Promise<PostItem[]> {
+function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
+  const author = row.author || {};
+  const comments: PostComment[] = (row.post_comments || []).map((c: any) => ({
+    id: Number(c.id),
+    postId: Number(row.id),
+    userId: Number(c.user_id),
+    fullName: c.author?.full_name || 'Alumnus',
+    avatarUrl: c.author?.avatar_url || '/ndc-logo.png',
+    content: c.content,
+    likesCount: Number(c.likes_count) || 0,
+    likedByMe: false,
+    createdAt: new Date(c.created_at).toLocaleDateString(),
+    author: c.author?.full_name || 'Alumnus',
+    authorAvatar: c.author?.avatar_url || '/ndc-logo.png',
+    timestamp: new Date(c.created_at).toLocaleDateString(),
+  }));
+
+  const isLiked = Boolean(
+    currentUserId &&
+      Array.isArray(row.post_likes) &&
+      row.post_likes.some((l: any) => Number(l.user_id) === currentUserId)
+  );
+
+  return {
+    id: Number(row.id),
+    userId: Number(row.author_id),
+    fullName: author.full_name || 'Notredamian Alumnus',
+    avatarUrl: author.avatar_url || '/ndc-logo.png',
+    batchYear: author.batch_year || 68,
+    content: row.content || '',
+    images: Array.isArray(row.images) ? row.images : [],
+    videos: Array.isArray(row.videos) ? row.videos : [],
+    likesCount: Number(row.likes_count) || (row.post_likes?.length ?? 0),
+    commentsCount: comments.length,
+    createdAt: new Date(row.created_at).toLocaleDateString(),
+    likedByMe: isLiked,
+    comments: comments,
+    category: row.category || 'General Update',
+    isEdited: Boolean(row.is_edited),
+    pinned: Boolean(row.is_pinned),
+    author: author.full_name || 'Notredamian Alumnus',
+    authorAvatar: author.avatar_url || '/ndc-logo.png',
+    authorBatch: author.batch_year || 68,
+    authorRole: 'Alumnus',
+    verified: author.verification_status === 'verified',
+    timestamp: new Date(row.created_at).toLocaleDateString(),
+    likes: Number(row.likes_count) || (row.post_likes?.length ?? 0),
+    liked: isLiked,
+    commentsList: comments,
+    shares: 0,
+  } as unknown as PostItem;
+}
+
+export async function fetchFeedPostsFromDb(limit = 50, currentUserId?: number): Promise<PostItem[]> {
   if (!isSupabaseConfigured) {
-    return INITIAL_OFFLINE_SAVED_POSTS;
+    return [];
+  }
+
+  // 1. Directly fetch posts from public.posts table (avoids brittle PostgREST nested joins)
+  const { data: postsData, error: postsError } = await supabase
+    .from('posts')
+    .select(`
+      id,
+      author_id,
+      content,
+      category,
+      images,
+      videos,
+      likes_count,
+      comments_count,
+      is_pinned,
+      is_edited,
+      created_at
+    `)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (postsError) {
+    console.error('Supabase fetchFeedPosts error loading posts:', postsError);
+    throw new Error(`Failed to load posts from Supabase: ${postsError.message || postsError.code}`);
+  }
+
+  if (!postsData || postsData.length === 0) {
+    return [];
+  }
+
+  // 2. Collect author IDs and post IDs for batched queries
+  const authorIds = Array.from(
+    new Set(postsData.map((p) => Number(p.author_id)).filter((id) => id > 0))
+  );
+  const postIds = postsData.map((p) => Number(p.id));
+
+  // 3. Batch fetch author profiles
+  const authorMap = new Map<number, any>();
+  if (authorIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from('alumni_profiles')
+      .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
+      .in('id', authorIds);
+
+    if (profilesError) {
+      console.warn('Supabase fetchFeedPosts warning loading author profiles:', profilesError.message);
+    } else if (profiles) {
+      profiles.forEach((p: any) => authorMap.set(Number(p.id), p));
+    }
+  }
+
+  // 4. Batch fetch comments for these posts
+  const commentsByPost = new Map<number, any[]>();
+  if (postIds.length > 0) {
+    const { data: comments, error: commentsError } = await supabase
+      .from('post_comments')
+      .select(`
+        id,
+        post_id,
+        user_id,
+        content,
+        likes_count,
+        created_at
+      `)
+      .in('post_id', postIds)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: true });
+
+    if (commentsError) {
+      console.warn('Supabase fetchFeedPosts warning loading post comments:', commentsError.message);
+    } else if (comments && comments.length > 0) {
+      // Find any commenters whose profiles we don't have yet
+      const commenterIds = Array.from(
+        new Set(
+          comments
+            .map((c: any) => Number(c.user_id))
+            .filter((id: number) => id > 0 && !authorMap.has(id))
+        )
+      );
+
+      if (commenterIds.length > 0) {
+        const { data: commenterProfiles } = await supabase
+          .from('alumni_profiles')
+          .select('id, full_name, avatar_url, batch_year, verification_status')
+          .in('id', commenterIds);
+
+        if (commenterProfiles) {
+          commenterProfiles.forEach((cp: any) => authorMap.set(Number(cp.id), cp));
+        }
+      }
+
+      // Group comments with attached author profile
+      for (const c of comments) {
+        const pId = Number(c.post_id);
+        const cAuthor = authorMap.get(Number(c.user_id)) || {};
+        const commentWithAuthor = { ...c, author: cAuthor };
+        const list = commentsByPost.get(pId) || [];
+        list.push(commentWithAuthor);
+        commentsByPost.set(pId, list);
+      }
+    }
+  }
+
+  // 5. Batch fetch likes for active user (if currentUserId provided)
+  const userLikesSet = new Set<number>();
+  if (currentUserId && postIds.length > 0) {
+    const { data: likes, error: likesError } = await supabase
+      .from('post_likes')
+      .select('post_id')
+      .eq('user_id', currentUserId)
+      .in('post_id', postIds);
+
+    if (!likesError && likes) {
+      likes.forEach((l: any) => userLikesSet.add(Number(l.post_id)));
+    }
+  }
+
+  // 6. Map and combine into complete PostItem array
+  return postsData.map((row: any) => {
+    const pId = Number(row.id);
+    const author = authorMap.get(Number(row.author_id)) || {};
+    const comments = commentsByPost.get(pId) || [];
+    const isLiked = userLikesSet.has(pId);
+
+    return mapRowToFeedPost(
+      {
+        ...row,
+        author,
+        post_comments: comments,
+        post_likes: isLiked ? [{ user_id: currentUserId }] : [],
+      },
+      currentUserId
+    );
+  });
+}
+
+/**
+ * Uploads a base64 Data URL or temporary Blob URL to Supabase Storage 'post-media' bucket,
+ * returning the persistent public CDN URL.
+ */
+async function resolveAndUploadMediaToStorage(
+  urlOrData: string,
+  authorId: number,
+  mediaType: 'image' | 'video'
+): Promise<string> {
+  if (!urlOrData || (!urlOrData.startsWith('data:') && !urlOrData.startsWith('blob:'))) {
+    return urlOrData;
   }
 
   try {
-    const { data, error } = await supabase
+    let blob: Blob | null = null;
+    let mimeType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+    let ext = mediaType === 'video' ? 'mp4' : 'jpg';
+
+    if (urlOrData.startsWith('data:')) {
+      const commaIdx = urlOrData.indexOf(',');
+      if (commaIdx !== -1) {
+        const header = urlOrData.slice(0, commaIdx);
+        const base64Str = urlOrData.slice(commaIdx + 1);
+        const mimeMatch = header.match(/:(.*?);/);
+        if (mimeMatch && mimeMatch[1]) {
+          mimeType = mimeMatch[1];
+        }
+        if (mimeType.includes('png')) ext = 'png';
+        else if (mimeType.includes('webp')) ext = 'webp';
+        else if (mimeType.includes('gif')) ext = 'gif';
+        else if (mimeType.includes('svg')) ext = 'svg';
+        else if (mimeType.includes('mp4')) ext = 'mp4';
+        else if (mimeType.includes('webm')) ext = 'webm';
+        else if (mimeType.includes('quicktime') || mimeType.includes('mov')) ext = 'mov';
+
+        const binary = atob(base64Str);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        blob = new Blob([bytes], { type: mimeType });
+      }
+    } else if (urlOrData.startsWith('blob:')) {
+      const res = await fetch(urlOrData);
+      blob = await res.blob();
+      if (blob.type) {
+        mimeType = blob.type;
+        if (mimeType.includes('png')) ext = 'png';
+        else if (mimeType.includes('webp')) ext = 'webp';
+        else if (mimeType.includes('gif')) ext = 'gif';
+        else if (mimeType.includes('svg')) ext = 'svg';
+        else if (mimeType.includes('mp4')) ext = 'mp4';
+        else if (mimeType.includes('webm')) ext = 'webm';
+        else if (mimeType.includes('quicktime') || mimeType.includes('mov')) ext = 'mov';
+      }
+    }
+
+    if (blob) {
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+      const uploadRes = await uploadMediaToSupabaseStorage(
+        blob,
+        'post-media',
+        `posts/${authorId}`,
+        fileName
+      );
+      if (uploadRes?.publicUrl) {
+        return uploadRes.publicUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to upload post media to storage bucket, retaining fallback:', err);
+  }
+
+  return urlOrData;
+}
+
+export async function createFeedPostInDb(params: {
+  authorId?: number;
+  content: string;
+  category: string;
+  images?: string[];
+  videos?: string[];
+}): Promise<{ success: boolean; post?: PostItem; error?: string }> {
+  if (!isSupabaseConfigured) {
+    const fallbackId = Date.now();
+    const fallbackPost: PostItem = {
+      id: fallbackId,
+      userId: params.authorId || 1,
+      fullName: 'Notredamian Alumnus',
+      avatarUrl: '/ndc-logo.png',
+      batchYear: 68,
+      content: params.content.trim() || 'Shared an update',
+      images: params.images || [],
+      videos: params.videos || [],
+      likesCount: 0,
+      commentsCount: 0,
+      createdAt: 'Just now',
+      likedByMe: false,
+      comments: [],
+      category: params.category || 'General Update',
+      isEdited: false,
+      pinned: false,
+      author: 'Notredamian Alumnus',
+      authorAvatar: '/ndc-logo.png',
+      authorBatch: 68,
+      authorRole: 'Alumnus',
+      verified: true,
+      timestamp: 'Just now',
+      likes: 0,
+      liked: false,
+      commentsList: [],
+      shares: 0,
+    } as unknown as PostItem;
+    return { success: true, post: fallbackPost };
+  }
+
+  try {
+    // 1. Get authenticated Supabase user (checking server user first, then active session)
+    let { data: authData } = await supabase.auth.getUser();
+    let authUser = authData?.user;
+
+    if (!authUser) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      authUser = sessionData?.session?.user ?? null;
+    }
+
+    if (!authUser) {
+      return {
+        success: false,
+        error: 'You must be signed in with a valid account to publish a post to Supabase.',
+      };
+    }
+
+    // 2. Always obtain the authenticated user's real alumni_profiles.id from Supabase
+    let profileRow: any = null;
+
+    const { data: existingProfile } = await supabase
+      .from('alumni_profiles')
+      .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
+      .eq('auth_user_id', authUser.id)
+      .maybeSingle();
+
+    if (existingProfile?.id) {
+      profileRow = existingProfile;
+    } else {
+      // Check if profile exists by email and link auth_user_id
+      if (authUser.email) {
+        const { data: profileByEmail } = await supabase
+          .from('alumni_profiles')
+          .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
+          .ilike('email', authUser.email.trim())
+          .maybeSingle();
+
+        if (profileByEmail?.id) {
+          try {
+            await supabase
+              .from('alumni_profiles')
+              .update({ auth_user_id: authUser.id })
+              .eq('id', profileByEmail.id);
+          } catch {}
+          profileRow = profileByEmail;
+        }
+      }
+
+      // Check if profile exists by authorId
+      if (!profileRow?.id && params.authorId && params.authorId > 0) {
+        const { data: profileById } = await supabase
+          .from('alumni_profiles')
+          .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
+          .eq('id', params.authorId)
+          .maybeSingle();
+
+        if (profileById?.id) {
+          try {
+            await supabase
+              .from('alumni_profiles')
+              .update({ auth_user_id: authUser.id })
+              .eq('id', profileById.id);
+          } catch {}
+          profileRow = profileById;
+        }
+      }
+
+      // If still not found, ensure profile record is created for this authUser
+      if (!profileRow?.id) {
+        const created = await getOrCreateSupabaseProfile(authUser);
+        if (created?.id) {
+          profileRow = created;
+        }
+      }
+    }
+
+    if (!profileRow?.id || Number(profileRow.id) <= 0) {
+      return {
+        success: false,
+        error: 'Unable to publish: Could not verify your registered alumni profile in Supabase.',
+      };
+    }
+
+    const realAuthorId = Number(profileRow.id);
+
+    // 3. Resolve and upload attached media (photos and videos) to Supabase Storage 'post-media' bucket
+    const uploadedImages: string[] = [];
+    if (Array.isArray(params.images)) {
+      for (const img of params.images) {
+        if (!img) continue;
+        if (img.startsWith('data:') || img.startsWith('blob:')) {
+          const uploadedUrl = await resolveAndUploadMediaToStorage(img, realAuthorId, 'image');
+          uploadedImages.push(uploadedUrl);
+        } else {
+          uploadedImages.push(img);
+        }
+      }
+    }
+
+    const uploadedVideos: string[] = [];
+    if (Array.isArray(params.videos)) {
+      for (const vid of params.videos) {
+        if (!vid) continue;
+        if (vid.startsWith('data:') || vid.startsWith('blob:')) {
+          const uploadedUrl = await resolveAndUploadMediaToStorage(vid, realAuthorId, 'video');
+          uploadedVideos.push(uploadedUrl);
+        } else {
+          uploadedVideos.push(vid);
+        }
+      }
+    }
+
+    // 4. Validate and sanitize content and category to satisfy schema constraints
+    const validCategories = [
+      'General Update',
+      'Tech & Innovation',
+      'Professional Insights',
+      'Reunion',
+      'Achievement',
+    ];
+    const safeCategory = params.category && validCategories.includes(params.category)
+      ? params.category
+      : 'General Update';
+
+    let safeContent = params.content?.trim();
+    if (!safeContent) {
+      safeContent = uploadedImages.length > 0
+        ? (uploadedImages.length > 1 ? `Shared ${uploadedImages.length} photos` : 'Shared a photo')
+        : (uploadedVideos.length > 0 ? 'Shared a video' : 'Shared an update');
+    }
+    if (safeContent.length > 10000) {
+      safeContent = safeContent.slice(0, 10000);
+    }
+
+    // 5. Prepare insert payload with real alumni_profiles.id and CDN-hosted media URLs
+    const insertPayload = {
+      author_id: realAuthorId,
+      content: safeContent,
+      category: safeCategory,
+      images: uploadedImages,
+      videos: uploadedVideos,
+    };
+
+    // 6. Insert into public.posts
+    const { data: insertedRow, error: insertError } = await supabase
       .from('posts')
-      .select(
-        `
+      .insert(insertPayload)
+      .select(`
         id,
         author_id,
         content,
@@ -153,203 +596,62 @@ export async function fetchFeedPostsFromDb(limit = 30, currentUserId?: number): 
         comments_count,
         is_pinned,
         is_edited,
-        created_at,
-        author:alumni_profiles!posts_author_id_fkey (
-          id,
-          full_name,
-          avatar_url,
-          batch_year,
-          verification_status,
-          profession,
-          institution
-        ),
-        post_comments (
-          id,
-          post_id,
-          user_id,
-          content,
-          likes_count,
-          created_at,
-          author:alumni_profiles!post_comments_user_id_fkey (
-            id,
-            full_name,
-            avatar_url
-          )
-        ),
-        post_likes (
-          user_id
-        )
-      `
-      )
-      .eq('is_deleted', false)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error || !data || data.length === 0) {
-      return INITIAL_OFFLINE_SAVED_POSTS;
-    }
-
-    return data.map((row: any) => {
-      const author = row.author || {};
-      const comments: PostComment[] = (row.post_comments || []).map((c: any) => ({
-        id: Number(c.id),
-        postId: Number(row.id),
-        userId: Number(c.user_id),
-        fullName: c.author?.full_name || 'Alumnus',
-        avatarUrl: c.author?.avatar_url || '/ndc-logo.png',
-        content: c.content,
-        likesCount: Number(c.likes_count) || 0,
-        likedByMe: false,
-        createdAt: new Date(c.created_at).toLocaleDateString(),
-        author: c.author?.full_name || 'Alumnus',
-        authorAvatar: c.author?.avatar_url || '/ndc-logo.png',
-        timestamp: new Date(c.created_at).toLocaleDateString(),
-      }));
-
-      const isLiked = Boolean(
-        currentUserId && Array.isArray(row.post_likes) && row.post_likes.some((l: any) => Number(l.user_id) === currentUserId)
-      );
-
-      return {
-        id: Number(row.id),
-        userId: Number(row.author_id),
-        fullName: author.full_name || 'Notredamian Alumnus',
-        avatarUrl: author.avatar_url || '/ndc-logo.png',
-        batchYear: author.batch_year || 68,
-        content: row.content,
-        images: row.images || [],
-        videos: row.videos || [],
-        likesCount: Number(row.likes_count) || (row.post_likes?.length ?? 0),
-        commentsCount: comments.length,
-        createdAt: new Date(row.created_at).toLocaleDateString(),
-        likedByMe: isLiked,
-        comments: comments,
-        category: row.category || 'General Update',
-        isEdited: Boolean(row.is_edited),
-        pinned: Boolean(row.is_pinned),
-        author: author.full_name || 'Notredamian Alumnus',
-        authorAvatar: author.avatar_url || '/ndc-logo.png',
-        authorBatch: author.batch_year || 68,
-        authorRole: 'Alumnus',
-        verified: author.verification_status === 'verified',
-        timestamp: new Date(row.created_at).toLocaleDateString(),
-        likes: Number(row.likes_count) || (row.post_likes?.length ?? 0),
-        liked: isLiked,
-        commentsList: comments,
-        shares: 0,
-      } as unknown as PostItem;
-    });
-  } catch (err) {
-    console.warn('Supabase fetchFeedPosts fallback:', err);
-    return INITIAL_OFFLINE_SAVED_POSTS;
-  }
-}
-
-export async function createFeedPostInDb(params: {
-  authorId: number;
-  content: string;
-  category: string;
-  images?: string[];
-  videos?: string[];
-}): Promise<{ success: boolean; id?: number; createdAt?: string } | boolean> {
-  if (!isSupabaseConfigured) return false;
-
-  try {
-    let authorId = params.authorId;
-    // Align authorId with the authenticated Supabase profile if session exists
-    try {
-      const { data: authData } = await supabase.auth.getUser();
-      if (authData?.user) {
-        const { data: profile } = await supabase
-          .from('alumni_profiles')
-          .select('id')
-          .eq('auth_user_id', authData.user.id)
-          .maybeSingle();
-        if (profile?.id) {
-          authorId = Number(profile.id);
-        }
-      }
-    } catch {}
-
-    const validCategories = [
-      'General Update',
-      'Tech & Innovation',
-      'Professional Insights',
-      'Reunion',
-      'Achievement',
-    ];
-    const category = validCategories.includes(params.category)
-      ? params.category
-      : 'General Update';
-
-    // Auto-convert any base64 data URLs to Supabase Storage objects
-    let finalImages = params.images || [];
-    if (finalImages.some((img) => img.startsWith('data:image/'))) {
-      const converted: string[] = [];
-      for (const img of finalImages) {
-        if (img.startsWith('data:image/')) {
-          try {
-            const res = await fetch(img);
-            const blob = await res.blob();
-            const uploadRes = await uploadMediaToSupabaseStorage(blob, 'post-media', 'posts');
-            if (uploadRes?.publicUrl) {
-              converted.push(uploadRes.publicUrl);
-              continue;
-            }
-          } catch {}
-        }
-        converted.push(img);
-      }
-      finalImages = converted;
-    }
-
-    const { data, error } = await supabase
-      .from('posts')
-      .insert({
-        author_id: authorId,
-        content: params.content,
-        category: category,
-        images: finalImages,
-        videos: params.videos || [],
-      })
-      .select('id, created_at')
+        created_at
+      `)
       .single();
 
-    if (error) {
-      console.warn('Supabase createFeedPost error:', error.message);
-      return false;
+    if (insertError || !insertedRow) {
+      console.error('Supabase createFeedPost insert error:', insertError);
+      return {
+        success: false,
+        error: insertError?.message || 'Failed to save post to Supabase database',
+      };
     }
-    return {
-      success: true,
-      id: data ? Number(data.id) : undefined,
-      createdAt: data?.created_at,
-    };
-  } catch (err) {
-    console.warn('Failed to insert post in Supabase:', err);
-    return false;
+
+    const postItem = mapRowToFeedPost({ ...insertedRow, author: profileRow }, realAuthorId);
+    return { success: true, post: postItem };
+  } catch (err: any) {
+    console.error('Failed to insert post in Supabase:', err);
+    return { success: false, error: err.message || 'Unexpected error inserting post' };
   }
 }
 
 export async function togglePostLikeInDb(
   postId: number,
-  userId: number
+  userId?: number
 ): Promise<{ liked: boolean; likesCount: number }> {
   if (!isSupabaseConfigured) return { liked: true, likesCount: 1 };
 
   try {
+    let likeUserId = userId && userId > 0 ? userId : null;
+    const { data: authData } = await supabase.auth.getUser();
+    const authUser = authData?.user;
+    if (authUser) {
+      const { data: profile } = await supabase
+        .from('alumni_profiles')
+        .select('id')
+        .eq('auth_user_id', authUser.id)
+        .maybeSingle();
+      if (profile?.id) {
+        likeUserId = Number(profile.id);
+      }
+    }
+
+    if (!likeUserId) return { liked: false, likesCount: 0 };
+
     // Check if like already exists
     const { data: existing } = await supabase
       .from('post_likes')
       .select('id')
       .eq('post_id', postId)
-      .eq('user_id', userId)
+      .eq('user_id', likeUserId)
       .maybeSingle();
 
     if (existing) {
       await supabase.from('post_likes').delete().eq('id', existing.id);
       return { liked: false, likesCount: -1 };
     } else {
-      await supabase.from('post_likes').insert({ post_id: postId, user_id: userId });
+      await supabase.from('post_likes').insert({ post_id: postId, user_id: likeUserId });
       return { liked: true, likesCount: 1 };
     }
   } catch (err) {
@@ -360,15 +662,31 @@ export async function togglePostLikeInDb(
 
 export async function addPostCommentInDb(params: {
   postId: number;
-  userId: number;
+  userId?: number;
   content: string;
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
   try {
+    let commentAuthorId = params.userId && params.userId > 0 ? params.userId : null;
+    const { data: authData } = await supabase.auth.getUser();
+    const authUser = authData?.user;
+    if (authUser) {
+      const { data: profile } = await supabase
+        .from('alumni_profiles')
+        .select('id')
+        .eq('auth_user_id', authUser.id)
+        .maybeSingle();
+      if (profile?.id) {
+        commentAuthorId = Number(profile.id);
+      }
+    }
+
+    if (!commentAuthorId) return false;
+
     const { error } = await supabase.from('post_comments').insert({
       post_id: params.postId,
-      user_id: params.userId,
+      user_id: commentAuthorId,
       content: params.content,
     });
     return !error;
@@ -410,7 +728,7 @@ export async function toggleSavePostInDb(
 
 export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[]> {
   if (!isSupabaseConfigured) {
-    return INITIAL_BLOOD_REQUESTS;
+    return [];
   }
 
   try {
@@ -445,7 +763,7 @@ export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return INITIAL_BLOOD_REQUESTS;
+      return [];
     }
 
     return data.map((r: any) => ({
@@ -461,9 +779,9 @@ export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[
       emergencyLevel: r.emergency_level,
       contactMethod: r.contact_method,
       description: r.description,
-      requesterId: Number(r.requester_id) || Number(r.requester?.id) || 0,
-      requesterAvatar: r.requester?.avatar_url || '/ndc-logo.png',
+      requesterId: Number(r.requester_profile_id || r.requester?.id || 1),
       requesterName: r.requester?.full_name || 'Notredamian Alumnus',
+      requesterAvatar: r.requester?.avatar_url || '/ndc-logo.png',
       requesterBatch: r.requester?.batch_year || 68,
       status: r.status,
       createdAt: r.created_at,
@@ -486,8 +804,8 @@ export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[
       })),
     }));
   } catch (err) {
-    console.warn('Supabase fetchBloodRequests fallback:', err);
-    return INITIAL_BLOOD_REQUESTS;
+    console.warn('Supabase fetchBloodRequests error:', err);
+    return [];
   }
 }
 
@@ -517,7 +835,7 @@ export async function respondToBloodRequestInDb(params: {
 
 export async function fetchBloodDonorsFromDb(): Promise<BloodDonorProfile[]> {
   if (!isSupabaseConfigured) {
-    return INITIAL_BLOOD_DONORS;
+    return [];
   }
 
   try {
@@ -549,7 +867,7 @@ export async function fetchBloodDonorsFromDb(): Promise<BloodDonorProfile[]> {
       .eq('is_registered_donor', true);
 
     if (error || !data || data.length === 0) {
-      return INITIAL_BLOOD_DONORS;
+      return [];
     }
 
     return data.map((d: any) => ({
@@ -569,8 +887,8 @@ export async function fetchBloodDonorsFromDb(): Promise<BloodDonorProfile[]> {
       updatedAt: d.updated_at || new Date().toISOString(),
     }));
   } catch (err) {
-    console.warn('Supabase fetchBloodDonors fallback:', err);
-    return INITIAL_BLOOD_DONORS;
+    console.warn('Supabase fetchBloodDonors error:', err);
+    return [];
   }
 }
 
@@ -588,6 +906,20 @@ export async function createBloodRequestInDb(params: {
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
+  const validEmergencyLevels = ['critical', 'urgent', 'standard'];
+  const normalizedLevel = (params.emergencyLevel || 'urgent').toLowerCase();
+  const emergencyLevel = validEmergencyLevels.includes(normalizedLevel) ? normalizedLevel : 'urgent';
+
+  const validContactMethods = [
+    'Portal Secure Coordination',
+    'Hospital Blood Bank Desk',
+    'Batch Coordinator Relay',
+    'Attendant Emergency Line',
+  ];
+  const contactMethod = validContactMethods.includes(params.contactMethod)
+    ? params.contactMethod
+    : 'Portal Secure Coordination';
+
   try {
     const { error } = await supabase.from('blood_requests').insert({
       requester_id: params.requesterId,
@@ -597,8 +929,8 @@ export async function createBloodRequestInDb(params: {
       hospital_area: params.hospitalArea,
       city: params.city || 'Dhaka',
       required_datetime: params.requiredDateTime,
-      emergency_level: params.emergencyLevel,
-      contact_method: params.contactMethod,
+      emergency_level: emergencyLevel,
+      contact_method: contactMethod,
       description: params.description,
       status: 'Active',
     });
@@ -789,6 +1121,10 @@ export async function submitAdminDocSubmissionInDb(params: {
 }): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
 
+  const validDocTypes = ['id_card', 'nid_card', 'hsc_slip', 'souvenir'];
+  const normalizedDocType = (params.docType || 'id_card').toLowerCase();
+  const docType = validDocTypes.includes(normalizedDocType) ? normalizedDocType : 'id_card';
+
   try {
     const { data, error } = await supabase
       .from('admin_doc_submissions')
@@ -798,7 +1134,7 @@ export async function submitAdminDocSubmissionInDb(params: {
         college_roll: params.collegeRoll,
         academic_stream: params.academicStream,
         academic_group: params.academicGroup || null,
-        doc_type: params.docType,
+        doc_type: docType,
         doc_type_label: params.docTypeLabel,
         storage_object_path: params.storageObjectPath,
         status: 'pending',
@@ -826,6 +1162,32 @@ export async function editFeedPostInDb(params: {
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
+    const uploadedImages: string[] = [];
+    if (Array.isArray(params.images)) {
+      for (const img of params.images) {
+        if (!img) continue;
+        if (img.startsWith('data:') || img.startsWith('blob:')) {
+          const uploadedUrl = await resolveAndUploadMediaToStorage(img, params.postId, 'image');
+          uploadedImages.push(uploadedUrl);
+        } else {
+          uploadedImages.push(img);
+        }
+      }
+    }
+
+    const uploadedVideos: string[] = [];
+    if (Array.isArray(params.videos)) {
+      for (const vid of params.videos) {
+        if (!vid) continue;
+        if (vid.startsWith('data:') || vid.startsWith('blob:')) {
+          const uploadedUrl = await resolveAndUploadMediaToStorage(vid, params.postId, 'video');
+          uploadedVideos.push(uploadedUrl);
+        } else {
+          uploadedVideos.push(vid);
+        }
+      }
+    }
+
     const validCategories = [
       'General Update',
       'Tech & Innovation',
@@ -833,37 +1195,24 @@ export async function editFeedPostInDb(params: {
       'Reunion',
       'Achievement',
     ];
-    const category = params.category && validCategories.includes(params.category)
+    const safeCategory = params.category && validCategories.includes(params.category)
       ? params.category
       : 'General Update';
 
-    let finalImages = params.images || [];
-    if (finalImages.some((img) => img.startsWith('data:image/'))) {
-      const converted: string[] = [];
-      for (const img of finalImages) {
-        if (img.startsWith('data:image/')) {
-          try {
-            const res = await fetch(img);
-            const blob = await res.blob();
-            const uploadRes = await uploadMediaToSupabaseStorage(blob, 'post-media', 'posts');
-            if (uploadRes?.publicUrl) {
-              converted.push(uploadRes.publicUrl);
-              continue;
-            }
-          } catch {}
-        }
-        converted.push(img);
-      }
-      finalImages = converted;
+    let safeContent = params.content?.trim();
+    if (!safeContent) {
+      safeContent = uploadedImages.length > 0
+        ? (uploadedImages.length > 1 ? `Shared ${uploadedImages.length} photos` : 'Shared a photo')
+        : (uploadedVideos.length > 0 ? 'Shared a video' : 'Updated post');
     }
 
     const { error } = await supabase
       .from('posts')
       .update({
-        content: params.content,
-        category: category,
-        images: finalImages,
-        videos: params.videos || [],
+        content: safeContent.slice(0, 10000),
+        category: safeCategory,
+        images: uploadedImages,
+        videos: uploadedVideos,
         is_edited: true,
         updated_at: new Date().toISOString(),
       })
@@ -892,7 +1241,7 @@ export async function deleteFeedPostInDb(postId: number): Promise<boolean> {
 // =============================================================================
 
 export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
-  if (!isSupabaseConfigured) return OFFICIAL_NOTICES;
+  if (!isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase
@@ -902,7 +1251,7 @@ export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
       .order('published_date', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return OFFICIAL_NOTICES;
+      return [];
     }
 
     return data.map((n: any) => ({
@@ -923,12 +1272,12 @@ export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
       },
     }));
   } catch {
-    return OFFICIAL_NOTICES;
+    return [];
   }
 }
 
 export async function fetchGalleryAlbumsFromDb(): Promise<GalleryAlbum[]> {
-  if (!isSupabaseConfigured) return INITIAL_ALBUMS;
+  if (!isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase
@@ -938,7 +1287,7 @@ export async function fetchGalleryAlbumsFromDb(): Promise<GalleryAlbum[]> {
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return INITIAL_ALBUMS;
+      return [];
     }
 
     return data.map((a: any) => {
@@ -962,16 +1311,16 @@ export async function fetchGalleryAlbumsFromDb(): Promise<GalleryAlbum[]> {
         title: a.title,
         description: a.description || '',
         category: a.category,
-        date: a.event_date_label,
+        date: a.event_date_label || '2026',
         location: a.location || 'Motijheel Campus',
         batchYear: a.batch_year || undefined,
         photosCount: photos.length,
-        coverUrl: a.cover_url || (photos[0]?.url || '/ndc-campus-quad.jpg'),
+        coverUrl: a.cover_url || (photos[0]?.url ?? '/ndc-logo.png'),
         photos,
       };
     });
   } catch {
-    return INITIAL_ALBUMS;
+    return [];
   }
 }
 
@@ -987,13 +1336,17 @@ export async function createGalleryAlbumInDb(params: {
 }): Promise<number | null> {
   if (!isSupabaseConfigured) return null;
 
+  const validCategories = ['reunion', 'academic', 'campus', 'convocation', 'sports', 'cultural', 'all'];
+  const normalizedCategory = (params.category || 'campus').toLowerCase();
+  const category = validCategories.includes(normalizedCategory) ? normalizedCategory : 'campus';
+
   try {
     const { data, error } = await supabase
       .from('gallery_albums')
       .insert({
         title: params.title,
         description: params.description || null,
-        category: params.category,
+        category: category,
         event_date_label: params.eventDateLabel,
         location: params.location || null,
         batch_year: params.batchYear || null,
@@ -1054,7 +1407,7 @@ export async function addPhotoToGalleryAlbumInDb(params: {
 export async function fetchNotificationsFromDb(
   userId: number
 ): Promise<NotificationItem[]> {
-  if (!isSupabaseConfigured) return NOTIFICATIONS_LIST;
+  if (!isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase
@@ -1064,27 +1417,21 @@ export async function fetchNotificationsFromDb(
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return NOTIFICATIONS_LIST;
+      return [];
     }
 
     return data.map((n: any) => ({
       id: Number(n.id),
-      title: n.title,
-      message: n.message,
+      title: n.title || 'Notification',
+      message: n.message || '',
       timeAgo: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       unread: Boolean(n.unread),
       type: n.type || 'system',
       targetRoute: n.target_route || undefined,
-      bloodRequestId: n.blood_request_id ? String(n.blood_request_id) : undefined,
-      actorName: n.actor?.full_name || 'NDC Alumni Portal',
-      actorAvatar: n.actor?.avatar_url || '/ndc-logo.png',
-      action: n.message,
-      target: n.title,
-      time: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      link: n.target_route || undefined,
-    } as NotificationItem));
+      bloodRequestId: n.blood_request_id || undefined,
+    }));
   } catch {
-    return NOTIFICATIONS_LIST;
+    return [];
   }
 }
 
@@ -1110,11 +1457,15 @@ export async function createNotificationInDb(params: {
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
+  const validTypes = ['like', 'comment', 'post', 'system', 'blood', 'verification'];
+  const normalizedType = (params.type || 'system').toLowerCase();
+  const type = validTypes.includes(normalizedType) ? normalizedType : 'system';
+
   try {
     const { error } = await supabase.from('notifications').insert({
       recipient_id: params.recipientId,
       actor_id: params.actorId || null,
-      type: params.type || 'system',
+      type: type,
       title: params.title,
       message: params.message,
       target_route: params.targetRoute || null,
@@ -1141,15 +1492,30 @@ export async function uploadMediaToSupabaseStorage(
   if (!isSupabaseConfigured) return null;
 
   try {
-    const ext = file.type ? file.type.split('/')[1] : 'jpg';
+    let ext = 'jpg';
+    if (file.type) {
+      if (file.type.includes('png')) ext = 'png';
+      else if (file.type.includes('webp')) ext = 'webp';
+      else if (file.type.includes('gif')) ext = 'gif';
+      else if (file.type.includes('svg')) ext = 'svg';
+      else if (file.type.includes('mp4')) ext = 'mp4';
+      else if (file.type.includes('webm')) ext = 'webm';
+      else if (file.type.includes('quicktime') || file.type.includes('mov')) ext = 'mov';
+    } else if ('name' in file && typeof (file as any).name === 'string') {
+      const parts = (file as any).name.split('.');
+      if (parts.length > 1) ext = parts.pop()!.toLowerCase();
+    }
+
     const name = fileName || `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
     const fullPath = `${folderPath}/${name}`;
+    const contentType = file.type || (bucketName === 'post-media' ? 'image/jpeg' : undefined);
 
     const { error: uploadError } = await supabase.storage
       .from(bucketName)
       .upload(fullPath, file, {
         cacheControl: '3600',
-        upsert: false,
+        upsert: true,
+        contentType,
       });
 
     if (uploadError) {
