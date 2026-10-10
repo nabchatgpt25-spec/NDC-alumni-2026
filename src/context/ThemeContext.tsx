@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useLayoutEffect, useState } from 'react';
 import { ThemeId, ThemeOption } from '../types';
 import { THEMES_LIST, DEFAULT_THEME_ID, getThemeById } from '../data/themes';
 import { playSound } from '../utils/audio';
@@ -46,7 +46,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const currentThemeConfig = getThemeById(themeId);
   const isDark = currentThemeConfig.isDark;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
 
     // Apply data-theme attribute
@@ -77,7 +77,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [themeId, isDark, currentThemeConfig]);
 
   const setTheme = (newThemeId: ThemeId, playAudio = true) => {
-    const normalized: ThemeId = (newThemeId === 'dark' || newThemeId === 'midnight') ? 'dark' : 'light';
+    const normalized: ThemeId = getThemeById(newThemeId).id;
     if (normalized === themeId) return;
     setThemeId(normalized);
     if (playAudio) {
