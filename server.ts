@@ -11,6 +11,7 @@ import 'dotenv/config';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { createServer as createHttpServer } from 'http';
 import { readFile } from 'fs/promises';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -1175,10 +1176,33 @@ app.get(
 );
 
 // Direct download route for the cPanel deployment zip
-app.get(['/download/ndc-alumni-dist.zip', '/ndc-alumni-dist.zip'], (_req: Request, res: Response) => {
-  const zipPath = path.resolve(__dirname, 'ndc-alumni-dist.zip');
-  res.download(zipPath, 'ndc-alumni-dist.zip');
-});
+app.get(
+  ['/download/ndc-alumni-dist.zip', '/ndc-alumni-dist.zip', '/download/dist.zip', '/dist.zip'],
+  (_req: Request, res: Response) => {
+    const candidates = [
+      path.resolve(__dirname, 'dist.zip'),
+      path.resolve(__dirname, 'public', 'dist.zip'),
+      path.resolve(__dirname, 'ndc-alumni-dist.zip'),
+      path.resolve(__dirname, 'dist', 'dist.zip'),
+    ];
+
+    let foundPath: string | null = null;
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        foundPath = p;
+        break;
+      }
+    }
+
+    if (!foundPath) {
+      return res.status(404).send('Deployment bundle not found on server.');
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="ndc-alumni-dist.zip"');
+    res.download(foundPath, 'ndc-alumni-dist.zip');
+  }
+);
 
 // ---------------------------------------------------------------------------
 // VITE DEV SERVER / STATIC ASSET SERVING

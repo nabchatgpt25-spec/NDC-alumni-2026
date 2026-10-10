@@ -166,8 +166,9 @@ function AlumniAppContent() {
 
   if (isAuthInitializing) {
     return (
-      <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
-        Restoring your session…
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-600 gap-3" role="status" aria-live="polite">
+        <div className="w-9 h-9 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-medium tracking-wide text-slate-500">Restoring your session…</p>
       </div>
     );
   }

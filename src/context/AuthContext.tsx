@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, SUPABASE_API_ANON_KEY } from '../lib/supabase';
 import {
   getOrCreateSupabaseProfile,
   mapSupabaseRowToAlumniProfile,
@@ -168,8 +168,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsAuthInitializing(false);
       });
 
+    const safetyTimeoutId = window.setTimeout(() => {
+      if (active) {
+        setIsAuthInitializing((loading) => {
+          if (loading) {
+            console.warn('Supabase auth session restoration timed out; defaulting to unauthenticated.');
+            return false;
+          }
+          return loading;
+        });
+      }
+    }, 4000);
+
     return () => {
       active = false;
+      window.clearTimeout(safetyTimeoutId);
       authResolutionIdRef.current += 1;
       subscription.unsubscribe();
     };
@@ -191,9 +204,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       'Content-Type': 'application/json',
     };
 
-    const anonKey = (import.meta.env?.VITE_SUPABASE_ANON_KEY || '').trim();
-    if (anonKey) {
-      headers.apikey = anonKey;
+    const rawEnvAnonKey = (import.meta.env?.VITE_SUPABASE_ANON_KEY || '').trim();
+    const effectiveAnonKey = (rawEnvAnonKey && !rawEnvAnonKey.startsWith('http') && rawEnvAnonKey.includes('.'))
+      ? rawEnvAnonKey
+      : SUPABASE_API_ANON_KEY;
+
+    if (effectiveAnonKey) {
+      headers.apikey = effectiveAnonKey;
     }
 
     // Primary: Use Supabase session JWT

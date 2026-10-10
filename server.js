@@ -3,6 +3,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer as createHttpServer } from "http";
 import { readFile } from "fs/promises";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
@@ -2016,10 +2017,30 @@ app.get(
     }
   }
 );
-app.get(["/download/ndc-alumni-dist.zip", "/ndc-alumni-dist.zip"], (_req, res) => {
-  const zipPath = path.resolve(__dirname, "ndc-alumni-dist.zip");
-  res.download(zipPath, "ndc-alumni-dist.zip");
-});
+app.get(
+  ["/download/ndc-alumni-dist.zip", "/ndc-alumni-dist.zip", "/download/dist.zip", "/dist.zip"],
+  (_req, res) => {
+    const candidates = [
+      path.resolve(__dirname, "dist.zip"),
+      path.resolve(__dirname, "public", "dist.zip"),
+      path.resolve(__dirname, "ndc-alumni-dist.zip"),
+      path.resolve(__dirname, "dist", "dist.zip")
+    ];
+    let foundPath = null;
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        foundPath = p;
+        break;
+      }
+    }
+    if (!foundPath) {
+      return res.status(404).send("Deployment bundle not found on server.");
+    }
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", 'attachment; filename="ndc-alumni-dist.zip"');
+    res.download(foundPath, "ndc-alumni-dist.zip");
+  }
+);
 async function startServer() {
   const httpServer = createHttpServer(app);
   if (process.env.NODE_ENV !== "production") {

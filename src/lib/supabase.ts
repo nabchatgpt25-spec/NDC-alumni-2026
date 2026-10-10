@@ -4,21 +4,41 @@ const DEFAULT_SUPABASE_URL = 'https://gqbibeffpbvpopgmmqvr.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxYmliZWZmcGJ2cG9wZ21tcXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMDQxMzQsImV4cCI6MjEwNjg4MDEzNH0.9G5VKEBVp-yGfx_uAhmt4uARKQPUH9-6qYVT2WJmOzE';
 
-const rawUrl =
+const rawUrlInput =
   (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || DEFAULT_SUPABASE_URL;
-const rawAnonKey =
+const rawAnonKeyInput =
   (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() || DEFAULT_SUPABASE_ANON_KEY;
 
+// Sanitize URL: ensure it is strictly the root host (e.g. https://xyz.supabase.co), without /rest/v1 or /auth/v1 suffixes
+const sanitizeSupabaseUrl = (url: string): string => {
+  if (!url || !url.startsWith('http')) return DEFAULT_SUPABASE_URL;
+  return url
+    .replace(/\/rest\/v1\/?$/, '')
+    .replace(/\/auth\/v1\/?$/, '')
+    .replace(/\/+$/, '');
+};
+
+// Sanitize Anon Key: a valid Supabase anon key must be a 3-part JWT token (header.payload.signature), not an HTTP url or empty
+const sanitizeSupabaseAnonKey = (key: string): string => {
+  if (!key || key.startsWith('http') || key.split('.').length !== 3) {
+    return DEFAULT_SUPABASE_ANON_KEY;
+  }
+  return key;
+};
+
+const sanitizedUrl = sanitizeSupabaseUrl(rawUrlInput);
+const sanitizedAnonKey = sanitizeSupabaseAnonKey(rawAnonKeyInput);
+
 export const isSupabaseConfigured = Boolean(
-  rawUrl &&
-  rawAnonKey &&
-  rawUrl.startsWith('http') &&
-  !rawUrl.includes('placeholder.supabase.co')
+  sanitizedUrl &&
+  sanitizedAnonKey &&
+  sanitizedUrl.startsWith('http') &&
+  !sanitizedUrl.includes('placeholder.supabase.co')
 );
 
 // Never use or expose service_role key in client code.
-const effectiveUrl = isSupabaseConfigured ? rawUrl : DEFAULT_SUPABASE_URL;
-const effectiveAnonKey = isSupabaseConfigured ? rawAnonKey : DEFAULT_SUPABASE_ANON_KEY;
+const effectiveUrl = isSupabaseConfigured ? sanitizedUrl : DEFAULT_SUPABASE_URL;
+const effectiveAnonKey = isSupabaseConfigured ? sanitizedAnonKey : DEFAULT_SUPABASE_ANON_KEY;
 
 export const SUPABASE_API_URL = effectiveUrl;
 export const SUPABASE_API_ANON_KEY = effectiveAnonKey;
