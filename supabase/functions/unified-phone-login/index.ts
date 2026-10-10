@@ -87,16 +87,40 @@ function getValidatedOrigin(req: Request): string | null {
  * Generates strict CORS headers based on Origin validation.
  * If Origin is unauthorized, Access-Control-Allow-Origin is omitted.
  */
+const DEFAULT_CORS_HEADERS =
+  "authorization, x-client-info, apikey, content-type, accept, x-requested-with, prefer, x-supabase-api-version";
+const ALLOWED_PREFLIGHT_HEADERS = new Set(
+  DEFAULT_CORS_HEADERS.split(",").map((header) => header.trim())
+);
+
+function getRequestedCorsHeaders(req: Request): string | null {
+  const requested = req.headers.get("access-control-request-headers");
+  if (!requested) return DEFAULT_CORS_HEADERS;
+
+  const headers = requested
+    .split(",")
+    .map((header) => header.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (
+    headers.length === 0 ||
+    headers.some((header) => !/^[a-z0-9-]+$/.test(header) || !ALLOWED_PREFLIGHT_HEADERS.has(header))
+  ) {
+    return null;
+  }
+
+  return Array.from(new Set(headers)).join(", ");
+}
+
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin");
   const validatedOrigin = getValidatedOrigin(req);
 
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type, accept, x-requested-with, prefer",
+    "Access-Control-Allow-Headers": getRequestedCorsHeaders(req) || DEFAULT_CORS_HEADERS,
     "Access-Control-Max-Age": "86400",
-    "Vary": "Origin",
+    "Vary": "Origin, Access-Control-Request-Headers, Access-Control-Request-Method",
   };
 
   if (validatedOrigin) {
@@ -260,6 +284,20 @@ serve(async (req: Request) => {
       });
     }
 
+    const requestedMethod = req.headers.get("access-control-request-method");
+    if (requestedMethod && requestedMethod.toUpperCase() !== "POST") {
+      return new Response(null, { status: 405, headers: getCorsHeaders(req) });
+    }
+    if (
+      req.headers.has("access-control-request-headers") &&
+      !getRequestedCorsHeaders(req)
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Requested CORS headers are not allowed." }),
+        { status: 400, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } },
+      );
+    }
+
     // Return standard preflight 204 No Content with validated CORS headers
     return new Response(null, {
       status: 204,
@@ -367,46 +405,55 @@ serve(async (req: Request) => {
       );
     }
 
-    // 7. Resolve registered mobile number to alumni profile
-    // Uses canonical search variants to match any legacy format stored in the database
-    const variants = getPhoneSearchVariants(cleanInput);
+    // 7. Resolve the canonical mobile alias to exactly one alumni profile.
+    // Build filters from the normalized value only; never interpolate raw input
+    // into the PostgREST filter expression.
+    const variants = getPhoneSearchVariants(normalizedPhone);
     const orCondition = variants.map((v) => `phone.eq.${v}`).join(",");
 
-    let { data: profile, error: profileErr } = await supabaseAdmin
+    const { data: exactMatches, error: profileErr } = await supabaseAdmin
       .from("alumni_profiles")
-      .select("id, auth_user_id, email, phone, full_name, phone_ownership_verified")
+      .select("id, auth_user_id, email, phone")
       .or(orCondition)
       .order("id", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+      .limit(2);
 
     if (profileErr) {
       console.warn("Database lookup notice:", profileErr.message);
     }
 
-    // Secondary fallback for numbers with spaces or hyphens
-    if (!profile) {
-      const digits = cleanInput.replace(/\D/g, "");
-      if (digits.length >= 10) {
-        const last10 = digits.slice(-10);
-        const { data: candidates } = await supabaseAdmin
-          .from("alumni_profiles")
-          .select("id, auth_user_id, email, phone, full_name, phone_ownership_verified")
-          .ilike("phone", `%${last10}%`)
-          .limit(5);
+    let profile = exactMatches?.length === 1 ? exactMatches[0] : null;
+    let ambiguousPhoneAlias = (exactMatches?.length || 0) > 1;
 
-        if (candidates && candidates.length > 0) {
-          profile = candidates.find((c) => {
-            const cDigits = (c.phone || "").replace(/\D/g, "");
-            return cDigits.endsWith(last10);
-          }) || null;
+    // Legacy formatting fallback, compared by canonical phone rather than suffix.
+    if (!profile && !ambiguousPhoneAlias) {
+      const digits = normalizedPhone.replace(/\D/g, "");
+      const last10 = digits.slice(-10);
+      if (last10.length === 10) {
+        const { data: candidates, error: fallbackErr } = await supabaseAdmin
+          .from("alumni_profiles")
+          .select("id, auth_user_id, email, phone")
+          .ilike("phone", `%${last10}%`)
+          .limit(20);
+
+        if (fallbackErr) {
+          console.warn("Legacy phone lookup notice:", fallbackErr.message);
+        } else {
+          const canonicalMatches = (candidates || []).filter((candidate) => {
+            const candidatePhone = normalizePhoneNumber(candidate.phone || "");
+            return candidatePhone.isValid && candidatePhone.formatted === normalizedPhone;
+          });
+          if (canonicalMatches.length === 1) {
+            profile = canonicalMatches[0];
+          } else if (canonicalMatches.length > 1) {
+            ambiguousPhoneAlias = true;
+          }
         }
       }
     }
 
-    // Anti-enumeration defense: Account does not exist
-    // (Note: Admin phone verification is NOT required; mobile number is only an alternative login identifier)
-    if (!profile) {
+    // Fail closed for ambiguous legacy data; do not choose an arbitrary account.
+    if (!profile || ambiguousPhoneAlias) {
       await timingJitter();
       return respond({ error: GENERIC_AUTH_ERROR }, 401);
     }
@@ -506,3 +553,4 @@ serve(async (req: Request) => {
     );
   }
 });
+

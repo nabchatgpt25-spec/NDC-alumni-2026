@@ -30,8 +30,6 @@ interface AuthContextType {
   supabaseToken: string | null;
   isAdminUser: boolean;
   login: (phoneOrEmail: string, pass: string) => Promise<boolean>;
-  loginWithPhoneOtp: (phone: string) => Promise<boolean>;
-  verifyPhoneOtp: (phone: string, token: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   logout: () => void;
   register: (profileData: Partial<AlumniProfile> & { password?: string }) => Promise<boolean>;
@@ -370,71 +368,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     throw new Error(profileError);
   };
 
-  const loginWithPhoneOtp = async (phone: string): Promise<boolean> => {
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase client is not configured.');
-    }
-    const norm = normalizePhoneNumber(phone);
-    if (!norm.isValid) {
-      throw new Error(norm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx).');
-    }
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: norm.formatted,
-    });
-    if (error) {
-      throw new Error(error.message || 'Failed to send verification SMS.');
-    }
-    return true;
-  };
-
-  const verifyPhoneOtp = async (phone: string, token: string): Promise<boolean> => {
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase client is not configured.');
-    }
-    const norm = normalizePhoneNumber(phone);
-    if (!norm.isValid) {
-      throw new Error(norm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx).');
-    }
-    const { data, error } = await supabase.auth.verifyOtp({
-      phone: norm.formatted,
-      token: token.trim(),
-      type: 'sms',
-    });
-    if (error) {
-      throw new Error(error.message || 'Invalid or expired SMS verification code.');
-    }
-    if (data.user) {
-      setIsAuthInitializing(true);
-      const requestId = authResolutionIdRef.current;
-      const profile = await getOrCreateSupabaseProfile(data.user);
-      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        setIsAuthInitializing(false);
-        throw new Error(sessionError.message || 'Could not confirm the authenticated session.');
-      }
-      if (currentSession?.user.id !== data.user.id) {
-        return false;
-      }
-      if (requestId !== authResolutionIdRef.current) {
-        return true;
-      }
-      if (profile) {
-        resolvedAuthUserIdRef.current = data.user.id;
-        setCurrentUser(profile);
-        setIsAdminUser(profile.role === 'admin');
-        setAuthInitializationError(null);
-        setIsLoggedIn(true);
-        setIsAuthInitializing(false);
-      } else {
-        const profileError = 'Your account is authenticated, but your alumni profile could not be loaded. Please retry shortly.';
-        setAuthInitializationError(profileError);
-        setIsAuthInitializing(false);
-        throw new Error(profileError);
-      }
-    }
-    return true;
-  };
-
   const logout = () => {
     authResolutionIdRef.current += 1;
     resolvedAuthUserIdRef.current = null;
@@ -462,17 +395,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!cleanEmail || !profileData.password) {
       throw new Error('Please provide your email address and a password.');
     }
+    if (!rawPhone) {
+      throw new Error('Please provide your mobile number.');
+    }
 
-    let cleanPhone = '';
-    if (rawPhone) {
-      const norm = normalizePhoneNumber(rawPhone);
-      if (!norm.isValid) {
-        throw new Error(
-          norm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx or +8801xxxxxxxx).'
-        );
-      }
-      cleanPhone = norm.formatted;
+    const phoneNorm = normalizePhoneNumber(rawPhone);
+    if (!phoneNorm.isValid) {
+      throw new Error(
+        phoneNorm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx or +8801xxxxxxxx).'
+      );
+    }
+    const cleanPhone = phoneNorm.formatted;
 
+    // This check is rate-limited in PostgreSQL; the normalized unique index is
+    // still authoritative if two registrations race after this preflight.
+    const { data: phoneAvailable, error: phoneAvailabilityError } = await supabase.rpc(
+      'check_phone_available',
+      { p_phone: cleanPhone }
+    );
+    if (phoneAvailabilityError) {
+      console.warn('Phone availability check failed:', phoneAvailabilityError.message);
+      throw new Error('Mobile number availability could not be checked. Please try again shortly.');
+    }
+    if (phoneAvailable !== true) {
+      throw new Error('This mobile number is already registered or could not be checked. Please verify it or try again shortly.');
     }
 
     const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
@@ -553,9 +499,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cleanPhone = updated.phone;
     if (cleanPhone) {
       const norm = normalizePhoneNumber(cleanPhone);
-      if (norm.isValid) {
-        cleanPhone = norm.formatted;
+      if (!norm.isValid) {
+        throw new Error(norm.error || 'Please enter a valid mobile number.');
       }
+      cleanPhone = norm.formatted;
     }
 
     setCurrentUser((prev) => ({ ...prev, ...updated, phone: cleanPhone ?? prev.phone }));
@@ -674,8 +621,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         supabaseToken,
         isAdminUser,
         login,
-        loginWithPhoneOtp,
-        verifyPhoneOtp,
         loginWithGoogle,
         logout,
         register,
@@ -698,3 +643,4 @@ export function useAuth(): AuthContextType {
   }
   return context;
 }
+

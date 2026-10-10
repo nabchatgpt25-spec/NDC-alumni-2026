@@ -132,8 +132,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 }) => {
   const {
     login,
-    loginWithPhoneOtp,
-    verifyPhoneOtp,
     loginWithGoogle,
     register,
     requestPasswordReset,
@@ -142,25 +140,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
 
   // Login State
-  const [loginTab, setLoginTab] = useState<'email' | 'phone'>('email');
-  const [phoneLoginMode, setPhoneLoginMode] = useState<'otp' | 'password'>('otp');
   const [loginIdentifier, setLoginIdentifier] = useState('');
-  const [loginPhone, setLoginPhone] = useState('');
-  const [loginPhoneOtp, setLoginPhoneOtp] = useState('');
-  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
-  const [phoneCountdown, setPhoneCountdown] = useState(0);
-  const [providerNotice, setProviderNotice] = useState<string | null>(null);
   const [loginPassword, setLoginPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
-
-  // Countdown timer for phone OTP resend
-  React.useEffect(() => {
-    if (phoneCountdown > 0) {
-      const timer = setTimeout(() => setPhoneCountdown((c) => c - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [phoneCountdown]);
 
   // Register Form State (14 fields) initialized from localStorage draft
   const [initialDraft] = useState<RegistrationFormDraft>(() => loadRegistrationDraft());
@@ -320,7 +303,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
-    setProviderNotice(null);
 
     const input = loginIdentifier.trim();
     if (!input || !loginPassword.trim()) {
@@ -337,66 +319,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const error = err as Error;
       const msg = error.message || '';
       setErrorMessage(msg || 'Invalid credentials. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle Phone OTP Request (Send SMS code via Supabase Auth)
-  const handleRequestPhoneOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-    setProviderNotice(null);
-
-    if (!loginPhone.trim()) {
-      setErrorMessage('Please enter your mobile number.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await loginWithPhoneOtp(loginPhone.trim());
-      setPhoneOtpSent(true);
-      setPhoneCountdown(60);
-      setSuccessMessage('A 6-digit SMS verification code has been sent to your mobile number.');
-    } catch (err: unknown) {
-      const error = err as Error;
-      const msg = error.message || '';
-      if (
-        msg.toLowerCase().includes('phone provider is disabled') ||
-        msg.toLowerCase().includes('unsupported phone provider')
-      ) {
-        setProviderNotice(
-          'Supabase Phone Provider is not enabled on this project. In the Supabase Dashboard, navigate to Authentication > Providers > Phone, toggle it ON, and configure an SMS provider (Twilio, MessageBird, Vonage, or AWS SNS). In the meantime, you can sign in directly using your registered Email & Password.'
-        );
-      } else {
-        setErrorMessage(msg || 'Unable to send SMS verification code.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle Phone OTP Verification (Verify SMS code via Supabase Auth)
-  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    if (!loginPhone.trim() || !loginPhoneOtp.trim()) {
-      setErrorMessage('Please enter both your mobile number and the 6-digit verification code.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await verifyPhoneOtp(loginPhone.trim(), loginPhoneOtp.trim());
-      onClose();
-      if (onSuccess) onSuccess('login');
-    } catch (err: unknown) {
-      const error = err as Error;
-      setErrorMessage(error.message || 'Invalid or expired SMS code. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -703,23 +625,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
              ========================================================================= */}
           {mode === 'login' && (
             <div className="space-y-4 max-w-md mx-auto py-1">
-              {/* Exact Supabase Provider Setup Notice (Shown if Phone provider is not yet enabled) */}
-              {providerNotice && (
-                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs space-y-2 animate-in fade-in">
-                  <div className="flex items-start gap-2">
-                    <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <div className="font-extrabold text-slate-900 dark:text-white">
-                        Provider Notice
-                      </div>
-                      <p className="mt-1 leading-relaxed text-[11px] text-slate-700 dark:text-slate-300">
-                        {providerNotice}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <form onSubmit={handleLogin} className="space-y-3.5">
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -1529,3 +1434,4 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </div>
   );
 };
+
