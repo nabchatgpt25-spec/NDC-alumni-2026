@@ -21,11 +21,6 @@ import { formatToE164Phone, normalizePhoneNumber } from '../utils/phone';
 
 export { formatToE164Phone, normalizePhoneNumber };
 
-interface PendingOtpEntry {
-  otp: string;
-  expiresAt: number;
-}
-
 interface AuthContextType {
   isAuthInitializing: boolean;
   authInitializationError: string | null;
@@ -60,7 +55,6 @@ function normalizePhoneDigits(phone?: string): string {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const otpStoreRef = useRef<Map<string, PendingOtpEntry>>(new Map());
   const [supabaseToken, setSupabaseToken] = useState<string | null>(null);
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
 
@@ -94,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (resolvedAuthUserIdRef.current !== session.user.id) {
         resolvedAuthUserIdRef.current = null;
+        setIsAuthInitializing(true);
         setIsAdminUser(false);
         setCurrentUser(DEFAULT_BLANK_USER);
         setIsLoggedIn(false);
@@ -174,13 +169,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
-
-  useEffect(() => {
-    try {
-    } catch {
-      // safe ignore
-    }
-  }, [currentUser]);
 
   useEffect(() => {
     const handleAdminUserUpdate = (e: Event) => {
@@ -351,49 +339,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSupabaseToken(authData.session.access_token);
     }
 
+    setIsAuthInitializing(true);
+    const requestId = authResolutionIdRef.current;
     const profile = await getOrCreateSupabaseProfile(authData.user);
+    const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      setIsAuthInitializing(false);
+      throw new Error(sessionError.message || 'Could not confirm the authenticated session.');
+    }
+    if (currentSession?.user.id !== authData.user.id) {
+      return false;
+    }
+    if (requestId !== authResolutionIdRef.current) {
+      // A newer auth event owns state resolution for this still-current session.
+      return true;
+    }
     if (profile) {
+      resolvedAuthUserIdRef.current = authData.user.id;
       setCurrentUser(profile);
       setIsAdminUser(profile.role === 'admin');
+      setAuthInitializationError(null);
       setIsLoggedIn(true);
+      setIsAuthInitializing(false);
       return true;
     }
 
-    // Direct profile construction from authenticated user metadata if table query had transient delay
-    const fallbackProfile: AlumniProfile = {
-      id: Number(authData.user.id.replace(/[^0-9]/g, '').slice(0, 10)) || Date.now(),
-      userId: Number(authData.user.id.replace(/[^0-9]/g, '').slice(0, 10)) || Date.now(),
-      authUserId: authData.user.id,
-      fullName:
-        (authData.user.user_metadata as any)?.full_name ||
-        (authData.user.user_metadata as any)?.name ||
-        (isEmail ? cleanInput.split('@')[0] : cleanInput),
-      avatarUrl: (authData.user.user_metadata as any)?.avatar_url || '/ndc-logo.png',
-      batchYear: Number((authData.user.user_metadata as any)?.batch_year) || 68,
-      academicStream: 'Science',
-      academicGroup: null,
-      section: 'Group 4',
-      verificationStatus: 'unverified',
-      vouchesCount: 0,
-      vouchTargetCount: 2,
-      profession: '',
-      position: '',
-      institution: '',
-      specialty: [],
-      degree: ['HSC'],
-      city: 'Dhaka',
-      country: 'Bangladesh',
-      email: isEmail ? cleanInput.toLowerCase() : (authData.user.email || undefined),
-      phone: !isEmail ? formatToE164Phone(cleanInput) : (authData.user.phone || undefined),
-      role: 'member',
-      isPublic: true,
-      online: true,
-      badges: [],
-    };
-    setCurrentUser(fallbackProfile);
-    setIsAdminUser(false);
-    setIsLoggedIn(true);
-    return true;
+    const profileError = 'Your account is authenticated, but your alumni profile could not be loaded. Please retry shortly.';
+    setAuthInitializationError(profileError);
+    setIsAuthInitializing(false);
+    throw new Error(profileError);
   };
 
   const loginWithPhoneOtp = async (phone: string): Promise<boolean> => {
@@ -430,11 +404,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(error.message || 'Invalid or expired SMS verification code.');
     }
     if (data.user) {
+      setIsAuthInitializing(true);
+      const requestId = authResolutionIdRef.current;
       const profile = await getOrCreateSupabaseProfile(data.user);
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        setIsAuthInitializing(false);
+        throw new Error(sessionError.message || 'Could not confirm the authenticated session.');
+      }
+      if (currentSession?.user.id !== data.user.id) {
+        return false;
+      }
+      if (requestId !== authResolutionIdRef.current) {
+        return true;
+      }
       if (profile) {
+        resolvedAuthUserIdRef.current = data.user.id;
         setCurrentUser(profile);
         setIsAdminUser(profile.role === 'admin');
+        setAuthInitializationError(null);
         setIsLoggedIn(true);
+        setIsAuthInitializing(false);
+      } else {
+        const profileError = 'Your account is authenticated, but your alumni profile could not be loaded. Please retry shortly.';
+        setAuthInitializationError(profileError);
+        setIsAuthInitializing(false);
+        throw new Error(profileError);
       }
     }
     return true;
@@ -444,6 +439,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     authResolutionIdRef.current += 1;
     resolvedAuthUserIdRef.current = null;
     setAuthInitializationError(null);
+    setIsAuthInitializing(false);
     setIsAdminUser(false);
     setCurrentUser(DEFAULT_BLANK_USER);
     setIsLoggedIn(false);
@@ -513,6 +509,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // When session is active (or email auto-confirmed), sync profile row to Supabase
     if (signUpData.session) {
+      setIsAuthInitializing(true);
+      const requestId = authResolutionIdRef.current;
       const profile = await getOrCreateSupabaseProfile(signUpData.user, {
         ...profileData,
         email: cleanEmail,
@@ -520,12 +518,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         batchYear: normalizedBatch,
       });
 
-      if (profile) {
-        setCurrentUser(profile);
-        setIsAdminUser(profile.role === 'admin');
-        setIsLoggedIn(true);
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        setIsAuthInitializing(false);
+        throw new Error(sessionError.message || 'Could not confirm the authenticated session.');
+      }
+      if (currentSession?.user.id !== signUpData.user.id) {
         return true;
       }
+      if (requestId !== authResolutionIdRef.current) {
+        return true;
+      }
+
+      if (profile) {
+        resolvedAuthUserIdRef.current = signUpData.user.id;
+        setCurrentUser(profile);
+        setIsAdminUser(profile.role === 'admin');
+        setAuthInitializationError(null);
+        setIsLoggedIn(true);
+        setIsAuthInitializing(false);
+        return true;
+      }
+
+      const profileError = 'Your account was created, but your alumni profile could not be loaded. Please retry shortly.';
+      setAuthInitializationError(profileError);
+      setIsAuthInitializing(false);
+      throw new Error(profileError);
     }
 
     return true;
