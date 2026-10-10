@@ -760,7 +760,7 @@ serve(async (req: Request) => {
         if (!existingSub) {
           return new Response(JSON.stringify({ error: "Verification submission not found." }), { status: 404, headers: corsHeaders });
         }
-        if (callerProfile?.id && existingSub.user_id === callerProfile.id) {
+        if (!callerProfile?.id || existingSub.user_id === callerProfile.id) {
           return new Response(
             JSON.stringify({ error: "Unauthorized: Administrators cannot review or approve their own verification submissions." }),
             { status: 403, headers: corsHeaders }
@@ -772,7 +772,7 @@ serve(async (req: Request) => {
           .update({
             status: finalDecision,
             admin_note: adminNote || "Reviewed by administrator",
-            reviewed_by: callerProfile?.id || null,
+            reviewed_by: callerProfile.id,
             reviewed_at: new Date().toISOString(),
           })
           .eq("id", submissionId)
