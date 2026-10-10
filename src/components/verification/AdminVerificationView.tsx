@@ -137,9 +137,9 @@ export const AdminVerificationView: React.FC<AdminVerificationViewProps> = ({
     }
   };
 
-  const handlePeerVouch = (req: VouchRequest) => {
+  const handlePeerVouch = async (req: VouchRequest) => {
     try {
-      const res = submitPeerVouch(
+      const res = await submitPeerVouch(
         req.id,
         currentUser,
         `Verified by ${currentUser.fullName} (Batch ${currentUser.batchYear}).`

@@ -53,6 +53,8 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
             <img
               src={profile.coverUrl}
               alt="Cover"
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover opacity-60"
             />
           ) : (
@@ -94,6 +96,8 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
               <img
                 src={profile.avatarUrl}
                 alt={profile.fullName}
+                loading="lazy"
+                decoding="async"
                 className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-4 border-white dark:border-slate-900 shadow-xl bg-slate-100 dark:bg-slate-800"
               />
               <span

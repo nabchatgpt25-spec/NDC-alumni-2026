@@ -75,6 +75,8 @@ export const BatchMembersModal: React.FC<BatchMembersModalProps> = ({
                   <img
                     src={alumnus.avatarUrl}
                     alt={alumnus.fullName}
+                    loading="lazy"
+                    decoding="async"
                     className="w-13 h-13 rounded-xl object-cover border border-slate-200 dark:border-slate-700 group-hover:scale-105 transition-transform"
                   />
                   <div className="flex-1 min-w-0">

@@ -295,8 +295,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   // General States
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [isRegistrationSuccess, setIsRegistrationSuccess] = useState(false);
+
+  // Handle Google OAuth Sign-In (Task 1)
+  const handleGoogleLogin = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setGoogleLoading(true);
+    try {
+      await loginWithGoogle();
+    } catch (err: unknown) {
+      const error = err as Error;
+      setErrorMessage(error.message || 'Failed to start Google sign-in. Please try again.');
+      setGoogleLoading(false);
+    }
+  };
 
   // Handle Login Submit (Email or Mobile with password)
   const handleLogin = async (e: React.FormEvent) => {
@@ -446,11 +462,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }
       }
 
-      setSuccessMessage('Registration successful! Welcome to the Notre Dame Alumni Network.');
-      setTimeout(() => {
-        onClose();
-        if (onSuccess) onSuccess('register');
-      }, 600);
+      setIsRegistrationSuccess(true);
+      setSuccessMessage('');
     } catch (err: unknown) {
       const error = err as Error;
       setErrorMessage(error.message || 'Registration failed. Please check your details and try again.');
@@ -572,6 +585,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="button"
                 onClick={() => {
                   setMode('login');
+                  setIsRegistrationSuccess(false);
                   setErrorMessage('');
                   setSuccessMessage('');
                 }}
@@ -589,6 +603,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="button"
                 onClick={() => {
                   setMode('register');
+                  setIsRegistrationSuccess(false);
                   setErrorMessage('');
                   setSuccessMessage('');
                 }}
@@ -705,13 +720,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || googleLoading}
                   className="w-full py-3.5 px-6 rounded-2xl bg-blue-600/90 hover:bg-blue-600 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 border border-white/25 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 min-h-[44px]"
                 >
                   <span>{loading ? 'Signing in...' : 'Sign In to Portal'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
+
+              {/* Alternative OAuth Sign-In Divider */}
+              <div className="relative my-3 flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-300/60 dark:border-white/10" />
+                </div>
+                <div className="relative px-3 text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-white/70 dark:bg-slate-900/80 backdrop-blur-md rounded-full uppercase tracking-wider">
+                  or
+                </div>
+              </div>
+
+              {/* Task 1: Visible Continue with Google Button */}
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={loading || googleLoading}
+                className="w-full py-3 px-4 rounded-2xl bg-white/80 hover:bg-white dark:bg-white/10 dark:hover:bg-white/15 text-slate-800 dark:text-slate-100 font-bold text-xs sm:text-sm border border-slate-300/80 dark:border-white/15 shadow-xs hover:shadow transition-all cursor-pointer flex items-center justify-center gap-2.5 disabled:opacity-60 min-h-[44px]"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>{googleLoading ? 'Connecting to Google...' : 'Continue with Google'}</span>
+              </button>
 
               {/* Helper for new users */}
               <div className="pt-3 border-t border-white/35 dark:border-white/10 text-center">
@@ -736,7 +789,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* =========================================================================
               VIEW 2: RESTORED FULL SIGN UP / REGISTRATION
              ========================================================================= */}
-          {mode === 'register' && (
+          {mode === 'register' && isRegistrationSuccess && (
+            <div className="py-6 px-4 text-center max-w-md mx-auto space-y-5 animate-in fade-in duration-300">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
+                <Mail className="w-8 h-8" />
+              </div>
+
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                  Account Created Successfully
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Email verification required before sign in
+                </p>
+              </div>
+
+              <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-slate-800 dark:text-slate-200 text-xs sm:text-sm text-left space-y-3 leading-relaxed shadow-xs">
+                <p className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>Your account has been created successfully!</span>
+                </p>
+                <p className="text-slate-700 dark:text-slate-300">
+                  Please check your email inbox to verify your email address before signing in.
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 border-t border-emerald-200/60 dark:border-emerald-800/40 pt-2.5">
+                  If you cannot find the verification email, please check your Spam or Junk folder.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegistrationSuccess(false);
+                  setMode('login');
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }}
+                className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[44px]"
+              >
+                <span>Back to Sign In</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {mode === 'register' && !isRegistrationSuccess && (
             <form onSubmit={handleRegister} className="space-y-4">
               {/* SECTION 1: Identity, Batch & Contact */}
               <motion.div

@@ -652,21 +652,26 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
                   profile.id !== currentUser.id && (
                     <button
                       type="button"
-                      onClick={() => {
-                        const res = vouchForAlumniProfile(profile, currentUser);
-                        if (res.success && res.updatedTarget) {
-                          setProfiles((prev) =>
-                            prev.map((p) => (p.id === profile.id ? res.updatedTarget! : p))
-                          );
-                          updateProfile({
-                            vouchedForIds: [
-                              ...(currentUser.vouchedForIds || []),
-                              profile.id,
-                            ],
-                          });
+                      onClick={async () => {
+                        try {
+                          const res = await vouchForAlumniProfile(profile, currentUser);
+                          if (res.success && res.updatedTarget) {
+                            setProfiles((prev) =>
+                              prev.map((p) => (p.id === profile.id ? res.updatedTarget! : p))
+                            );
+                            updateProfile({
+                              vouchedForIds: [
+                                ...(currentUser.vouchedForIds || []),
+                                profile.id,
+                              ],
+                            });
+                          }
+                          setToastMessage(res.message);
+                          setTimeout(() => setToastMessage(null), 4000);
+                        } catch (err: any) {
+                          setToastMessage(err?.message || 'Could not vouch for classmate.');
+                          setTimeout(() => setToastMessage(null), 4000);
                         }
-                        setToastMessage(res.message);
-                        setTimeout(() => setToastMessage(null), 4000);
                       }}
                       className="inline-flex items-center justify-center gap-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shrink-0"
                     >

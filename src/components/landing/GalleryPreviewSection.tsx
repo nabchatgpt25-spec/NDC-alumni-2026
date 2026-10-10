@@ -97,6 +97,8 @@ export const GalleryPreviewSection: React.FC<GalleryPreviewSectionProps> = ({
                 <img
                   src={photo.url}
                   alt={photo.caption || 'Campus photo'}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out opacity-95 group-hover:opacity-100"
                 />
 

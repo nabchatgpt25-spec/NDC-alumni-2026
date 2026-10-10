@@ -55,7 +55,6 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { VerificationStatusBadge } from './verification/VerificationStatusBadge';
 import {
   loadVouchRequests,
-  simulateDemoVouchForUser,
   normalizeToBatchNumber
 } from '../utils/verificationService';
 import { BloodNeededNowSection } from './landing/BloodNeededNowSection';
@@ -1077,24 +1076,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {(currentUser.verificationStatus || 'verified') !== 'verified' && (
-              <button
-                type="button"
-                onClick={() => {
-                  const updated = simulateDemoVouchForUser(currentUser);
-                  updateProfile(updated);
-                  playSound('post');
-                  showToast(
-                    updated.verificationStatus === 'verified'
-                      ? '2/2 Vouches received! Your Notredamian profile is now Verified!'
-                      : `Batchmate vouch recorded (${updated.vouchesCount}/2)! One more vouch needed.`
-                  );
-                }}
-                className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
-              >
-                +1 Instant Vouch
-              </button>
-            )}
             <button
               type="button"
               onClick={() =>

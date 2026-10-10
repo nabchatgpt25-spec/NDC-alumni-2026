@@ -604,6 +604,8 @@ export const FeaturedAlumniSection: React.FC<FeaturedAlumniSectionProps> = ({
                   <img
                     src={alumnus.avatarUrl}
                     alt={alumnus.fullName}
+                    loading="lazy"
+                    decoding="async"
                     className="avatar-interactive w-18 h-18 rounded-2xl object-cover border-2 border-slate-100 dark:border-slate-800 shadow-md bg-slate-100 dark:bg-slate-800"
                   />
                   <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />

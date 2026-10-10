@@ -974,7 +974,19 @@ export async function getVerificationQueue(statusFilter?: string) {
     try {
       let query = supabaseServer
         .from(SUPABASE_TABLES.ADMIN_DOC_SUBMISSIONS)
-        .select('*')
+        .select(`
+          *,
+          applicant:alumni_profiles!admin_doc_submissions_user_id_fkey(
+            id,
+            full_name,
+            avatar_url,
+            batch_year,
+            college_roll,
+            academic_stream,
+            academic_group,
+            phone
+          )
+        `)
         .order('submitted_at', { ascending: false });
 
       if (statusFilter && statusFilter !== 'all') {
@@ -983,25 +995,42 @@ export async function getVerificationQueue(statusFilter?: string) {
 
       const { data, error } = await query;
       if (!error && data) {
-        return data.map((r: any) => ({
-          id: r.id,
-          submissionCode: `DOC-${String(r.id).slice(0, 8)}`,
-          profileId: r.user_id,
-          fullName: 'Notredamian Alumnus',
-          avatarUrl: '/ndc-logo.png',
-          batchYear: r.batch_year,
-          collegeRoll: r.college_roll,
-          academicStream: r.academic_stream,
-          academicGroup: r.academic_group,
-          docType: r.doc_type,
-          docTypeLabel: r.doc_type_label,
-          documentUrl: r.storage_object_path,
-          status: r.status,
-          submittedAt: r.submitted_at,
-          reviewedBy: r.reviewed_by ? String(r.reviewed_by) : null,
-          reviewedAt: r.reviewed_at,
-          adminNote: r.admin_note,
-        }));
+        return await Promise.all(
+          data.map(async (r: any) => {
+            let signedUrl = r.storage_object_path;
+            if (r.storage_object_path && !r.storage_object_path.startsWith('http')) {
+              try {
+                const { data: signedData } = await supabaseServer.storage
+                  .from('verification-documents')
+                  .createSignedUrl(r.storage_object_path, 3600);
+                signedUrl = signedData?.signedUrl || null;
+              } catch {
+                signedUrl = null;
+              }
+            }
+
+            const applicant = r.applicant || {};
+            return {
+              id: r.id,
+              submissionCode: `DOC-${String(r.id).slice(0, 8)}`,
+              profileId: r.user_id,
+              fullName: applicant.full_name || 'Notredamian Alumnus',
+              avatarUrl: applicant.avatar_url || '/ndc-logo.png',
+              batchYear: r.batch_year || applicant.batch_year || 68,
+              collegeRoll: r.college_roll || applicant.college_roll || '',
+              academicStream: r.academic_stream || applicant.academic_stream || 'Science',
+              academicGroup: r.academic_group || applicant.academic_group || null,
+              docType: r.doc_type,
+              docTypeLabel: r.doc_type_label,
+              documentUrl: signedUrl,
+              status: r.status,
+              submittedAt: r.submitted_at,
+              reviewedBy: r.reviewed_by ? String(r.reviewed_by) : null,
+              reviewedAt: r.reviewed_at,
+              adminNote: r.admin_note,
+            };
+          })
+        );
       }
     } catch (err) {
       console.warn('Supabase getVerificationQueue error:', err);
@@ -1058,7 +1087,28 @@ export async function reviewVerificationSubmission(params: {
             .update({
               verification_status: 'verified',
               verification_method: 'id_card_upload',
+              id_submission_status: 'approved',
+              admin_review_note: params.adminNote || 'Approved via ID document verification',
               verified_at: new Date().toISOString(),
+            })
+            .eq('id', data.user_id);
+
+          // Mark any pending verification request for this user as verified
+          await supabaseServer
+            .from(SUPABASE_TABLES.VERIFICATION_REQUESTS)
+            .update({
+              status: 'verified',
+              reviewed_at: new Date().toISOString(),
+              admin_note: params.adminNote || 'Approved via ID document verification',
+            })
+            .eq('requester_id', data.user_id)
+            .eq('status', 'pending');
+        } else if (params.decision === 'rejected' && data.user_id) {
+          await supabaseServer
+            .from(SUPABASE_TABLES.ALUMNI_PROFILES)
+            .update({
+              id_submission_status: 'rejected',
+              admin_review_note: params.adminNote || 'Document unclear or incomplete.',
             })
             .eq('id', data.user_id);
         }

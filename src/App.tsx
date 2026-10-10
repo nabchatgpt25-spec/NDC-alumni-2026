@@ -11,23 +11,32 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { FeedView } from './components/FeedView';
-import { DirectoryView } from './components/DirectoryView';
-import { AlumniDirectoryView } from './components/AlumniDirectoryView';
-import { BatchesView } from './components/BatchesView';
-import { MapView } from './components/MapView';
-import { ProfileView } from './components/ProfileView';
-import { GalleryView } from './components/GalleryView';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
-import { UpcomingFeatureView } from './components/UpcomingFeatureView';
-import { ContactUsView } from './components/ContactUsView';
-import { SavedPostsView } from './components/SavedPostsView';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { VerificationCenterModal } from './components/verification/VerificationCenterModal';
-import { BloodNetworkView } from './components/BloodNetworkView';
 import { ensureVouchRequestFromUrlParams } from './utils/verificationService';
 import { CursorSpotlight } from './components/motion/CinematicMotion';
 import { NDCLogo } from './components/NDCLogo';
+
+// Code-split route components to minimize initial bundle size and maximize performance
+const DirectoryView = React.lazy(() => import('./components/DirectoryView').then(m => ({ default: m.DirectoryView })));
+const AlumniDirectoryView = React.lazy(() => import('./components/AlumniDirectoryView').then(m => ({ default: m.AlumniDirectoryView })));
+const BatchesView = React.lazy(() => import('./components/BatchesView').then(m => ({ default: m.BatchesView })));
+const MapView = React.lazy(() => import('./components/MapView').then(m => ({ default: m.MapView })));
+const ProfileView = React.lazy(() => import('./components/ProfileView').then(m => ({ default: m.ProfileView })));
+const GalleryView = React.lazy(() => import('./components/GalleryView').then(m => ({ default: m.GalleryView })));
+const UpcomingFeatureView = React.lazy(() => import('./components/UpcomingFeatureView').then(m => ({ default: m.UpcomingFeatureView })));
+const ContactUsView = React.lazy(() => import('./components/ContactUsView').then(m => ({ default: m.ContactUsView })));
+const SavedPostsView = React.lazy(() => import('./components/SavedPostsView').then(m => ({ default: m.SavedPostsView })));
+const BloodNetworkView = React.lazy(() => import('./components/BloodNetworkView').then(m => ({ default: m.BloodNetworkView })));
+const VerificationCenterModal = React.lazy(() => import('./components/verification/VerificationCenterModal').then(m => ({ default: m.VerificationCenterModal })));
+
+const ViewLoadingFallback = () => (
+  <div className="w-full py-20 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
+    <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+    <span className="text-xs font-semibold tracking-wide">Loading portal view...</span>
+  </div>
+);
 
 function AlumniAppContent() {
   const { isLoggedIn, currentUser, isAuthInitializing, authInitializationError } = useAuth();
@@ -95,14 +104,19 @@ function AlumniAppContent() {
 
   // Handle ?vouch_for=... shared peer vouch link
   useEffect(() => {
-    const req = ensureVouchRequestFromUrlParams();
-    if (req) {
-      if (isLoggedIn) {
-        setVerificationModalState({ isOpen: true, initialTab: 'vouch_others' });
-      } else {
-        setAuthModalMode('login');
+    let isMounted = true;
+    ensureVouchRequestFromUrlParams().then((req) => {
+      if (isMounted && req) {
+        if (isLoggedIn) {
+          setVerificationModalState({ isOpen: true, initialTab: 'vouch_others' });
+        } else {
+          setAuthModalMode('login');
+        }
       }
-    }
+    });
+    return () => {
+      isMounted = false;
+    };
   }, [isLoggedIn]);
 
   // Sync route with window location hash
@@ -249,95 +263,97 @@ function AlumniAppContent() {
               exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
               transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
             >
-              {(route === 'feed' || route === 'dashboard') && (
-                <FeedView
-                  onViewProfile={handleViewProfile}
-                  onOpenVerificationCenter={openVerificationCenter}
-                  onNavigate={navigateTo}
-                />
-              )}
+              <React.Suspense fallback={<ViewLoadingFallback />}>
+                {(route === 'feed' || route === 'dashboard') && (
+                  <FeedView
+                    onViewProfile={handleViewProfile}
+                    onOpenVerificationCenter={openVerificationCenter}
+                    onNavigate={navigateTo}
+                  />
+                )}
 
-              {(route === 'alumni' || (route === 'directory' && !globalSearch)) && (
-                <AlumniDirectoryView
-                  onViewProfile={handleViewProfile}
-                  onNavigateToFind={() => navigateTo('find')}
-                  onOpenVerificationCenter={openVerificationCenter}
-                />
-              )}
+                {(route === 'alumni' || (route === 'directory' && !globalSearch)) && (
+                  <AlumniDirectoryView
+                    onViewProfile={handleViewProfile}
+                    onNavigateToFind={() => navigateTo('find')}
+                    onOpenVerificationCenter={openVerificationCenter}
+                  />
+                )}
 
-              {(route === 'find' || (route === 'directory' && !!globalSearch)) && (
-                <DirectoryView
-                  onViewProfile={handleViewProfile}
-                  initialSearch={globalSearch}
-                  initialBatch={selectedBatchFilter}
-                  onOpenVerificationCenter={openVerificationCenter}
-                />
-              )}
+                {(route === 'find' || (route === 'directory' && !!globalSearch)) && (
+                  <DirectoryView
+                    onViewProfile={handleViewProfile}
+                    initialSearch={globalSearch}
+                    initialBatch={selectedBatchFilter}
+                    onOpenVerificationCenter={openVerificationCenter}
+                  />
+                )}
 
-              {route === 'batches' && (
-                <BatchesView
-                  onSelectBatch={(batchYear) => {
-                    setSelectedBatchFilter(batchYear);
-                    setGlobalSearch('');
-                    navigateTo('find');
-                  }}
-                  onViewProfile={handleViewProfile}
-                />
-              )}
+                {route === 'batches' && (
+                  <BatchesView
+                    onSelectBatch={(batchYear) => {
+                      setSelectedBatchFilter(batchYear);
+                      setGlobalSearch('');
+                      navigateTo('find');
+                    }}
+                    onViewProfile={handleViewProfile}
+                  />
+                )}
 
-              {(route === 'map' || route === 'map-directory') && (
-                <MapView onViewProfile={handleViewProfile} />
-              )}
+                {(route === 'map' || route === 'map-directory') && (
+                  <MapView onViewProfile={handleViewProfile} />
+                )}
 
-              {route === 'institutions' && (
-                <UpcomingFeatureView type="institutions" onNavigate={navigateTo} />
-              )}
+                {route === 'institutions' && (
+                  <UpcomingFeatureView type="institutions" onNavigate={navigateTo} />
+                )}
 
-              {route === 'mentorship' && (
-                <UpcomingFeatureView type="mentorship" onNavigate={navigateTo} />
-              )}
+                {route === 'mentorship' && (
+                  <UpcomingFeatureView type="mentorship" onNavigate={navigateTo} />
+                )}
 
-              {route === 'news' && (
-                <UpcomingFeatureView type="news" onNavigate={navigateTo} />
-              )}
+                {route === 'news' && (
+                  <UpcomingFeatureView type="news" onNavigate={navigateTo} />
+                )}
 
-              {route === 'events' && (
-                <UpcomingFeatureView type="events" onNavigate={navigateTo} />
-              )}
+                {route === 'events' && (
+                  <UpcomingFeatureView type="events" onNavigate={navigateTo} />
+                )}
 
-              {route === 'gallery' && (
-                <GalleryView />
-              )}
+                {route === 'gallery' && (
+                  <GalleryView />
+                )}
 
-              {route === 'careers' && (
-                <UpcomingFeatureView type="careers" onNavigate={navigateTo} />
-              )}
+                {route === 'careers' && (
+                  <UpcomingFeatureView type="careers" onNavigate={navigateTo} />
+                )}
 
-              {(route === 'emergency' || route === 'blood' || route === 'blood-network') && (
-                <BloodNetworkView
-                  onViewProfile={handleViewProfile}
-                  onNavigate={navigateTo}
-                />
-              )}
+                {(route === 'emergency' || route === 'blood' || route === 'blood-network') && (
+                  <BloodNetworkView
+                    onViewProfile={handleViewProfile}
+                    onNavigate={navigateTo}
+                  />
+                )}
 
-              {route === 'contact' && (
-                <ContactUsView />
-              )}
+                {route === 'contact' && (
+                  <ContactUsView />
+                )}
 
-              {(route === 'saved' || route === 'saved-posts') && (
-                <SavedPostsView onNavigate={navigateTo} />
-              )}
+                {(route === 'saved' || route === 'saved-posts') && (
+                  <SavedPostsView onNavigate={navigateTo} />
+                )}
 
-              {(route === 'profile' || route === 'settings' || route === 'profile-settings') && (
-                <ProfileView
-                  profileId={selectedProfileId || currentUser.id}
-                  initialTab={route === 'settings' || route === 'profile-settings' ? 'settings' : undefined}
-                  onBack={() => navigateTo(previousRoute || 'alumni')}
-                  backLabel={getBackLabel()}
-                  onOpenVerificationCenter={openVerificationCenter}
-                  onNavigate={navigateTo}
-                />
-              )}
+                {(route === 'profile' || route === 'settings' || route === 'profile-settings') && (
+                  <ProfileView
+                    profileId={selectedProfileId || currentUser.id}
+                    initialTab={route === 'settings' || route === 'profile-settings' ? 'settings' : undefined}
+                    onBack={() => navigateTo(previousRoute || 'alumni')}
+                    backLabel={getBackLabel()}
+                    onOpenVerificationCenter={openVerificationCenter}
+                    onNavigate={navigateTo}
+                  />
+                )}
+              </React.Suspense>
             </motion.div>
           </AnimatePresence>
         </main>
@@ -512,11 +528,15 @@ function AlumniAppContent() {
       <OfflineIndicator onNavigate={navigateTo} />
 
       {/* Active Notredamian Verification & Peer Vouch Center Modal */}
-      <VerificationCenterModal
-        isOpen={verificationModalState.isOpen}
-        onClose={() => setVerificationModalState((prev) => ({ ...prev, isOpen: false }))}
-        initialTab={verificationModalState.initialTab}
-      />
+      {verificationModalState.isOpen && (
+        <React.Suspense fallback={null}>
+          <VerificationCenterModal
+            isOpen={verificationModalState.isOpen}
+            onClose={() => setVerificationModalState((prev) => ({ ...prev, isOpen: false }))}
+            initialTab={verificationModalState.initialTab}
+          />
+        </React.Suspense>
+      )}
 
       {authModalMode && (
         <AuthModal

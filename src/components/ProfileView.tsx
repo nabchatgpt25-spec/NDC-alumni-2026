@@ -51,7 +51,6 @@ import { VerificationStatusBadge } from './verification/VerificationStatusBadge'
 import {
   vouchForAlumniProfile,
   getVouchShareLink,
-  simulateDemoVouchForUser,
   loadVouchRequests
 } from '../utils/verificationService';
 import { saveStoredAlumniProfiles } from '../data/mockData';
@@ -1137,31 +1136,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   {isMine ? (
-                    <>
-                      {(profile.verificationStatus || 'verified') !== 'verified' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            simulateDemoVouchForUser(currentUser, (updated) => {
-                              updateProfile(updated);
-                              setProfile(updated);
-                            });
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>⚡ Simulate Classmate Vouch</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onOpenVerificationCenter?.('status')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Verification Center</span>
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => onOpenVerificationCenter?.('status')}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Verification Center</span>
+                    </button>
                   ) : (
                     <>
                       {!(profile.verifiedBy || []).some((v) =>
@@ -1169,21 +1151,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       ) && (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
                             try {
-                              const { updatedProfile } = vouchForAlumniProfile(
+                              const res = await vouchForAlumniProfile(
                                 profile,
                                 currentUser
                               );
-                              setProfile(updatedProfile);
-                              const stored = loadStoredAlumniProfiles();
-                              const idx = stored.findIndex((p) => p.id === updatedProfile.id);
-                              if (idx > -1) {
-                                stored[idx] = updatedProfile;
-                                saveStoredAlumniProfiles(stored);
+                              if (res.success && res.updatedTarget) {
+                                setProfile(res.updatedTarget);
+                                const stored = loadStoredAlumniProfiles();
+                                const idx = stored.findIndex((p) => p.id === res.updatedTarget.id);
+                                if (idx > -1) {
+                                  stored[idx] = res.updatedTarget;
+                                  saveStoredAlumniProfiles(stored);
+                                }
                               }
                             } catch {
-                              onOpenVerificationCenter?.('vouch_classmates');
+                              onOpenVerificationCenter?.('vouch_others');
                             }
                           }}
                           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"

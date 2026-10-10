@@ -109,7 +109,15 @@ export async function fetchAlumniProfileByIdFromDb(profileId: number): Promise<A
   }
 }
 
+let cachedBatches: { data: BatchSummary[]; expiresAt: number } | null = null;
+let cachedStreamGroups: { data: any[]; expiresAt: number } | null = null;
+let cachedNotices: { data: OfficialNotice[]; expiresAt: number } | null = null;
+
 export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
+  if (cachedBatches && cachedBatches.expiresAt > Date.now()) {
+    return cachedBatches.data;
+  }
+
   if (!isSupabaseConfigured) {
     return BATCH_LIST;
   }
@@ -124,7 +132,7 @@ export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
       return BATCH_LIST;
     }
 
-    return data.map((b) => ({
+    const result = data.map((b) => ({
       batchYear: b.batch_year,
       hscYear: b.hsc_year || (b.batch_year > 1900 ? b.batch_year : 1950 + b.batch_year),
       session: b.session || `${b.batch_year - 2}-${String(b.batch_year).slice(-2)}`,
@@ -132,6 +140,9 @@ export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
       representative: b.representative_name || undefined,
       specialNote: b.special_note || undefined,
     }));
+
+    cachedBatches = { data: result, expiresAt: Date.now() + 5 * 60 * 1000 };
+    return result;
   } catch (err) {
     console.warn('Supabase fetchBatches error:', err);
     return BATCH_LIST;
@@ -165,6 +176,10 @@ export async function fetchBatchAlumniProfilesFromDb(batchYear: number): Promise
 }
 
 export async function fetchAcademicStreamGroupsFromDb(): Promise<any[]> {
+  if (cachedStreamGroups && cachedStreamGroups.expiresAt > Date.now()) {
+    return cachedStreamGroups.data;
+  }
+
   if (!isSupabaseConfigured) {
     return [];
   }
@@ -177,6 +192,7 @@ export async function fetchAcademicStreamGroupsFromDb(): Promise<any[]> {
       .order('id', { ascending: true });
 
     if (error || !data) return [];
+    cachedStreamGroups = { data, expiresAt: Date.now() + 10 * 60 * 1000 };
     return data;
   } catch (err) {
     return [];
@@ -1145,8 +1161,16 @@ export async function submitPeerVouchInDb(params: {
   voucherId: number;
   voucherBatch: number;
   comment?: string;
-}): Promise<boolean> {
-  if (!isSupabaseConfigured) return false;
+}): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured) {
+    return { success: false, error: 'Database connection is not configured.' };
+  }
+
+  // UUID format check to prevent PostgreSQL syntax error
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!params.verificationRequestId || !uuidRegex.test(params.verificationRequestId)) {
+    return { success: false, error: 'Invalid verification request identifier.' };
+  }
 
   try {
     const { error } = await supabase.from('peer_vouches').insert({
@@ -1157,10 +1181,15 @@ export async function submitPeerVouchInDb(params: {
       comment: params.comment || null,
     });
 
-    return !error;
-  } catch (err) {
+    if (error) {
+      console.warn('submitPeerVouchInDb error:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
     console.warn('Failed to insert peer vouch in Supabase:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to submit peer vouch.' };
   }
 }
 
@@ -1177,6 +1206,18 @@ export async function createVerificationRequestInDb(params: {
   if (!isSupabaseConfigured) return null;
 
   try {
+    // Check if user already has an active pending request in database
+    const { data: existing } = await supabase
+      .from('verification_requests')
+      .select('id')
+      .eq('requester_id', params.requesterId)
+      .eq('status', 'pending')
+      .maybeSingle();
+
+    if (existing?.id) {
+      return String(existing.id);
+    }
+
     const { data, error } = await supabase
       .from('verification_requests')
       .insert({
@@ -1195,11 +1236,120 @@ export async function createVerificationRequestInDb(params: {
 
     if (error || !data) {
       console.warn('Failed to insert verification request:', error?.message);
-      return null;
+      // Fallback query in case of race condition
+      const { data: retryExisting } = await supabase
+        .from('verification_requests')
+        .select('id')
+        .eq('requester_id', params.requesterId)
+        .eq('status', 'pending')
+        .maybeSingle();
+      return retryExisting?.id ? String(retryExisting.id) : null;
     }
     return String(data.id);
   } catch (err) {
     console.warn('createVerificationRequestInDb error:', err);
+    return null;
+  }
+}
+
+export async function fetchUserActiveVerificationRequestFromDb(userId: number): Promise<VouchRequest | null> {
+  if (!isSupabaseConfigured || !userId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('verification_requests')
+      .select(`
+        *,
+        requester:alumni_profiles!verification_requests_requester_id_fkey (
+          id,
+          full_name,
+          avatar_url,
+          batch_year,
+          college_roll
+        ),
+        peer_vouches (
+          id,
+          voucher_id,
+          voucher_batch,
+          comment,
+          created_at,
+          voucher:alumni_profiles!peer_vouches_voucher_id_fkey (
+            id,
+            full_name,
+            avatar_url,
+            batch_year
+          )
+        )
+      `)
+      .eq('requester_id', userId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    return {
+      id: String(data.id),
+      requesterId: Number(data.requester_id),
+      requesterName: data.requester?.full_name || 'Notredamian Alumnus',
+      requesterAvatar: data.requester?.avatar_url || '/ndc-logo.png',
+      batchYear: data.batch_year,
+      collegeRoll: data.college_roll,
+      group: data.academic_stream,
+      section: data.section || '',
+      createdAt: data.created_at,
+      status: data.status,
+      targetVouches: data.target_vouches || 2,
+      vouches: (data.peer_vouches || []).map((v: any) => ({
+        id: v.id,
+        voucherId: Number(v.voucher_id),
+        voucherName: v.voucher?.full_name || 'Brother Alumnus',
+        voucherAvatar: v.voucher?.avatar_url || '/ndc-logo.png',
+        voucherBatch: v.voucher_batch,
+        date: new Date(v.created_at).toLocaleDateString(),
+        comment: v.comment || undefined,
+      })),
+    };
+  } catch (err) {
+    console.warn('fetchUserActiveVerificationRequestFromDb error:', err);
+    return null;
+  }
+}
+
+export async function fetchUserLatestAdminDocSubmissionFromDb(userId: number): Promise<{
+  id: string;
+  docType: string;
+  docTypeLabel: string;
+  status: 'pending' | 'approved' | 'rejected';
+  adminNote?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+} | null> {
+  if (!isSupabaseConfigured || !userId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('admin_doc_submissions')
+      .select('id, doc_type, doc_type_label, status, admin_note, submitted_at, reviewed_at')
+      .eq('user_id', userId)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    return {
+      id: String(data.id),
+      docType: data.doc_type,
+      docTypeLabel: data.doc_type_label,
+      status: data.status,
+      adminNote: data.admin_note || undefined,
+      submittedAt: data.submitted_at,
+      reviewedAt: data.reviewed_at || undefined,
+    };
+  } catch (err) {
+    console.warn('fetchUserLatestAdminDocSubmissionFromDb error:', err);
     return null;
   }
 }
@@ -1336,6 +1486,10 @@ export async function deleteFeedPostInDb(postId: number): Promise<boolean> {
 // =============================================================================
 
 export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
+  if (cachedNotices && cachedNotices.expiresAt > Date.now()) {
+    return cachedNotices.data;
+  }
+
   if (!isSupabaseConfigured) return [];
 
   try {
@@ -1349,7 +1503,7 @@ export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
       return [];
     }
 
-    return data.map((n: any) => ({
+    const result = data.map((n: any) => ({
       id: n.id,
       refNo: n.ref_no,
       title: n.title,
@@ -1366,6 +1520,9 @@ export async function fetchOfficialNoticesFromDb(): Promise<OfficialNotice[]> {
         organization: n.signatory_organization,
       },
     }));
+
+    cachedNotices = { data: result, expiresAt: Date.now() + 5 * 60 * 1000 };
+    return result;
   } catch {
     return [];
   }

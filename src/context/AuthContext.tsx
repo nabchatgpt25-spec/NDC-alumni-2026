@@ -84,6 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      if (resolvedAuthUserIdRef.current === session.user.id && isLoggedIn) {
+        inMemorySupabaseToken = session.access_token;
+        setSupabaseToken(session.access_token);
+        setIsAuthInitializing(false);
+        return;
+      }
+
       if (resolvedAuthUserIdRef.current !== session.user.id) {
         resolvedAuthUserIdRef.current = null;
         setIsAuthInitializing(true);
@@ -217,10 +224,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Supabase client is not configured.');
     }
 
+    const redirectUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/`
+      : undefined;
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+        redirectTo: redirectUrl,
       },
     });
     if (error) {
@@ -446,6 +457,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!signUpData?.user) {
       throw new Error('Failed to create account in Supabase. Please try again.');
+    }
+
+    const isEmailConfirmed = Boolean(signUpData.user.email_confirmed_at);
+    if (!isEmailConfirmed) {
+      // User must verify email before signing in - do not auto-login
+      if (signUpData.session) {
+        await supabase.auth.signOut().catch(() => {});
+      }
+      inMemorySupabaseToken = null;
+      setSupabaseToken(null);
+      setIsLoggedIn(false);
+      setIsAdminUser(false);
+      setIsAuthInitializing(false);
+      return true;
     }
 
     if (signUpData.session?.access_token) {

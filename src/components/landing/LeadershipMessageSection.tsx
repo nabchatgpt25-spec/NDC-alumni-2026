@@ -35,6 +35,8 @@ export const LeadershipMessageSection: React.FC = () => {
                   <img
                     src="https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=250&q=80"
                     alt="Rev. Fr. Dr. Hemanto Rozario, CSC"
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-blue-700 p-0.5 border border-white dark:border-slate-900 flex items-center justify-center">
@@ -88,6 +90,8 @@ export const LeadershipMessageSection: React.FC = () => {
                   <img
                     src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=250&q=80"
                     alt="Engr. Masud Karim, Batch 74"
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-amber-500 p-0.5 border border-white dark:border-slate-900 flex items-center justify-center">

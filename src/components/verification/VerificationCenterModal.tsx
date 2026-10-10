@@ -17,10 +17,11 @@ import {
   Camera,
   Search,
   MessageCircle,
-  Check
+  Check,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { AlumniProfile, VouchRequest } from '../../types';
+import { AlumniProfile, VouchRequest, VerificationDocType } from '../../types';
 import {
   loadVouchRequests,
   submitPeerVouch,
@@ -28,12 +29,19 @@ import {
   getWhatsAppVouchShareUrl,
   registerUserVouchRequest,
   isSameBatch,
-  normalizeToBatchNumber
+  normalizeToBatchNumber,
+  submitDocumentForAdminReview,
+  DOC_TYPE_LABELS
 } from '../../utils/verificationService';
-import { saveMediaFile, isVideoUrl, formatFileSize } from '../../utils/mediaStorage';
 import { NDCLogo } from '../NDCLogo';
 import { WhatsAppIcon } from '../SocialIcons';
-import { fetchVerificationRequestsFromDb } from '../../services/supabaseService';
+import { isVideoUrl } from '../../utils/mediaStorage';
+import {
+  fetchVerificationRequestsFromDb,
+  uploadVerificationDocumentToStorage,
+  fetchUserLatestAdminDocSubmissionFromDb,
+} from '../../services/supabaseService';
+import { supabase } from '../../lib/supabase';
 
 interface VerificationCenterModalProps {
   isOpen: boolean;
@@ -66,12 +74,23 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
   const [selectedBatchFilter, setSelectedBatchFilter] = useState<'all' | 'my_batch'>('all');
   const [confirmingVouchFor, setConfirmingVouchFor] = useState<VouchRequest | null>(null);
   const [vouchComment, setVouchComment] = useState('');
+  const [isSubmittingVouch, setIsSubmittingVouch] = useState(false);
 
   // ID Upload State
+  const [selectedDocFile, setSelectedDocFile] = useState<File | null>(null);
   const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null);
-  const [docType, setDocType] = useState<'id_card' | 'hsc_slip' | 'souvenir'>('id_card');
+  const [docType, setDocType] = useState<VerificationDocType>('id_card');
   const [isVerifyingDoc, setIsVerifyingDoc] = useState(false);
   const [docVerifiedSuccess, setDocVerifiedSuccess] = useState(false);
+  const [docUploadError, setDocUploadError] = useState<string | null>(null);
+  const [latestSubmission, setLatestSubmission] = useState<{
+    id: string;
+    docType: string;
+    docTypeLabel: string;
+    status: 'pending' | 'approved' | 'rejected';
+    adminNote?: string;
+    submittedAt: string;
+  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -79,6 +98,7 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
       setActiveTab(resolveTab(initialTab));
       setVouchRequests(loadVouchRequests());
 
+      // Fetch live pending verification requests from Supabase
       fetchVerificationRequestsFromDb()
         .then((dbReqs) => {
           if (isMounted && dbReqs && dbReqs.length > 0) {
@@ -95,11 +115,25 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
         .catch((err) => {
           console.warn('VerificationCenter: Supabase requests fetch fallback:', err);
         });
+
+      // Fetch latest document submission status for the current user
+      if (currentUser?.id) {
+        fetchUserLatestAdminDocSubmissionFromDb(currentUser.id)
+          .then((sub) => {
+            if (isMounted && sub) {
+              setLatestSubmission(sub);
+              if (sub.status === 'pending') {
+                setDocVerifiedSuccess(true);
+              }
+            }
+          })
+          .catch(() => {});
+      }
     }
     return () => {
       isMounted = false;
     };
-  }, [isOpen, initialTab]);
+  }, [isOpen, initialTab, currentUser?.id]);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -111,7 +145,7 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
 
   if (!isOpen) return null;
 
-  const isVerified = (currentUser.verificationStatus || 'verified') === 'verified';
+  const isVerified = (currentUser.verificationStatus || 'unverified') === 'verified';
   const vouchesCount = currentUser.vouchesCount ?? (currentUser.verifiedBy?.length ?? (isVerified ? 2 : 0));
   const targetVouches = currentUser.vouchTargetCount || 2;
   const progressPercent = isVerified ? 100 : Math.min(100, Math.round((vouchesCount / targetVouches) * 100));
@@ -123,62 +157,102 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  const handleConfirmVouch = (request: VouchRequest) => {
+  const handleConfirmVouch = async (request: VouchRequest) => {
+    setIsSubmittingVouch(true);
+    setVouchErrorMsg('');
     try {
-      setVouchErrorMsg('');
-      const res = submitPeerVouch(request.id, currentUser, vouchComment);
+      const res = await submitPeerVouch(request.id, currentUser, vouchComment);
       setVouchRequests(loadVouchRequests());
       setConfirmingVouchFor(null);
       setVouchComment('');
-      setVouchSuccessMsg(`Successfully vouched for ${request.requesterName}! ${res.isNowVerified ? 'They are now a Verified Notredamian.' : '1 vouch added.'}`);
-      setTimeout(() => setVouchSuccessMsg(''), 4000);
+      setVouchSuccessMsg(
+        `Successfully vouched for ${request.requesterName}! ${
+          res.isNowVerified ? 'They have 2/2 vouches and are now officially Verified.' : '1 vouch recorded on the server.'
+        }`
+      );
+      setTimeout(() => setVouchSuccessMsg(''), 5000);
     } catch (err: unknown) {
       const error = err as Error;
       setConfirmingVouchFor(null);
-      setVouchErrorMsg(error.message || 'Could not submit vouch.');
-      setTimeout(() => setVouchErrorMsg(''), 4000);
+      setVouchErrorMsg(error.message || 'Could not submit peer vouch.');
+      setTimeout(() => setVouchErrorMsg(''), 5000);
+    } finally {
+      setIsSubmittingVouch(false);
     }
   };
 
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDocUploadError(null);
     const file = e.target.files?.[0];
-    if (file) {
-      try {
-        const saved = await saveMediaFile(file);
-        setUploadedImagePreview(saved.url);
-      } catch {
-        if (typeof window !== 'undefined' && window.URL) {
-          setUploadedImagePreview(window.URL.createObjectURL(file));
-        } else {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            setUploadedImagePreview(event.target?.result as string);
-          };
-          reader.readAsDataURL(file);
-        }
-      }
+    if (!file) return;
+
+    // Validate file size: maximum 5MB
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setDocUploadError('File size exceeds the 5MB limit. Please choose a smaller photo.');
+      return;
+    }
+
+    // Validate format: JPG, PNG, WEBP
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setDocUploadError('Only JPG, PNG, and WEBP image formats are accepted for verification.');
+      return;
+    }
+
+    setSelectedDocFile(file);
+    if (typeof window !== 'undefined' && window.URL) {
+      setUploadedImagePreview(window.URL.createObjectURL(file));
     }
   };
 
-  const handleVerifyDocument = () => {
-    if (!uploadedImagePreview) return;
-    setIsVerifyingDoc(true);
+  const handleVerifyDocument = async () => {
+    if (!selectedDocFile) {
+      setDocUploadError('Please select a photo of your NDC ID Card or HSC Slip.');
+      return;
+    }
 
-    setTimeout(() => {
+    setIsVerifyingDoc(true);
+    setDocUploadError(null);
+
+    try {
+      // 1. Resolve authenticated user ID
+      let authUserId = currentUser.authUserId;
+      if (!authUserId) {
+        const { data: authData } = await supabase.auth.getUser();
+        authUserId = authData?.user?.id;
+      }
+
+      if (!authUserId) {
+        throw new Error('You must be signed in to upload verification documents.');
+      }
+
+      // 2. Upload file to private Supabase Storage bucket 'verification-documents'
+      const uploadResult = await uploadVerificationDocumentToStorage(selectedDocFile, authUserId);
+      if (!uploadResult?.storagePath) {
+        throw new Error('Failed to securely upload document to storage.');
+      }
+
+      // 3. Submit metadata directly to Supabase admin_doc_submissions table
+      await submitDocumentForAdminReview(currentUser, docType, uploadResult.storagePath);
+
       setIsVerifyingDoc(false);
       setDocVerifiedSuccess(true);
+      setLatestSubmission({
+        id: `pending-${Date.now()}`,
+        docType,
+        docTypeLabel: DOC_TYPE_LABELS[docType] || 'Identity Document',
+        status: 'pending',
+        submittedAt: 'Just now',
+      });
 
-      const updated = {
-        verificationStatus: 'verified' as const,
-        verificationMethod: 'id_card_upload' as const,
-        idProofUrl: uploadedImagePreview,
-        verificationDate: 'Today',
-        badges: currentUser.badges?.includes('Verified Notredamian')
-          ? currentUser.badges
-          : [...(currentUser.badges || []), 'Verified Notredamian'],
-      };
-      updateProfile(updated);
-    }, 1500);
+      updateProfile({
+        idSubmissionStatus: 'pending',
+      });
+    } catch (err: any) {
+      setIsVerifyingDoc(false);
+      setDocUploadError(err?.message || 'Failed to submit document for admin review.');
+    }
   };
 
   const filteredRequests = vouchRequests.filter((req) => {

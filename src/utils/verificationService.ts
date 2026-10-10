@@ -14,6 +14,7 @@ import {
   submitPeerVouchInDb,
   createVerificationRequestInDb,
   submitAdminDocSubmissionInDb,
+  fetchUserActiveVerificationRequestFromDb,
 } from '../services/supabaseService';
 
 export const VOUCH_STORAGE_KEY = 'ndc_vouch_requests';
@@ -58,7 +59,7 @@ export const getVouchShareLink = (user: AlumniProfile): string => {
       ? `${window.location.origin}${window.location.pathname}`
       : 'https://ndcbogura.alumniworld.xyz/';
   const safeName = (user.fullName || 'Notredamian Alumnus').trim();
-  const safeRoll = (user.collegeRoll || '118042').trim();
+  const safeRoll = (user.collegeRoll || '').trim();
   const safeBatch = user.batchYear || 68;
   const safeId = user.id || 1001;
   return `${origin}?vouch_for=${safeId}&roll=${encodeURIComponent(safeRoll)}&batch=${safeBatch}&name=${encodeURIComponent(safeName)}`;
@@ -73,12 +74,6 @@ export const getWhatsAppVouchShareUrl = (user: AlumniProfile): string => {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 };
 
-// Initial seed requests (starts empty; populated only by real user submissions)
-const INITIAL_VOUCH_REQUESTS: VouchRequest[] = [];
-
-// Initial ID / NID Document Submissions (starts empty; populated only by real user submissions)
-const INITIAL_ADMIN_DOC_SUBMISSIONS: AdminDocSubmission[] = [];
-
 export const loadVouchRequests = (): VouchRequest[] => {
   if (typeof window === 'undefined') return [];
   try {
@@ -90,7 +85,6 @@ export const loadVouchRequests = (): VouchRequest[] => {
           (r: VouchRequest) =>
             r &&
             r.id &&
-            !r.id.startsWith('vouch-req-10') &&
             !r.id.startsWith('demo-')
         );
       }
@@ -123,7 +117,6 @@ export const loadAdminDocSubmissions = (): AdminDocSubmission[] => {
           (d: AdminDocSubmission) =>
             d &&
             d.id &&
-            !d.id.startsWith('doc-sub-10') &&
             !d.id.startsWith('demo-')
         );
       }
@@ -148,7 +141,7 @@ export const saveAdminDocSubmissions = (submissions: AdminDocSubmission[]) => {
 /**
  * Helper to sync verification status changes across all localStorage stores
  */
-const syncProfileVerificationInStorage = (
+export const syncProfileVerificationInStorage = (
   userId: number,
   updates: Partial<AlumniProfile>
 ) => {
@@ -202,21 +195,31 @@ const syncProfileVerificationInStorage = (
 /**
  * Submit an NID / College ID / HSC Admit Card / Souvenir photo to the Admin Review Queue
  */
-export const submitDocumentForAdminReview = (
+export const submitDocumentForAdminReview = async (
   user: AlumniProfile,
   docType: VerificationDocType,
   documentUrl: string
-): AdminDocSubmission => {
+): Promise<AdminDocSubmission> => {
   const submissions = loadAdminDocSubmissions();
   const existingIdx = submissions.findIndex((s) => s.userId === user.id);
 
+  // Persist directly to Supabase admin_doc_submissions table
+  const dbSubmissionId = await submitAdminDocSubmissionInDb({
+    userId: user.id,
+    batchYear: user.batchYear || 68,
+    collegeRoll: user.collegeRoll || '118042',
+    academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
+    academicGroup: user.academicGroup || null,
+    docType,
+    docTypeLabel: DOC_TYPE_LABELS[docType] || 'Identity Document',
+    storageObjectPath: documentUrl,
+  });
+
   const submission: AdminDocSubmission = {
-    id: existingIdx >= 0 ? submissions[existingIdx].id : `doc-sub-${Date.now()}`,
+    id: dbSubmissionId || (existingIdx >= 0 ? submissions[existingIdx].id : `doc-sub-${Date.now()}`),
     userId: user.id,
     fullName: user.fullName || 'Notredamian Alumnus',
-    avatarUrl:
-      user.avatarUrl ||
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+    avatarUrl: user.avatarUrl || '/ndc-logo.png',
     batchYear: user.batchYear || 68,
     collegeRoll: user.collegeRoll || '118042',
     group: user.group || 'Science',
@@ -237,39 +240,10 @@ export const submitDocumentForAdminReview = (
   }
   saveAdminDocSubmissions(submissions);
 
-  // Persist to Supabase admin_doc_submissions table
-  submitAdminDocSubmissionInDb({
-    userId: user.id,
-    batchYear: user.batchYear || 68,
-    collegeRoll: user.collegeRoll || '118042',
-    academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
-    academicGroup: user.academicGroup || null,
-    docType,
-    docTypeLabel: DOC_TYPE_LABELS[docType] || 'Identity Document',
-    storageObjectPath: documentUrl,
-  }).catch((err) => {
-    console.warn('submitAdminDocSubmissionInDb fallback:', err);
+  syncProfileVerificationInStorage(user.id, {
+    idSubmissionStatus: 'pending',
+    adminReviewNote: undefined,
   });
-
-  // Also ensure a VouchRequest exists and attach the idProofUrl so Admin sees it in both places
-  const requests = loadVouchRequests();
-  const reqIdx = requests.findIndex((r) => r.requesterId === user.id);
-  if (reqIdx >= 0) {
-    requests[reqIdx] = {
-      ...requests[reqIdx],
-      idProofUrl: documentUrl,
-      idDocType: docType,
-      status: 'pending',
-    };
-    saveVouchRequests(requests);
-  } else {
-    const createdReq = registerUserVouchRequest(
-      { ...user, idProofUrl: documentUrl, idDocType: docType },
-      `Uploaded ${DOC_TYPE_LABELS[docType]} for Admin Verification.`
-    );
-    createdReq.idProofUrl = documentUrl;
-    createdReq.idDocType = docType;
-  }
 
   return submission;
 };
@@ -325,7 +299,7 @@ export const adminReviewDocumentSubmission = (
     decision === 'approved'
       ? {
           verificationStatus: 'verified',
-          verificationMethod: 'admin_verified',
+          verificationMethod: 'id_card_upload',
           idSubmissionStatus: 'approved',
           verificationDate: 'Today',
           verifiedBy: [`Admin Verified (${adminName})`],
@@ -344,7 +318,7 @@ export const adminReviewDocumentSubmission = (
 };
 
 /**
- * Admin Action: Directly approve any VouchRequest (even without 2 vouches)
+ * Admin Action: Directly approve any VouchRequest
  */
 export const adminApproveVouchRequest = (
   requestId: string,
@@ -353,51 +327,25 @@ export const adminApproveVouchRequest = (
   const requests = loadVouchRequests();
   const idx = requests.findIndex((r) => r.id === requestId);
   if (idx === -1) {
-    throw new Error('Verification request not found');
+    throw new Error('Vouch request not found');
   }
 
   const req = requests[idx];
-  const adminVouch: VouchItem = {
-    id: `admin-vouch-${Date.now()}`,
-    voucherId: 999999,
-    voucherName: `${adminName} (Admin)`,
-    voucherAvatar:
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    voucherBatch: 68,
-    date: 'Just now',
-    comment: 'Officially verified by Portal Admin.',
-  };
-
   const updatedReq: VouchRequest = {
     ...req,
     status: 'verified',
-    vouches: [...req.vouches, adminVouch],
+    adminNote: `Directly approved by Administrator (${adminName})`,
   };
 
   requests[idx] = updatedReq;
   saveVouchRequests(requests);
 
-  // Also mark any pending doc submission for this user as approved
-  const docs = loadAdminDocSubmissions();
-  const docIdx = docs.findIndex((d) => d.userId === req.requesterId && d.status === 'pending');
-  if (docIdx >= 0) {
-    docs[docIdx] = {
-      ...docs[docIdx],
-      status: 'approved',
-      reviewedBy: adminName,
-      reviewedAt: 'Just now',
-      adminNote: 'Approved by Admin via Verification Queue.',
-    };
-    saveAdminDocSubmissions(docs);
-  }
-
   syncProfileVerificationInStorage(req.requesterId, {
     verificationStatus: 'verified',
     verificationMethod: 'admin_verified',
-    idSubmissionStatus: 'approved',
     verificationDate: 'Today',
-    vouchesCount: Math.max(2, updatedReq.vouches.length),
-    verifiedBy: updatedReq.vouches.map((v) => `${v.voucherName}`),
+    verifiedBy: [`Admin Verified (${adminName})`],
+    vouchesCount: 2,
   });
 
   return updatedReq;
@@ -406,31 +354,44 @@ export const adminApproveVouchRequest = (
 /**
  * Add or update a user's own vouch request
  */
-export const registerUserVouchRequest = (
+export const registerUserVouchRequest = async (
   user: AlumniProfile,
   customNote?: string
-): VouchRequest => {
+): Promise<VouchRequest> => {
+  // 1. Create or retrieve real UUID from Supabase verification_requests table
+  let dbRequestId: string | null = null;
+  try {
+    dbRequestId = await createVerificationRequestInDb({
+      requesterId: user.id,
+      batchYear: user.batchYear || 68,
+      collegeRoll: user.collegeRoll || '118042',
+      academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
+      academicGroup: user.academicGroup || null,
+      section: user.section || null,
+      message: customNote || null,
+      targetVouches: 2,
+    });
+  } catch (err) {
+    console.warn('createVerificationRequestInDb fallback:', err);
+  }
+
+  const activeId = dbRequestId || `vouch-req-${user.id}`;
   const requests = loadVouchRequests();
   const existingIndex = requests.findIndex((r) => r.requesterId === user.id);
 
   if (existingIndex > -1) {
-    if (user.idProofUrl) {
-      requests[existingIndex].idProofUrl = user.idProofUrl;
-    }
-    if (customNote) {
-      requests[existingIndex].message = customNote;
-    }
+    if (dbRequestId) requests[existingIndex].id = dbRequestId;
+    if (user.idProofUrl) requests[existingIndex].idProofUrl = user.idProofUrl;
+    if (customNote) requests[existingIndex].message = customNote;
     saveVouchRequests(requests);
     return requests[existingIndex];
   }
 
   const newRequest: VouchRequest = {
-    id: `vouch-req-${Date.now()}`,
+    id: activeId,
     requesterId: user.id,
     requesterName: user.fullName || 'Notredamian Alumnus',
-    requesterAvatar:
-      user.avatarUrl ||
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+    requesterAvatar: user.avatarUrl || '/ndc-logo.png',
     batchYear: user.batchYear || 68,
     collegeRoll: user.collegeRoll || '118042',
     group: (user.group as 'Science' | 'Business Studies' | 'Humanities') || 'Science',
@@ -442,18 +403,7 @@ export const registerUserVouchRequest = (
     targetVouches: 2,
     idProofUrl: user.idProofUrl,
     idDocType: user.idDocType,
-    vouches: user.verifiedBy
-      ? user.verifiedBy.map((name, idx) => ({
-          id: `seed-${idx}`,
-          voucherId: 1000 + idx,
-          voucherName: name,
-          voucherAvatar:
-            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-          voucherBatch: user.batchYear || 68,
-          date: 'Recently',
-          comment: 'Verified classmate from Notre Dame College.',
-        }))
-      : [],
+    vouches: [],
     message:
       customNote ||
       `Batch ${user.batchYear || 68} brother. Please vouch for my profile so I can participate in our batch lounge.`,
@@ -462,46 +412,60 @@ export const registerUserVouchRequest = (
   requests.unshift(newRequest);
   saveVouchRequests(requests);
 
-  // Persist to Supabase verification_requests table
-  createVerificationRequestInDb({
-    requesterId: user.id,
-    batchYear: user.batchYear || 68,
-    collegeRoll: user.collegeRoll || '118042',
-    academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
-    academicGroup: user.academicGroup || null,
-    section: user.section || null,
-    message: customNote || null,
-    targetVouches: 2,
-  }).catch((err) => {
-    console.warn('createVerificationRequestInDb fallback:', err);
-  });
-
   return newRequest;
 };
 
 /**
  * Submit a peer vouch from a logged-in user to a requesting brother
+ * Enforces server verification, self-vouch prevention, duplicate prevention, and real DB record insertion.
  */
-export const submitPeerVouch = (
+export const submitPeerVouch = async (
   requestId: string,
   voucher: AlumniProfile,
   comment: string
-): { success: boolean; isNowVerified: boolean; request: VouchRequest } => {
+): Promise<{ success: boolean; isNowVerified: boolean; request: VouchRequest }> => {
+  if (!voucher || !voucher.id) {
+    throw new Error('You must be signed in to vouch for a classmate.');
+  }
+
+  // 1. Voucher eligibility check: only verified alumni may vouch
+  if (voucher.verificationStatus !== 'verified') {
+    throw new Error('Only verified alumni can vouch for a classmate. Please complete your own verification first.');
+  }
+
   const requests = loadVouchRequests();
   const reqIndex = requests.findIndex((r) => r.id === requestId);
 
   if (reqIndex === -1) {
-    throw new Error('Vouch request not found');
+    throw new Error('Verification request not found.');
   }
 
   const req = requests[reqIndex];
 
-  // Prevent duplicate vouch from the same person
+  // 2. Self-vouch prevention
+  if (voucher.id === req.requesterId) {
+    throw new Error('You cannot vouch for your own profile. Share your link with classmates!');
+  }
+
+  // 3. Duplicate vouch prevention
   const alreadyVouched = req.vouches.some(
     (v) => v.voucherId === voucher.id || v.voucherName === voucher.fullName
   );
   if (alreadyVouched) {
     throw new Error('You have already vouched for this brother!');
+  }
+
+  // 4. Persist peer vouch directly to Supabase peer_vouches table (trigger handles counter & promotion)
+  const dbResult = await submitPeerVouchInDb({
+    verificationRequestId: req.id,
+    requesterId: req.requesterId,
+    voucherId: voucher.id,
+    voucherBatch: voucher.batchYear,
+    comment,
+  });
+
+  if (!dbResult.success) {
+    throw new Error(dbResult.error || 'Failed to submit peer vouch on the server.');
   }
 
   const newVouchItem: VouchItem = {
@@ -515,7 +479,6 @@ export const submitPeerVouch = (
   };
 
   req.vouches.push(newVouchItem);
-
   const isNowVerified = req.vouches.length >= req.targetVouches;
   if (isNowVerified) {
     req.status = 'verified';
@@ -523,17 +486,6 @@ export const submitPeerVouch = (
 
   requests[reqIndex] = req;
   saveVouchRequests(requests);
-
-  // Persist peer vouch to Supabase peer_vouches table
-  submitPeerVouchInDb({
-    verificationRequestId: req.id,
-    requesterId: req.requesterId,
-    voucherId: voucher.id,
-    voucherBatch: voucher.batchYear,
-    comment,
-  }).catch((err) => {
-    console.warn('submitPeerVouchInDb fallback:', err);
-  });
 
   syncProfileVerificationInStorage(req.requesterId, {
     vouchesCount: req.vouches.length,
@@ -551,157 +503,73 @@ export const submitPeerVouch = (
 };
 
 /**
- * Simulate an instant classmate vouch for the current user (useful for testing/demo)
+ * Ensure an incoming shared vouch link (?vouch_for=...) resolves to an actual database request
  */
-export const simulateDemoVouchForUser = (
-  currentUser: AlumniProfile,
-  onUserUpdated?: (updated: AlumniProfile) => void
-): AlumniProfile => {
-  const demoClassmates = [
-    {
-      name: 'Tanvir Ahmed Chowdhury',
-      batch: 58,
-      avatar:
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-    },
-    {
-      name: 'Dr. Tariqul Islam',
-      batch: 52,
-      avatar:
-        'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=200&auto=format&fit=crop&q=80',
-    },
-    {
-      name: 'Prof. Dr. Mahfuzur Rahman',
-      batch: 45,
-      avatar:
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    },
-    {
-      name: 'Syed Farhan Rezwan',
-      batch: 60,
-      avatar:
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
-    },
-  ];
-
-  const currentVouchesCount =
-    currentUser.vouchesCount || (currentUser.verifiedBy?.length || 0);
-  const nextClassmate = demoClassmates[currentVouchesCount % demoClassmates.length];
-  const newVoucherString = `${nextClassmate.name} (Batch ${nextClassmate.batch})`;
-
-  const updatedVerifiedBy = [...(currentUser.verifiedBy || []), newVoucherString];
-  const newCount = updatedVerifiedBy.length;
-  const isVerified = newCount >= 2;
-
-  const updatedProfile: AlumniProfile = {
-    ...currentUser,
-    vouchesCount: newCount,
-    verifiedBy: updatedVerifiedBy,
-    verificationStatus: isVerified ? 'verified' : 'pending_vouch',
-    verificationMethod: 'two_vouches',
-    verificationDate: isVerified ? 'Today' : currentUser.verificationDate,
-    badges:
-      isVerified && !currentUser.badges?.includes('Verified Notredamian')
-        ? [...(currentUser.badges || []), 'Verified Notredamian']
-        : currentUser.badges,
-  };
-
-  syncProfileVerificationInStorage(currentUser.id, updatedProfile);
-  if (onUserUpdated) {
-    onUserUpdated(updatedProfile);
-  }
-  return updatedProfile;
-};
-
-/**
- * Ensure an incoming shared vouch link (?vouch_for=... or #vouch?roll=...&batch=...&name=...) creates or matches a pending vouch request
- */
-export const ensureVouchRequestFromUrlParams = (params?: {
+export const ensureVouchRequestFromUrlParams = async (params?: {
   id?: number;
   name?: string;
   roll?: string;
   batch?: number;
-}): VouchRequest | null => {
-  let resolvedParams = params;
-  if (!resolvedParams) {
-    if (typeof window === 'undefined') return null;
+}): Promise<VouchRequest | null> => {
+  let resolvedId = params?.id;
+  if (!resolvedId && typeof window !== 'undefined') {
     const searchParams = new URLSearchParams(window.location.search);
     const vouchFor = searchParams.get('vouch_for');
-    const urlName = searchParams.get('name');
-    const urlRoll = searchParams.get('roll');
-    const urlBatch = searchParams.get('batch');
-    if (!vouchFor && !urlName) return null;
-    resolvedParams = {
-      id: vouchFor ? Number(vouchFor) || undefined : undefined,
-      name: urlName || undefined,
-      roll: urlRoll || undefined,
-      batch: urlBatch ? Number(urlBatch) || 68 : 68,
-    };
+    if (vouchFor) resolvedId = Number(vouchFor);
   }
 
-  if (!resolvedParams?.name?.trim() && !resolvedParams?.id) return null;
-  const requests = loadVouchRequests();
-  const cleanName = (resolvedParams.name || '').trim().toLowerCase();
-  const cleanRoll = (resolvedParams.roll || '').trim();
-  const existing = requests.find(
-    (r) =>
-      (resolvedParams?.id && r.requesterId === resolvedParams.id) ||
-      (cleanName && r.requesterName.toLowerCase() === cleanName) ||
-      (cleanRoll && r.collegeRoll === cleanRoll)
-  );
-  if (existing) return existing;
+  if (!resolvedId) return null;
 
-  const batchNum = normalizeToBatchNumber(resolvedParams.batch || 68);
-  const created: VouchRequest = {
-    id: `vouch-req-link-${Date.now()}`,
-    requesterId: resolvedParams.id || Date.now(),
-    requesterName: (resolvedParams.name || 'Notredamian Alumnus').trim(),
-    requesterAvatar:
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
-    batchYear: batchNum,
-    collegeRoll: cleanRoll || '118042',
-    group: 'Science',
-    section: 'Shared Vouch Link',
-    profession: 'Notredamian Alumnus',
-    city: 'Dhaka',
-    createdAt: 'Just now',
-    status: 'pending',
-    targetVouches: 2,
-    vouches: [],
-    message: `Shared verification link from ${(resolvedParams.name || 'Alumnus').trim()} (Roll: ${cleanRoll || 'NDC'}, Batch ${batchNum}). Please vouch if you recognize this classmate!`,
-  };
-  requests.unshift(created);
-  saveVouchRequests(requests);
-  return created;
+  // Resolve active verification request from Supabase
+  const dbReq = await fetchUserActiveVerificationRequestFromDb(resolvedId);
+  if (dbReq) {
+    const requests = loadVouchRequests();
+    const idx = requests.findIndex((r) => r.id === dbReq.id || r.requesterId === dbReq.requesterId);
+    if (idx >= 0) {
+      requests[idx] = dbReq;
+    } else {
+      requests.unshift(dbReq);
+    }
+    saveVouchRequests(requests);
+    return dbReq;
+  }
+
+  return null;
 };
 
 /**
  * Directly vouch for an AlumniProfile from their ProfileView or Directory card
  */
-export const vouchForAlumniProfile = (
+export const vouchForAlumniProfile = async (
   targetProfile: AlumniProfile,
   voucher: AlumniProfile,
   comment?: string
-): {
+): Promise<{
   success: boolean;
   message: string;
   updatedProfile: AlumniProfile;
   updatedTarget: AlumniProfile;
   isNowVerified: boolean;
-} => {
+}> => {
   try {
-    const requests = loadVouchRequests();
-    let req = requests.find(
-      (r) =>
-        r.requesterId === targetProfile.id ||
-        r.requesterName.toLowerCase() === targetProfile.fullName.toLowerCase()
-    );
-
-    if (!req) {
-      req = registerUserVouchRequest(targetProfile);
+    if (!voucher || !voucher.id) {
+      throw new Error('Please sign in to vouch for this classmate.');
+    }
+    if (voucher.verificationStatus !== 'verified') {
+      throw new Error('Only verified alumni can vouch for a classmate. Please complete your own verification first.');
+    }
+    if (voucher.id === targetProfile.id) {
+      throw new Error('You cannot vouch for your own profile.');
     }
 
-    const res = submitPeerVouch(
+    const requests = loadVouchRequests();
+    let req = requests.find((r) => r.requesterId === targetProfile.id);
+
+    if (!req) {
+      req = await registerUserVouchRequest(targetProfile);
+    }
+
+    const res = await submitPeerVouch(
       req.id,
       voucher,
       comment || `Confirmed classmate from Batch ${normalizeToBatchNumber(targetProfile.batchYear)}.`
@@ -745,3 +613,4 @@ export const vouchForAlumniProfile = (
     };
   }
 };
+

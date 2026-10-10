@@ -789,6 +789,8 @@ serve(async (req: Request) => {
             .update({
               verification_status: "verified",
               verification_method: "id_card_upload",
+              id_submission_status: "approved",
+              admin_review_note: adminNote || "Approved via ID document verification",
               verified_at: new Date().toISOString(),
               verified_by_profile_id: callerProfile?.id || null,
             })
@@ -801,6 +803,27 @@ serve(async (req: Request) => {
               { status: 500, headers: corsHeaders }
             );
           }
+
+          // Atomically mark any active pending peer verification request for this user as verified
+          await supabaseAdmin
+            .from("verification_requests")
+            .update({
+              status: "verified",
+              reviewed_by: callerProfile?.id || null,
+              reviewed_at: new Date().toISOString(),
+              admin_note: adminNote || "Approved via ID document verification",
+            })
+            .eq("requester_id", updatedSub.user_id)
+            .eq("status", "pending");
+        } else if (finalDecision === "rejected" && updatedSub?.user_id) {
+          // Record rejection status and reason on applicant profile
+          await supabaseAdmin
+            .from("alumni_profiles")
+            .update({
+              id_submission_status: "rejected",
+              admin_review_note: adminNote || "Document unclear or incomplete. Please upload a clear photo of your NDC ID or HSC slip.",
+            })
+            .eq("id", updatedSub.user_id);
         }
 
         await recordAuditLog(supabaseAdmin, {
@@ -817,7 +840,22 @@ serve(async (req: Request) => {
 
       // List submissions with signed URLs for private verification documents
       const statusFilter = url.searchParams.get("status") || "all";
-      let query = supabaseAdmin.from("admin_doc_submissions").select("*").order("submitted_at", { ascending: false });
+      let query = supabaseAdmin
+        .from("admin_doc_submissions")
+        .select(`
+          *,
+          applicant:alumni_profiles!admin_doc_submissions_user_id_fkey(
+            id,
+            full_name,
+            avatar_url,
+            batch_year,
+            college_roll,
+            academic_stream,
+            academic_group,
+            phone
+          )
+        `)
+        .order("submitted_at", { ascending: false });
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
 
       const { data: subs, error: subErr } = await query;
@@ -844,16 +882,17 @@ serve(async (req: Request) => {
           }
         }
 
+        const applicant = r.applicant || {};
         return {
           id: r.id,
           submissionCode: `DOC-${String(r.id).slice(0, 8)}`,
           profileId: r.user_id,
-          fullName: "Notredamian Alumnus",
-          avatarUrl: "/ndc-logo.png",
-          batchYear: r.batch_year,
-          collegeRoll: r.college_roll,
-          academicStream: r.academic_stream,
-          academicGroup: r.academic_group,
+          fullName: applicant.full_name || "Notredamian Alumnus",
+          avatarUrl: applicant.avatar_url || "/ndc-logo.png",
+          batchYear: r.batch_year || applicant.batch_year || 68,
+          collegeRoll: r.college_roll || applicant.college_roll || "",
+          academicStream: r.academic_stream || applicant.academic_stream || "Science",
+          academicGroup: r.academic_group || applicant.academic_group || null,
           docType: r.doc_type,
           docTypeLabel: r.doc_type_label,
           documentUrl: signedUrl,
