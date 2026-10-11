@@ -31,6 +31,7 @@ const ContactUsView = React.lazy(() => import('./components/ContactUsView').then
 const SavedPostsView = React.lazy(() => import('./components/SavedPostsView').then(m => ({ default: m.SavedPostsView })));
 const BloodNetworkView = React.lazy(() => import('./components/BloodNetworkView').then(m => ({ default: m.BloodNetworkView })));
 const VerificationCenterModal = React.lazy(() => import('./components/verification/VerificationCenterModal').then(m => ({ default: m.VerificationCenterModal })));
+const SettingsView = React.lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
 
 const ViewLoadingFallback = () => (
   <div className="w-full py-20 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
@@ -159,6 +160,7 @@ function AlumniAppContent() {
     if (previousRoute === 'batches') return 'Back to Batches';
     if (previousRoute === 'feed' || previousRoute === 'dashboard') return 'Back to Feed';
     if (previousRoute === 'find') return 'Back to Search Results';
+    if (previousRoute === 'settings' || previousRoute === 'profile-settings') return 'Back to Settings';
     if (previousRoute === 'emergency' || previousRoute === 'blood' || previousRoute === 'blood-network') return 'Back to Blood Network';
     return 'Back to Directory';
   };
@@ -350,12 +352,18 @@ function AlumniAppContent() {
                   <SavedPostsView onNavigate={navigateTo} />
                 )}
 
-                {(route === 'profile' || route === 'settings' || route === 'profile-settings') && (
+                {route === 'profile' && (
                   <ProfileView
                     profileId={selectedProfileId || currentUser.id}
-                    initialTab={route === 'settings' || route === 'profile-settings' ? 'settings' : undefined}
                     onBack={() => navigateTo(previousRoute || 'alumni')}
                     backLabel={getBackLabel()}
+                    onOpenVerificationCenter={openVerificationCenter}
+                    onNavigate={navigateTo}
+                  />
+                )}
+
+                {(route === 'settings' || route === 'profile-settings') && (
+                  <SettingsView
                     onOpenVerificationCenter={openVerificationCenter}
                     onNavigate={navigateTo}
                   />
@@ -503,7 +511,7 @@ function AlumniAppContent() {
               navigateTo('profile');
             }}
             className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
-              route === 'profile' || route === 'profile-settings' || route === 'settings'
+              route === 'profile'
                 ? 'text-blue-600 dark:text-blue-400 font-bold'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
@@ -514,7 +522,7 @@ function AlumniAppContent() {
                   src={currentUser.avatarUrl}
                   alt={currentUser.fullName}
                   className={`w-5 h-5 rounded-full object-cover ring-1 transition-all ${
-                    route === 'profile' || route === 'profile-settings' || route === 'settings'
+                    route === 'profile'
                       ? 'ring-blue-600 dark:ring-blue-400 scale-110'
                       : 'ring-slate-300 dark:ring-slate-700'
                   }`}
@@ -522,7 +530,7 @@ function AlumniAppContent() {
               ) : (
                 <UserIcon className="w-5 h-5" />
               )}
-              {(route === 'profile' || route === 'profile-settings' || route === 'settings') && (
+              {route === 'profile' && (
                 <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600 dark:bg-blue-400" />
               )}
             </div>

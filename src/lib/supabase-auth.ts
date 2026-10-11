@@ -29,9 +29,12 @@ export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
       row.avatar_url ||
       '/ndc-logo.png',
     coverUrl: row.cover_url || undefined,
-    batchYear: Number(row.batch_year) || 68,
+    batchYear:
+      row.batch_year !== null && row.batch_year !== undefined && Number(row.batch_year) > 0
+        ? (Number(row.batch_year) > 100 ? Number(row.batch_year) : 1950 + Number(row.batch_year))
+        : 0,
     session: row.session || undefined,
-    collegeRoll: row.college_roll || undefined,
+    collegeRoll: row.college_roll ? String(row.college_roll).trim() : undefined,
     academicStream: row.academic_stream || 'Science',
     academicGroup: row.academic_group || undefined,
     group: row.academic_group
@@ -107,13 +110,13 @@ export async function getOrCreateSupabaseProfile(
       // update it if extraData or user_metadata contains the user's authentic data
       const existingProfile = existing as any;
       const meta = (authUser.user_metadata || {}) as any;
-      const targetBatch = Number(extraData?.batchYear ?? meta.batch_year ?? meta.batchYear);
+      const targetBatch = Number(extraData?.batchYear ?? extraData?.batch_year ?? meta.batch_year ?? meta.batchYear);
       const normalizedTargetBatch = targetBatch > 1900 ? targetBatch - 1950 : (targetBatch > 0 ? targetBatch : 0);
-      const targetRoll = extraData?.collegeRoll?.trim() || meta.college_roll || meta.collegeRoll;
+      const targetRoll = extraData?.collegeRoll?.trim() || extraData?.college_roll?.trim() || meta.college_roll || meta.collegeRoll;
       const targetBlood = extraData?.bloodGroup || meta.blood_group || meta.bloodGroup;
 
       const patchPayload: Record<string, any> = {};
-      if (normalizedTargetBatch && Number(existingProfile.batch_year) === 68 && normalizedTargetBatch !== 68) {
+      if (normalizedTargetBatch && (!existingProfile.batch_year || Number(existingProfile.batch_year) === 68) && normalizedTargetBatch !== Number(existingProfile.batch_year)) {
         patchPayload.batch_year = normalizedTargetBatch;
       }
       if (targetRoll && !existingProfile.college_roll) {
@@ -156,15 +159,22 @@ export async function getOrCreateSupabaseProfile(
       } catch {
         // graceful fallback if RPC unavailable
       }
+
+      // Guarantee college_roll is retained from metadata/extraData if RPC did not return it
+      if (!existing.college_roll && targetRoll) {
+        existing.college_roll = targetRoll;
+      }
+
       return mapSupabaseRowToAlumniProfile(existing);
     }
 
     // 2. Otherwise, insert a new profile record for the authenticated user
     const meta = (authUser.user_metadata || {}) as any;
     const cleanEmail = (authUser.email || extraData?.email || meta.email || '').toLowerCase().trim();
-    const rawBatch = extraData?.batchYear ?? meta.batch_year ?? meta.batchYear;
-    const batchYear = Number(rawBatch) || 68;
-    const normalizedBatch = batchYear > 1900 ? batchYear - 1950 : (batchYear > 0 ? batchYear : 68);
+    const rawBatch = extraData?.batchYear ?? extraData?.batch_year ?? meta.batch_year ?? meta.batchYear;
+    const batchYearNum = Number(rawBatch);
+    const normalizedBatch = batchYearNum > 1900 ? batchYearNum - 1950 : (batchYearNum > 0 ? batchYearNum : 68);
+    const targetRoll = extraData?.collegeRoll?.trim() || extraData?.college_roll?.trim() || meta.college_roll || meta.collegeRoll || null;
 
     // Normalize academic stream and academic group
     const rawGroupInput =
@@ -194,11 +204,7 @@ export async function getOrCreateSupabaseProfile(
         '/ndc-logo.png',
       batch_year: normalizedBatch,
       session: extraData?.session || meta.session || null,
-      college_roll:
-        extraData?.collegeRoll?.trim() ||
-        meta.college_roll ||
-        meta.collegeRoll ||
-        null,
+      college_roll: targetRoll,
       academic_stream: streamGroup.academicStream,
       academic_group: streamGroup.academicGroup,
       section: extraData?.section || meta.section || (streamGroup.academicGroup ? `Group ${streamGroup.academicGroup}` : 'Section A'),
@@ -243,6 +249,9 @@ export async function getOrCreateSupabaseProfile(
           .eq('auth_user_id', authUser.id)
           .maybeSingle();
         if (secondFetch) {
+          if (!(secondFetch as any).college_roll && targetRoll) {
+            (secondFetch as any).college_roll = targetRoll;
+          }
           return mapSupabaseRowToAlumniProfile(secondFetch);
         }
       }
@@ -258,6 +267,10 @@ export async function getOrCreateSupabaseProfile(
         Object.assign(inserted, contacts[0]);
       }
     } catch {}
+
+    if (!(inserted as any).college_roll && targetRoll) {
+      (inserted as any).college_roll = targetRoll;
+    }
 
     return mapSupabaseRowToAlumniProfile(inserted);
   } catch (err) {

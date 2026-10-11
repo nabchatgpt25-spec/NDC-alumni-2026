@@ -49,6 +49,11 @@ import {
   SharedEmbedCard
 } from './SmartPostMediaAndEmbeds';
 import {
+  getUserPreferences,
+  saveUserPreferences,
+  type UserPreferences
+} from '../utils/userPreferences';
+import {
   isPostSaved,
   toggleSavePost
 } from '../utils/offlineStorage';
@@ -186,7 +191,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeFilterCategory, setActiveFilterCategory] = useState<string>('All');
-  const [autoPlayOnScroll, setAutoPlayOnScroll] = useState<boolean>(true);
+  const [autoPlayOnScroll, setAutoPlayOnScroll] = useState<boolean>(
+    () => getUserPreferences().autoplay_videos_on_scroll
+  );
 
   // Facebook-style "New Post" Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -261,6 +268,18 @@ export const FeedView: React.FC<FeedViewProps> = ({
     };
     window.addEventListener('click', handleClickOutside);
     return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Synchronize autoPlayOnScroll with user preferences updates in real time
+  useEffect(() => {
+    const handlePrefsChange = (e: Event) => {
+      const customEvent = e as CustomEvent<UserPreferences>;
+      if (customEvent.detail && customEvent.detail.autoplay_videos_on_scroll !== undefined) {
+        setAutoPlayOnScroll(customEvent.detail.autoplay_videos_on_scroll);
+      }
+    };
+    window.addEventListener('ndc_user_prefs_changed', handlePrefsChange);
+    return () => window.removeEventListener('ndc_user_prefs_changed', handlePrefsChange);
   }, []);
 
   const showToast = (msg: string) => {
@@ -1751,41 +1770,25 @@ export const FeedView: React.FC<FeedViewProps> = ({
         </div>
       )}
 
-      {/* Category Filter Bar + Scroll Auto-Play Video Toggle */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {['All', ...CATEGORIES.map((c) => c.label)].map((catLabel) => {
-            const active = activeFilterCategory === catLabel;
-            return (
-              <button
-                key={catLabel}
-                type="button"
-                onClick={() => setActiveFilterCategory(catLabel)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  active
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/80 dark:border-slate-800 hover:border-blue-400'
-                }`}
-              >
-                {catLabel}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setAutoPlayOnScroll((prev) => !prev)}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer shrink-0 ${
-            autoPlayOnScroll
-              ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
-              : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800'
-          }`}
-          title="Automatically play videos when scrolled into view and pause when scrolled away"
-        >
-          <Video className="w-3.5 h-3.5" />
-          <span>Auto-Video on Scroll: {autoPlayOnScroll ? 'ON' : 'OFF'}</span>
-        </button>
+      {/* Category Filter Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {['All', ...CATEGORIES.map((c) => c.label)].map((catLabel) => {
+          const active = activeFilterCategory === catLabel;
+          return (
+            <button
+              key={catLabel}
+              type="button"
+              onClick={() => setActiveFilterCategory(catLabel)}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                active
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/80 dark:border-slate-800 hover:border-blue-400'
+              }`}
+            >
+              {catLabel}
+            </button>
+          );
+        })}
       </div>
 
       {/* Posts Stream */}

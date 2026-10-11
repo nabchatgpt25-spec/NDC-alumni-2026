@@ -319,13 +319,13 @@ export const Header: React.FC<HeaderProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      onNavigate('profile-settings');
+                      onNavigate('settings');
                       setShowProfileMenu(false);
                     }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-left"
                   >
                     <Settings className="w-4 h-4 text-slate-400" />
-                    Account Settings
+                    Settings
                   </button>
 
                   {onOpenVerificationCenter && (

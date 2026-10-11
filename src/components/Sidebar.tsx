@@ -262,27 +262,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="truncate">My Profile</span>
               </button>
 
-              {/* Account Settings */}
+              {/* Settings */}
               <button
                 type="button"
                 onClick={() => {
-                  onSelectTab('profile-settings');
+                  onSelectTab('settings');
                   onClose();
                 }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl font-medium text-xs sm:text-[13px] transition-all text-left cursor-pointer group ${
-                  activeTab === 'profile-settings' || activeTab === 'settings'
+                  activeTab === 'settings' || activeTab === 'profile-settings'
                     ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/25'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-blue-100/50 dark:hover:bg-blue-900/30'
                 }`}
               >
                 <Settings
                   className={`w-4 h-4 shrink-0 transition-colors ${
-                    activeTab === 'profile-settings' || activeTab === 'settings'
+                    activeTab === 'settings' || activeTab === 'profile-settings'
                       ? 'text-white'
                       : 'text-slate-400 dark:text-blue-300/60 group-hover:text-blue-600 dark:group-hover:text-blue-300'
                   }`}
                 />
-                <span className="truncate">Account Settings</span>
+                <span className="truncate">Settings</span>
               </button>
 
               {/* Verification Center */}

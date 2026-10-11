@@ -30,6 +30,8 @@ import {
   X,
   Settings,
   AlertTriangle,
+  ChevronDown,
+  AlertCircle,
 } from 'lucide-react';
 import { AlumniProfile, PostItem, PostComment, SPECIALTIES_LIST, DEGREES_LIST } from '../types';
 import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
@@ -54,7 +56,6 @@ import {
   loadVouchRequests
 } from '../utils/verificationService';
 import { saveStoredAlumniProfiles } from '../data/mockData';
-import { BloodDonorRegistration } from './BloodDonorRegistration';
 import { getDonorProfileByUserId } from '../utils/bloodDonationService';
 import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 import { compressImageFileToDataUrl } from '../utils/mediaStorage';
@@ -73,7 +74,7 @@ interface ProfileViewProps {
   backLabel?: string;
   onOpenVerificationCenter?: (tab?: 'status' | 'vouch_classmates' | 'upload_id' | 'policy') => void;
   onNavigate?: (route: string) => void;
-  initialTab?: 'about' | 'posts' | 'edit' | 'blood' | 'settings';
+  initialTab?: 'about' | 'posts' | 'edit';
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -156,13 +157,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     (profileId === currentUser.id || profileId === currentUser.userId) &&
     (profile.id === currentUser.id || profile.userId === currentUser.userId);
 
-  const [activeTab, setActiveTab] = useState<'about' | 'posts' | 'edit' | 'blood' | 'settings'>(
-    initialTab || 'about'
+  const [activeTab, setActiveTab] = useState<'about' | 'posts' | 'edit'>(
+    initialTab && initialTab !== ('settings' as any) && initialTab !== ('blood' as any)
+      ? (initialTab as 'about' | 'posts' | 'edit')
+      : 'about'
   );
 
   useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab);
+    if (initialTab && initialTab !== ('settings' as any) && initialTab !== ('blood' as any)) {
+      setActiveTab(initialTab as 'about' | 'posts' | 'edit');
     }
   }, [initialTab]);
 
@@ -184,36 +187,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [profileId]);
 
-  // Account & Profile Deletion State
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
-  const [deletePasswordConfirm, setDeletePasswordConfirm] = useState('');
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const handleDeleteProfile = async () => {
-    if (deleteConfirmationText.trim().toUpperCase() !== 'DELETE') {
-      setDeleteError('Please type "DELETE" in capital letters to confirm.');
-      return;
-    }
-
-    try {
-      setIsDeleting(true);
-      setDeleteError(null);
-      await deleteAccount(deletePasswordConfirm);
-      setIsDeleteModalOpen(false);
-      if (onNavigate) {
-        onNavigate('feed');
-      } else {
-        onBack();
-      }
-    } catch (err: any) {
-      setDeleteError(err?.message || 'Failed to delete account. Please try again.');
-      setIsDeleting(false);
-    }
-  };
-  const [donorRefreshTick, setDonorRefreshTick] = useState(0);
-  const [isBloodCardClosed, setIsBloodCardClosed] = useState(false);
   const [isVerificationCardClosed, setIsVerificationCardClosed] = useState(false);
   const donorRecord = getDonorProfileByUserId(profile.id);
 
@@ -624,7 +597,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     editBadges,
   ]);
 
-  const savedCompletion = calculateProfileCompletion(profile);
   const liveEditCompletion = calculateProfileCompletion({
     ...profile,
     fullName: editName,
@@ -655,6 +627,34 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     ],
     badges: editBadges,
   });
+
+  // Mobile-responsive accordion state for detailed Profile Completion tracker
+  // On desktop/tablet (>= 640px) default to expanded; on mobile (< 640px) default to collapsed
+  const [isCompletionExpanded, setIsCompletionExpanded] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 640;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      if (window.innerWidth >= 640) {
+        setIsCompletionExpanded(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleScrollToField = (fieldKey: string) => {
+    const el = document.getElementById(`edit-field-${fieldKey}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.focus();
+    }
+  };
 
   const addCustomDegree = () => {
     const customItems = editDegreeOther
@@ -1066,62 +1066,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </div>
 
-          {/* Profile Completion Level Card (Visible on own profile) */}
-          {isMine && (
-            <div className="mt-4 p-4 rounded-2xl liquid-glass-subcard border border-blue-300/50 dark:border-blue-500/25 bg-gradient-to-r from-blue-500/10 via-sky-500/8 to-indigo-500/12 dark:from-blue-950/40 dark:via-slate-900/50 dark:to-blue-900/30">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">
-                    {savedCompletion.percentage}%
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
-                        Profile Completion Level
-                      </span>
-                      <span
-                        className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                          savedCompletion.percentage === 100
-                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
-                            : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30'
-                        }`}
-                      >
-                        {savedCompletion.completedCount}/{savedCompletion.totalCount} Total Fields
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-snug">
-                      <span>Registration: <strong>{savedCompletion.registrationCompletedCount}/{savedCompletion.registrationTotalCount}</strong></span>
-                      <span className="hidden min-[380px]:inline text-slate-400">·</span>
-                      <span>Full Profile: <strong>{savedCompletion.editProfileCompletedCount}/{savedCompletion.editProfileTotalCount}</strong></span>
-                    </div>
-                  </div>
-                </div>
-
-                {activeTab !== 'edit' && savedCompletion.percentage < 100 && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('edit')}
-                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0 w-full sm:w-auto"
-                  >
-                    <Edit className="w-3.5 h-3.5" />
-                    <span>Complete Full Profile</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="w-full h-2.5 rounded-full bg-slate-200/80 dark:bg-slate-950/70 overflow-hidden p-0.5">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    savedCompletion.percentage === 100
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                      : 'bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500'
-                  }`}
-                  style={{ width: `${savedCompletion.percentage}%` }}
-                />
-              </div>
-            </div>
-          )}
-
           {/* Active Verification & Peer Vouch Card (Dismissible with simple Cross button) */}
           {!isVerificationCardClosed && (
             <div
@@ -1262,46 +1206,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </button>
 
             {isMine && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('blood')}
-                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    activeTab === 'blood'
-                      ? 'border-rose-600 text-rose-600 dark:text-rose-400'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                >
-                  <Heart className="w-3.5 h-3.5 text-rose-500" />
-                  <span>Blood Donor Settings</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('edit')}
-                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    activeTab === 'edit'
-                      ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                >
-                  <Edit className="w-3.5 h-3.5" />
-                  <span>Edit Profile</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('settings')}
-                  className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    activeTab === 'settings'
-                      ? 'border-red-600 text-red-600 dark:text-red-400'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                  <span>Settings & Privacy</span>
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => setActiveTab('edit')}
+                className={`pb-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  activeTab === 'edit'
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <Edit className="w-3.5 h-3.5" />
+                <span>Edit Profile</span>
+              </button>
             )}
           </div>
         </div>
@@ -1402,84 +1318,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               )}
             </div>
           </div>
-
-          {/* Blood Donation & Emergency Network Card inside About Tab (Dismissible with Cross Button) */}
-          {!isBloodCardClosed && (donorRecord?.isRegisteredDonor || isMine) && (
-            <div className="relative liquid-glass-card p-5 sm:p-6 rounded-3xl border-rose-200/80 dark:border-rose-800/50">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-8">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200/70 dark:border-rose-800/70 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-                    <Heart className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                        NDC Blood Donation Network Status
-                      </h3>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/70">
-                        <Eye className="w-3 h-3" />
-                        Seen
-                      </span>
-                      {donorRecord?.isRegisteredDonor ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-600 text-white">
-                          Group {donorRecord.bloodGroup}
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                          Not Registered as Active Donor
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      {donorRecord?.isRegisteredDonor
-                        ? `Preferred Hospital Corridor: ${donorRecord.preferredArea} · Status: ${
-                            donorRecord.availability === 'available'
-                              ? 'Available for Coordination'
-                              : donorRecord.availability === 'on_cooldown'
-                              ? 'On Post-Donation Cooldown'
-                              : 'Temporarily Unavailable'
-                          }`
-                        : 'Optionally register as a Notredamian blood donor to receive matching emergency alerts while keeping your personal phone and address private.'}
-                    </p>
-                  </div>
-                </div>
-
-                {isMine && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('blood')}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0"
-                  >
-                    <Heart className="w-3.5 h-3.5" />
-                    <span>Manage Blood Donor Settings</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Cross (X) Button to close after seen */}
-              <button
-                type="button"
-                onClick={() => setIsBloodCardClosed(true)}
-                aria-label="Close blood notification card"
-                title="Close"
-                className="absolute top-4 right-4 p-1.5 rounded-full bg-slate-100 hover:bg-rose-600 dark:bg-slate-800 dark:hover:bg-rose-600 text-slate-600 hover:text-white dark:text-slate-300 dark:hover:text-white border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab: BLOOD DONOR SETTINGS (Strictly for own profile) */}
-      {activeTab === 'blood' && isMine && (
-        <div className="space-y-5" key={donorRefreshTick}>
-          <BloodDonorRegistration
-            onSaved={() => {
-              setDonorRefreshTick((t) => t + 1);
-              setProfile(resolveProfileById(profileId));
-            }}
-          />
         </div>
       )}
 
@@ -1921,17 +1759,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           )}
 
           <form onSubmit={handleSaveProfile} className="space-y-6">
-            {/* Live Full Profile Completion Level Tracker (Registration Form + Edit Profile Full Form) */}
+            {/* Detailed Profile Completion Tracker (Mobile-Friendly Accessible Accordion) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+              {/* Accordion Toggle Header Button */}
+              <button
+                type="button"
+                onClick={() => setIsCompletionExpanded((prev) => !prev)}
+                aria-expanded={isCompletionExpanded}
+                aria-controls="detailed-profile-completion-content"
+                className="w-full flex items-center justify-between gap-3 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-xl cursor-pointer select-none transition-opacity hover:opacity-90"
+              >
+                <div className="flex items-center gap-2 min-w-0">
                   <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
-                    Live Profile Completion Level (Registration + Full Edit Profile)
+                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                    <span className="sm:hidden">Profile Completion</span>
+                    <span className="hidden sm:inline">Live Profile Completion Level (Registration + Full Edit Profile)</span>
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="hidden lg:inline text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                     Reg: {liveEditCompletion.registrationCompletedCount}/{liveEditCompletion.registrationTotalCount} · Extended: {liveEditCompletion.editProfileCompletedCount}/{liveEditCompletion.editProfileTotalCount}
                   </span>
                   <span
@@ -1941,36 +1788,90 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30'
                     }`}
                   >
-                    {liveEditCompletion.percentage}% ({liveEditCompletion.completedCount}/{liveEditCompletion.totalCount})
+                    {liveEditCompletion.percentage}%
+                    <span className="hidden sm:inline"> ({liveEditCompletion.completedCount}/{liveEditCompletion.totalCount})</span>
                   </span>
-                </div>
-              </div>
-
-              <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-900 overflow-hidden p-0.5">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    liveEditCompletion.percentage === 100
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                      : 'bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500'
-                  }`}
-                  style={{ width: `${liveEditCompletion.percentage}%` }}
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {liveEditCompletion.fields.map((item) => (
-                  <span
-                    key={item.key}
-                    className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border transition-colors ${
-                      item.filled
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                        : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-500 dark:text-slate-400 transition-transform duration-200 shrink-0 ${
+                      isCompletionExpanded ? 'rotate-180' : ''
                     }`}
-                  >
-                    {item.filled && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                    <span>{item.label}</span>
-                  </span>
-                ))}
+                  />
+                </div>
+              </button>
+
+              {/* Collapsible Content Region */}
+              <div
+                id="detailed-profile-completion-content"
+                className={`space-y-3 pt-2 ${isCompletionExpanded ? 'block' : 'hidden'}`}
+              >
+                {/* Visual Progress Bar */}
+                <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-900 overflow-hidden p-0.5">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      liveEditCompletion.percentage === 100
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                        : 'bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500'
+                    }`}
+                    style={{ width: `${liveEditCompletion.percentage}%` }}
+                  />
+                </div>
+
+                {/* Missing Fields Checklist (with action links to jump/fill missing info) */}
+                {liveEditCompletion.fields.some((item) => !item.filled) && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 dark:bg-amber-950/20 border border-amber-500/20 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-300">
+                      <span className="flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>Missing Information ({liveEditCompletion.fields.filter((item) => !item.filled).length})</span>
+                      </span>
+                      <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400/80">
+                        Tap a field to complete it
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {liveEditCompletion.fields
+                        .filter((item) => !item.filled)
+                        .map((item) => (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => handleScrollToField(item.key)}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-amber-400/40 dark:border-amber-600/40 bg-white/80 dark:bg-slate-800 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors cursor-pointer"
+                            title={`Click to complete ${item.label}`}
+                          >
+                            <Plus className="w-2.5 h-2.5 stroke-[3] text-amber-600 dark:text-amber-400" />
+                            <span>{item.label}</span>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Completed Fields Checklist */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>Completed Fields ({liveEditCompletion.fields.filter((item) => item.filled).length}/{liveEditCompletion.totalCount})</span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {liveEditCompletion.fields
+                      .filter((item) => item.filled)
+                      .map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => handleScrollToField(item.key)}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25 transition-colors cursor-pointer"
+                          title={`Click to edit ${item.label}`}
+                        >
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          <span>{item.label}</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2070,6 +1971,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Full Name
                   </label>
                   <input
+                    id="edit-field-fullName"
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
@@ -2083,6 +1985,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Notre Dame HSC Year
                   </label>
                   <input
+                    id="edit-field-batchYear"
                     type="number"
                     inputMode="numeric"
                     min={1949}
@@ -2103,6 +2006,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     College Roll / Registration ID
                   </label>
                   <input
+                    id="edit-field-collegeRoll"
                     type="text"
                     placeholder="e.g. 118042 or 214015"
                     value={editCollegeRoll}
@@ -2116,6 +2020,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Biography / About Me
                   </label>
                   <textarea
+                    id="edit-field-bio"
                     rows={3}
                     value={editBio}
                     onChange={(e) => setEditBio(e.target.value)}
@@ -2136,6 +2041,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Current Designation / Position
                   </label>
                   <input
+                    id="edit-field-position"
                     type="text"
                     placeholder="e.g. Senior Software Architect / Lead Consultant"
                     value={editPosition}
@@ -2149,6 +2055,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Organization / Company / Institution
                   </label>
                   <input
+                    id="edit-field-institution"
                     type="text"
                     placeholder="e.g. Google, BUET, Grameenphone, Notre Dame College"
                     value={editInstitution}
@@ -2162,6 +2069,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Profession Type
                   </label>
                   <select
+                    id="edit-field-profession"
                     value={editProfession}
                     onChange={(e) => setEditProfession(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -2197,11 +2105,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   )}
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Civil Service / BCS Cadre (Optional)
+                  </label>
+                  <input
+                    id="edit-field-cadre"
+                    type="text"
+                    placeholder="e.g. 35th BCS Administration / Foreign Affairs"
+                    value={editCadre}
+                    onChange={(e) => setEditCadre(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Degrees (Click to toggle)
                   </label>
-                  <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div
+                    id="edit-field-degree"
+                    tabIndex={-1}
+                    className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700"
+                  >
                     {Array.from(
                       new Set([
                         ...DEGREES_LIST.filter((d) => d !== 'Others'),
@@ -2253,7 +2179,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Specialties
                   </label>
-                  <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 max-h-40 overflow-y-auto">
+                  <div
+                    id="edit-field-specialty"
+                    tabIndex={-1}
+                    className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 max-h-40 overflow-y-auto"
+                  >
                     {Array.from(
                       new Set([
                         ...SPECIALTIES_LIST.filter((s) => s !== 'Others'),
@@ -2306,6 +2236,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Career Timeline Entries (One entry per line)
                   </label>
                   <textarea
+                    id="edit-field-careerHistory"
                     rows={4}
                     value={editCareer}
                     onChange={(e) => setEditCareer(e.target.value)}
@@ -2327,11 +2258,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Mobile Number
                   </label>
                   <input
+                    id="edit-field-phone"
                     type="tel"
                     placeholder="+8801XXXXXXXXX"
                     value={editPhone}
                     onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100"
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -2340,11 +2272,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Email Address
                   </label>
                   <input
+                    id="edit-field-email"
                     type="email"
                     placeholder="alumnus@gmail.com"
                     value={editEmail}
                     onChange={(e) => setEditEmail(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100"
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -2353,10 +2286,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     City
                   </label>
                   <input
+                    id="edit-field-city"
                     type="text"
                     value={editCity}
                     onChange={(e) => setEditCity(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100"
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -2365,10 +2299,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Country
                   </label>
                   <input
+                    id="edit-field-country"
                     type="text"
                     value={editCountry}
                     onChange={(e) => setEditCountry(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100"
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -2380,11 +2315,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <span>WhatsApp Number</span>
                   </label>
                   <input
+                    id="edit-field-whatsapp"
                     type="tel"
                     placeholder="+8801XXXXXXXXX"
                     value={editWhatsapp}
                     onChange={(e) => setEditWhatsapp(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100"
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -2396,11 +2332,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <span>Facebook Profile Link</span>
                   </label>
                   <input
+                    id="edit-field-fbLink"
                     type="url"
                     placeholder="https://facebook.com/username"
                     value={editFb}
                     onChange={(e) => setEditFb(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100"
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -2425,235 +2362,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </form>
 
-          {/* Integrated Blood Donor Profile Settings inside Edit Profile */}
-          <div className="pt-2">
-            <BloodDonorRegistration
-              compact
-              onSaved={() => {
-                setDonorRefreshTick((t) => t + 1);
-                setProfile(resolveProfileById(profileId));
-              }}
-            />
-          </div>
-
-          {/* Quick link to Account Deletion Settings */}
-          <div className="p-4 rounded-2xl bg-red-50/50 dark:bg-red-950/20 border border-red-200/60 dark:border-red-900/40 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 text-xs text-red-700 dark:text-red-300">
-              <Trash2 className="w-4 h-4 text-red-500 shrink-0" />
-              <span>Looking to permanently delete your alumnus profile and account?</span>
+          {/* Quick link to Settings Hub */}
+          <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+              <Settings className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span>Manage password, app preferences, notifications, or danger zone in Settings.</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('settings')}
-              className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer shrink-0"
-            >
-              Account Settings & Danger Zone →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 5: SETTINGS & PRIVACY (with Self-Service Account & Profile Deletion) */}
-      {activeTab === 'settings' && isMine && (
-        <div className="space-y-6">
-          {/* Account Privacy & Directory Preferences */}
-          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-5">
-            <div>
-              <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                <Settings className="w-4 h-4 text-blue-600" />
-                <span>Account &amp; Privacy Settings</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Manage your profile visibility, account status, and directory preferences.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">
-                    Public Directory Visibility
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Show your profile in alumni directory &amp; search
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextVal = !(profile.isPublic !== false);
-                    updateProfile({ isPublic: nextVal });
-                    setProfile((prev) => ({ ...prev, isPublic: nextVal }));
-                  }}
-                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                    profile.isPublic !== false ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                  aria-label="Toggle directory visibility"
-                >
-                  <span
-                    className={`block w-4 h-4 rounded-full bg-white transition-transform ${
-                      profile.isPublic !== false ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">
-                    Alumni Verification Status
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {profile.verificationStatus === 'verified'
-                      ? 'Verified Notredamian Alumnus'
-                      : 'Pending Peer Vouch or Admin Review'}
-                  </div>
-                </div>
-                {onOpenVerificationCenter && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenVerificationCenter()}
-                    className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-100 transition-colors cursor-pointer"
-                  >
-                    View Status
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Danger Zone: Permanent Profile Deletion */}
-          <div className="bg-red-50/40 dark:bg-red-950/20 backdrop-blur-xl rounded-3xl p-6 border border-red-200/80 dark:border-red-900/60 shadow-xs space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-red-100 dark:bg-red-900/40 border border-red-200 dark:border-red-800/60 flex items-center justify-center shrink-0 mt-0.5">
-                <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-black text-red-700 dark:text-red-400 tracking-tight">
-                  Danger Zone: Delete Your Alumni Profile
-                </h3>
-                <p className="text-xs text-red-600/90 dark:text-red-300/80 leading-relaxed">
-                  Anyone can permanently delete their own alumnus profile at any time. Once deleted, your account credentials, directory listing, emergency blood donor profile, and all associated data will be completely and permanently removed.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-red-200/60 dark:border-red-900/40 text-xs text-slate-700 dark:text-slate-300 space-y-2">
-              <div className="font-bold text-slate-900 dark:text-white">
-                What will happen when you delete your profile:
-              </div>
-              <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
-                <li>Your profile will immediately disappear from the public directory, search, and batch lists.</li>
-                <li>Your emergency blood donor registration and hospital corridor mapping will be removed.</li>
-                <li>You will be signed out on all devices and your authentication session terminated.</li>
-                <li>This action is irreversible. To return, you will have to register as a new alumnus.</li>
-              </ul>
-            </div>
-
-            <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-[11px] text-red-600/80 dark:text-red-400/80 font-medium">
-                Irreversible account deletion
-              </div>
+            {onNavigate && (
               <button
                 type="button"
-                onClick={() => {
-                  setDeleteError(null);
-                  setDeleteConfirmationText('');
-                  setDeletePasswordConfirm('');
-                  setIsDeleteModalOpen(true);
-                }}
-                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-md shadow-red-600/20 inline-flex items-center gap-2 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+                onClick={() => onNavigate('settings')}
+                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer shrink-0"
               >
-                <Trash2 className="w-4 h-4" />
-                <span>Delete My Profile</span>
+                Open Settings →
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Profile Confirmation Modal */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-red-100 dark:bg-red-950/60 border border-red-200 dark:border-red-900 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                  Permanently Delete Profile?
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Are you sure you want to delete <strong className="text-slate-800 dark:text-slate-200">{profile.fullName}</strong>? This action cannot be undone.
-                </p>
-              </div>
-            </div>
-
-            {deleteError && (
-              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs font-semibold text-red-700 dark:text-red-300">
-                {deleteError}
-              </div>
             )}
-
-            <div className="space-y-3 pt-1">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Type <span className="text-red-600 font-black">DELETE</span> to confirm:
-                </label>
-                <input
-                  type="text"
-                  placeholder="DELETE"
-                  value={deleteConfirmationText}
-                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Account Password (optional if logged in via Google):
-                </label>
-                <input
-                  type="password"
-                  placeholder="Enter your password"
-                  value={deletePasswordConfirm}
-                  onChange={(e) => setDeletePasswordConfirm(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
-                />
-              </div>
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={isDeleting || deleteConfirmationText.trim().toUpperCase() !== 'DELETE'}
-                onClick={handleDeleteProfile}
-                className={`px-5 py-2.5 rounded-xl text-xs font-black inline-flex items-center gap-2 transition-all cursor-pointer ${
-                  deleteConfirmationText.trim().toUpperCase() === 'DELETE' && !isDeleting
-                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/25'
-                    : 'bg-red-300 dark:bg-red-950 text-red-100 dark:text-red-400 cursor-not-allowed opacity-60'
-                }`}
-              >
-                {isDeleting ? (
-                  <span>Deleting Profile...</span>
-                ) : (
-                  <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Permanently Delete</span>
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         </div>
       )}

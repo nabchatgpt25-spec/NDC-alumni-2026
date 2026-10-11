@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { getUserPreferences, type UserPreferences } from '../utils/userPreferences';
 
 const STORAGE_KEY = 'ndc_bg_music_muted';
 const AUDIO_SRC = '/audio/ndc-theme.mp3';
@@ -14,6 +15,8 @@ export function BackgroundMusic() {
   const [isMuted, setIsMuted] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
+      const prefs = getUserPreferences();
+      if (!prefs.bg_music_enabled || prefs.bg_music_muted_default) return true;
       return localStorage.getItem(STORAGE_KEY) === 'true';
     } catch {
       return false;
@@ -71,6 +74,25 @@ export function BackgroundMusic() {
       clearFade();
       subscription.unsubscribe();
     };
+  }, []);
+
+  // Listen for real-time preferences toggles from Settings
+  useEffect(() => {
+    const handlePrefsChange = (e: Event) => {
+      const customEvent = e as CustomEvent<UserPreferences>;
+      if (customEvent.detail) {
+        if (!customEvent.detail.bg_music_enabled || customEvent.detail.bg_music_muted_default) {
+          setIsMuted(true);
+          if (audioRef.current) {
+            clearFade();
+            audioRef.current.muted = true;
+            audioRef.current.pause();
+          }
+        }
+      }
+    };
+    window.addEventListener('ndc_user_prefs_changed', handlePrefsChange);
+    return () => window.removeEventListener('ndc_user_prefs_changed', handlePrefsChange);
   }, []);
 
   // Main playback manager

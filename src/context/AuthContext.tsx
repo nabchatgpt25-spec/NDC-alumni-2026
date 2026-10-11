@@ -435,8 +435,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
     const cleanEmail = (profileData.email || '').trim().toLowerCase();
     const rawPhone = (profileData.phone || '').trim();
-    const rawBatch = profileData.batchYear || 68;
-    const normalizedBatch = rawBatch > 1900 ? rawBatch - 1950 : (rawBatch > 0 ? rawBatch : 68);
+    const rawBatch = profileData.batchYear;
+    const normalizedBatch = rawBatch ? (rawBatch > 1900 ? rawBatch - 1950 : (rawBatch > 0 ? rawBatch : 68)) : 68;
 
     if (!isSupabaseConfigured) {
       throw new Error('Supabase client is not configured.');
@@ -473,6 +473,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const rawGroupInput = profileData.academicGroup || profileData.group || profileData.academicStream;
     const streamGroup = normalizeAcademicStreamAndGroup(rawGroupInput);
     const cleanWhatsapp = profileData.whatsapp?.trim() ? formatToE164Phone(profileData.whatsapp) : undefined;
+    const cleanRoll = profileData.collegeRoll?.trim() || undefined;
 
     // Store full profile draft in local storage so that when user verifies email and logs in,
     // their entire profile details (blood group, academic stream, roll, etc.) are fully hydrated into Supabase.
@@ -480,10 +481,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         localStorage.setItem(`ndc_pending_reg_${cleanEmail}`, JSON.stringify({
           ...profileData,
-          collegeRoll: profileData.collegeRoll || undefined,
+          collegeRoll: cleanRoll,
+          college_roll: cleanRoll,
           email: cleanEmail,
           phone: cleanPhone || undefined,
-          batchYear: normalizedBatch,
+          batchYear: profileData.batchYear || normalizedBatch,
+          batch_year: normalizedBatch,
           academicStream: streamGroup.academicStream,
           academicGroup: streamGroup.academicGroup,
           group: streamGroup.academicStream,
@@ -500,10 +503,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           full_name: profileData.fullName?.trim(),
           name: profileData.fullName?.trim(),
           batch_year: normalizedBatch,
-          batchYear: normalizedBatch,
+          batchYear: profileData.batchYear || normalizedBatch,
           phone: cleanPhone || undefined,
-          college_roll: profileData.collegeRoll || undefined,
-          collegeRoll: profileData.collegeRoll || undefined,
+          college_roll: cleanRoll,
+          collegeRoll: cleanRoll,
           academic_stream: streamGroup.academicStream,
           academic_group: streamGroup.academicGroup,
           group: streamGroup.academicStream,
@@ -543,10 +546,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await getOrCreateSupabaseProfile(signUpData.user, {
         ...profileData,
-        collegeRoll: profileData.collegeRoll || undefined,
+        collegeRoll: cleanRoll,
+        college_roll: cleanRoll,
         email: cleanEmail,
         phone: cleanPhone || undefined,
-        batchYear: normalizedBatch,
+        batchYear: profileData.batchYear || normalizedBatch,
+        batch_year: normalizedBatch,
       });
     } catch (syncErr) {
       console.warn('Post-signup profile sync warning:', syncErr);
