@@ -19,6 +19,8 @@ import {
   loadStoredAlumniProfiles,
 } from '../data/mockData';
 
+export { loadStoredAlumniProfiles };
+
 // =============================================================================
 // 1. ALUMNI DIRECTORY & BATCHES
 // =============================================================================

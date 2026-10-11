@@ -17,14 +17,13 @@ import {
   Trophy,
   LayoutGrid,
 } from 'lucide-react';
-import { BATCH_LIST } from '../data/mockData';
+import { BATCH_LIST, loadStoredAlumniProfiles } from '../data/mockData';
 import { BatchSummary, AlumniProfile } from '../types';
 import { NDCLogo } from './NDCLogo';
 import {
   fetchBatchesFromDb,
   fetchBatchAlumniProfilesFromDb,
   fetchAlumniProfilesFromDb,
-  loadStoredAlumniProfiles,
 } from '../services/supabaseService';
 import { BatchParticipationLeaderboard } from './BatchParticipationLeaderboard';
 
