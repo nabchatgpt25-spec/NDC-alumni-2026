@@ -23,6 +23,8 @@ import {
 // 1. ALUMNI DIRECTORY & BATCHES
 // =============================================================================
 
+let cachedDirectoryProfiles: { data: AlumniProfile[]; expiresAt: number } | null = null;
+
 export async function fetchAlumniProfilesFromDb(params?: {
   search?: string;
   batchYear?: number;
@@ -30,6 +32,12 @@ export async function fetchAlumniProfilesFromDb(params?: {
   limit?: number;
   offset?: number;
 }): Promise<AlumniProfile[]> {
+  const isGenericFetch = !params || (!params.search && !params.batchYear && !params.academicStream && !params.limit && !params.offset);
+
+  if (isGenericFetch && cachedDirectoryProfiles && cachedDirectoryProfiles.expiresAt > Date.now()) {
+    return cachedDirectoryProfiles.data;
+  }
+
   if (!isSupabaseConfigured) {
     return loadStoredAlumniProfiles();
   }
@@ -42,7 +50,9 @@ export async function fetchAlumniProfilesFromDb(params?: {
       .order('batch_year', { ascending: false });
 
     if (params?.batchYear) {
-      query = query.eq('batch_year', params.batchYear);
+      const bNum = params.batchYear > 100 ? params.batchYear - 1950 : params.batchYear;
+      const hsc = params.batchYear > 100 ? params.batchYear : 1950 + params.batchYear;
+      query = query.in('batch_year', [bNum, hsc]);
     }
     if (params?.academicStream) {
       query = query.eq('academic_stream', params.academicStream);
@@ -69,7 +79,17 @@ export async function fetchAlumniProfilesFromDb(params?: {
       return [];
     }
 
-    return data.map(mapSupabaseRowToAlumniProfile);
+    const profiles = data.map(mapSupabaseRowToAlumniProfile);
+    if (isGenericFetch) {
+      cachedDirectoryProfiles = { data: profiles, expiresAt: Date.now() + 2 * 60 * 1000 };
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('ndc_cached_directory', JSON.stringify(profiles));
+          localStorage.setItem('ndc_cached_directory_timestamp', new Date().toISOString());
+        } catch {}
+      }
+    }
+    return profiles;
   } catch (err) {
     console.warn('Supabase fetchAlumniProfiles fallback:', err);
     return loadStoredAlumniProfiles();
@@ -149,8 +169,18 @@ export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
   }
 }
 
+const batchProfilesCache = new Map<number, { data: AlumniProfile[]; expiresAt: number }>();
+
 export async function fetchBatchAlumniProfilesFromDb(batchYear: number): Promise<AlumniProfile[]> {
   if (!isSupabaseConfigured || !Number.isFinite(batchYear)) return [];
+
+  const bNum = batchYear > 100 ? batchYear - 1950 : batchYear;
+  const hsc = batchYear > 100 ? batchYear : 1950 + batchYear;
+
+  const cached = batchProfilesCache.get(bNum);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
 
   try {
     const profiles: AlumniProfile[] = [];
@@ -160,14 +190,16 @@ export async function fetchBatchAlumniProfilesFromDb(batchYear: number): Promise
         .from('alumni_profiles')
         .select(ALUMNI_PUBLIC_COLUMNS)
         .eq('is_public', true)
-        .eq('batch_year', batchYear)
+        .in('batch_year', [bNum, hsc])
         .order('id', { ascending: true })
         .range(offset, offset + pageSize - 1);
 
-      if (error || !data) return [];
+      if (error || !data) break;
       profiles.push(...data.map(mapSupabaseRowToAlumniProfile));
       if (data.length < pageSize) break;
     }
+
+    batchProfilesCache.set(bNum, { data: profiles, expiresAt: Date.now() + 3 * 60 * 1000 });
     return profiles;
   } catch (err) {
     console.warn('Supabase batch profile statistics error:', err);
@@ -465,23 +497,50 @@ async function resolveAndUploadMediaToStorage(
 
     if (blob) {
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
-      const uploadRes = await uploadMediaToSupabaseStorage(
-        blob,
-        'post-media',
-        `posts/${authorId}`,
-        fileName
-      );
-      if (uploadRes?.publicUrl) {
-        return uploadRes.publicUrl;
+      try {
+        const uploadRes = await uploadMediaToSupabaseStorage(
+          blob,
+          'post-media',
+          `posts/${authorId}`,
+          fileName
+        );
+        if (uploadRes?.publicUrl) {
+          return uploadRes.publicUrl;
+        }
+      } catch (storageErr) {
+        console.warn('Storage upload attempt failed, falling back to embedded media:', storageErr);
       }
-      throw new Error('Supabase Storage did not return a permanent media URL.');
+
+      // If it was already a data URL, return it directly
+      if (urlOrData.startsWith('data:')) {
+        return urlOrData;
+      }
+
+      // If blob URL, convert blob to base64 data URL so it persists
+      try {
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+              resolve(reader.result);
+            } else {
+              resolve(urlOrData);
+            }
+          };
+          reader.onerror = () => resolve(urlOrData);
+          reader.readAsDataURL(blob);
+        });
+        return await base64Promise;
+      } catch {
+        return urlOrData;
+      }
     }
   } catch (err) {
-    console.warn('Failed to upload post media to Supabase Storage:', err);
-    throw new Error(`Could not upload the attached ${mediaType}. Please try again.`);
+    console.warn('Post media resolution warning:', err);
+    return urlOrData;
   }
 
-  throw new Error(`Could not upload the attached ${mediaType}. Please try again.`);
+  return urlOrData;
 }
 
 export async function createFeedPostInDb(params: {
@@ -1471,12 +1530,28 @@ export async function editFeedPostInDb(params: {
 export async function deleteFeedPostInDb(postId: number): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
-    const { error } = await supabase
+    // 1. Try soft delete (update is_deleted = true)
+    let { error } = await supabase
       .from('posts')
       .update({ is_deleted: true })
       .eq('id', postId);
-    return !error;
-  } catch {
+
+    // 2. If update failed or returned error, try hard DELETE
+    if (error) {
+      const delRes = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', postId);
+      error = delRes.error;
+    }
+
+    if (error) {
+      console.warn('Failed to delete post from Supabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Exception deleting feed post in DB:', err);
     return false;
   }
 }

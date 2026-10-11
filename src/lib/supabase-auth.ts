@@ -34,7 +34,9 @@ export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
     collegeRoll: row.college_roll || undefined,
     academicStream: row.academic_stream || 'Science',
     academicGroup: row.academic_group || undefined,
-    group: row.academic_stream || 'Science',
+    group: row.academic_group
+      ? `${row.academic_stream || 'Science'} ${row.academic_group}`
+      : (row.academic_stream || 'Science'),
     section: row.section || undefined,
     verificationStatus: row.verification_status || 'unverified',
     verificationMethod: row.verification_method || undefined,
@@ -145,6 +147,10 @@ export async function getOrCreateSupabaseProfile(
         '/ndc-logo.png',
       batch_year: normalizedBatch,
       session: extraData?.session || null,
+      college_roll:
+        extraData?.collegeRoll?.trim() ||
+        (authUser.user_metadata as any)?.college_roll ||
+        null,
       academic_stream: streamGroup.academicStream,
       academic_group: streamGroup.academicGroup,
       section: extraData?.section || (streamGroup.academicGroup ? `Group ${streamGroup.academicGroup}` : 'Section A'),

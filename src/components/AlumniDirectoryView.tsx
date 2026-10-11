@@ -91,8 +91,16 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
       if (searchTerm.trim() && !matchesUniversalSearch(profile, searchTerm)) {
         return false;
       }
-      if (selectedBatch && profile.batchYear !== parseInt(selectedBatch, 10)) {
-        return false;
+      if (selectedBatch) {
+        const filterNum = parseInt(selectedBatch, 10);
+        const pBatchNum = profile.batchYear > 100 ? profile.batchYear - 1950 : profile.batchYear;
+        const pHscYear = profile.batchYear > 100 ? profile.batchYear : 1950 + profile.batchYear;
+        const filterBatchNum = filterNum > 100 ? filterNum - 1950 : filterNum;
+        const filterHscYear = filterNum > 100 ? filterNum : 1950 + filterNum;
+
+        if (profile.batchYear !== filterNum && pBatchNum !== filterBatchNum && pHscYear !== filterHscYear) {
+          return false;
+        }
       }
       if (onlineOnly && !profile.online) {
         return false;
@@ -346,12 +354,19 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
                       />
                     </div>
 
-                    <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
-                      Batch {profile.batchYear} · {profile.profession}
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5">
+                      <span>
+                        Batch {profile.batchYear > 100 ? profile.batchYear - 1950 : profile.batchYear} (HSC {profile.batchYear > 100 ? profile.batchYear : 1950 + profile.batchYear})
+                      </span>
+                      {profile.collegeRoll && (
+                        <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100/70 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          Roll: {profile.collegeRoll}
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-xs text-slate-600 dark:text-slate-300 font-medium truncate mt-1">
-                      {profile.position}
+                      {profile.position || profile.profession}
                     </div>
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                       {profile.institution}

@@ -457,6 +457,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           full_name: profileData.fullName?.trim(),
           batch_year: normalizedBatch,
           phone: cleanPhone || undefined,
+          college_roll: profileData.collegeRoll || undefined,
         },
       },
     });
@@ -476,64 +477,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Failed to create account in Supabase. Please try again.');
     }
 
-    const isEmailConfirmed = Boolean(signUpData.user.email_confirmed_at);
-    if (!isEmailConfirmed) {
-      // User must verify email before signing in - do not auto-login
-      if (signUpData.session) {
-        await supabase.auth.signOut().catch(() => {});
-      }
-      inMemorySupabaseToken = null;
-      setSupabaseToken(null);
-      setIsLoggedIn(false);
-      setIsAdminUser(false);
-      setIsAuthInitializing(false);
-      return true;
-    }
-
-    if (signUpData.session?.access_token) {
-      inMemorySupabaseToken = signUpData.session.access_token;
-      setSupabaseToken(inMemorySupabaseToken);
-    }
-
-    // When session is active (or email auto-confirmed), sync profile row to Supabase
-    if (signUpData.session) {
-      setIsAuthInitializing(true);
-      const requestId = authResolutionIdRef.current;
-      const profile = await getOrCreateSupabaseProfile(signUpData.user, {
+    // Sync the profile row into Supabase alumni_profiles with full details & roll
+    try {
+      await getOrCreateSupabaseProfile(signUpData.user, {
         ...profileData,
+        collegeRoll: profileData.collegeRoll || undefined,
         email: cleanEmail,
         phone: cleanPhone || undefined,
         batchYear: normalizedBatch,
       });
-
-      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        setIsAuthInitializing(false);
-        throw new Error(sessionError.message || 'Could not confirm the authenticated session.');
-      }
-      if (currentSession?.user.id !== signUpData.user.id) {
-        return true;
-      }
-      if (requestId !== authResolutionIdRef.current) {
-        return true;
-      }
-
-      if (profile) {
-        resolvedAuthUserIdRef.current = signUpData.user.id;
-        setCurrentUser(profile);
-        setIsAdminUser(profile.role === 'admin');
-        setAuthInitializationError(null);
-        setIsLoggedIn(true);
-        setIsAuthInitializing(false);
-        return true;
-      }
-
-      const profileError = 'Your account was created, but your alumni profile could not be loaded. Please retry shortly.';
-      setAuthInitializationError(profileError);
-      setIsAuthInitializing(false);
-      throw new Error(profileError);
+    } catch (syncErr) {
+      console.warn('Post-signup profile sync warning:', syncErr);
     }
 
+    // Always require the user to verify email before signing in — do not auto-login
+    if (signUpData.session) {
+      await supabase.auth.signOut().catch(() => {});
+    }
+    inMemorySupabaseToken = null;
+    setSupabaseToken(null);
+    setIsLoggedIn(false);
+    setIsAdminUser(false);
+    setIsAuthInitializing(false);
     return true;
   };
 

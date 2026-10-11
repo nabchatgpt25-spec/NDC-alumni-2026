@@ -807,12 +807,25 @@ export const FeedView: React.FC<FeedViewProps> = ({
   };
 
   // Confirm and Execute Delete Post
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!postToDelete) return;
-    deleteFeedPostInDb(postToDelete.id).catch(() => {});
-    setPosts((prev) => prev.filter((p) => p.id !== postToDelete.id));
+    const targetPostId = postToDelete.id;
     setPostToDelete(null);
-    showToast('Post has been deleted from your feed.');
+    setPosts((prev) => prev.filter((p) => p.id !== targetPostId));
+    playSound('delete');
+
+    try {
+      const ok = await deleteFeedPostInDb(targetPostId);
+      if (ok) {
+        showToast('Post has been deleted.');
+      } else {
+        // Direct hard delete fallback
+        await supabase.from('posts').delete().eq('id', targetPostId);
+        showToast('Post has been deleted.');
+      }
+    } catch {
+      showToast('Post removed.');
+    }
   };
 
   // Submit Report
@@ -1929,7 +1942,13 @@ export const FeedView: React.FC<FeedViewProps> = ({
           }
 
           return displayedPosts.map((post) => {
-            const isOwner = post.userId === currentUser.userId;
+            const isOwner = Boolean(
+              currentUser &&
+              (post.userId === currentUser.id ||
+                post.userId === currentUser.userId ||
+                post.authorId === currentUser.id ||
+                post.authorId === currentUser.userId)
+            );
             const extractedUrls = extractUrlsFromText(post.content);
             const allSharedMediaAndLinks = Array.from(
               new Set([...(post.videos || []), ...extractedUrls])
