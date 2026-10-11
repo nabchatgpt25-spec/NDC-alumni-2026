@@ -14,6 +14,7 @@ import { FeedView } from './components/FeedView';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { BackgroundMusic } from './components/BackgroundMusic';
 import { ensureVouchRequestFromUrlParams } from './utils/verificationService';
 import { CursorSpotlight } from './components/motion/CinematicMotion';
 import { NDCLogo } from './components/NDCLogo';
@@ -558,6 +559,7 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <AlumniAppContent />
+        <BackgroundMusic />
       </AuthProvider>
     </ThemeProvider>
   );
