@@ -85,7 +85,7 @@ export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
  */
 export async function getOrCreateSupabaseProfile(
   authUser: User,
-  extraData?: Partial<AlumniProfile>
+  extraData?: Partial<AlumniProfile> & Record<string, any>
 ): Promise<AlumniProfile | null> {
   if (!isSupabaseConfigured || !authUser?.id) {
     return null;
@@ -161,8 +161,8 @@ export async function getOrCreateSupabaseProfile(
       }
 
       // Guarantee college_roll is retained from metadata/extraData if RPC did not return it
-      if (!existing.college_roll && targetRoll) {
-        existing.college_roll = targetRoll;
+      if (!(existing as any).college_roll && targetRoll) {
+        (existing as any).college_roll = targetRoll;
       }
 
       return mapSupabaseRowToAlumniProfile(existing);
