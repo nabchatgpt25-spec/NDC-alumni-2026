@@ -228,7 +228,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
   // Delete Post Confirmation Dialog state
   const [postToDelete, setPostToDelete] = useState<PostItem | null>(null);
-  const [isVerificationBannerClosed, setIsVerificationBannerClosed] = useState(false);
 
   // Report Post Modal state
   const [postToReport, setPostToReport] = useState<PostItem | null>(null);
@@ -1050,86 +1049,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
         variant="feed"
         onNavigateToBloodNetwork={() => onNavigate && onNavigate('emergency')}
       />
-
-      {/* Active Verification & Peer Vouch Banner (Dismissible with simple Cross button) */}
-      {!isVerificationBannerClosed && (
-        <div
-          className={`relative rounded-2xl p-4 pr-11 border shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-            (currentUser.verificationStatus || 'verified') === 'verified'
-              ? 'bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-blue-50/80 dark:from-emerald-950/30 dark:via-slate-900 dark:to-blue-950/30 border-emerald-200/80 dark:border-emerald-800/60'
-              : 'bg-gradient-to-r from-amber-50/95 via-orange-50/80 to-amber-50/90 dark:from-amber-950/35 dark:via-slate-900 dark:to-orange-950/30 border-amber-300/80 dark:border-amber-800/60'
-          }`}
-        >
-          <div className="flex items-start sm:items-center gap-3">
-            <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                (currentUser.verificationStatus || 'verified') === 'verified'
-                  ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
-                  : 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
-              }`}
-            >
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                  {(currentUser.verificationStatus || 'verified') === 'verified'
-                    ? 'Notredamian Verification Active'
-                    : `Verification Pending (${currentUser.vouchesCount || 0}/2 Peer Vouches)`}
-                </span>
-                <VerificationStatusBadge
-                  status={currentUser.verificationStatus || 'verified'}
-                  vouchesCount={currentUser.vouchesCount ?? 2}
-                  size="sm"
-                  onClick={() => onOpenVerificationCenter && onOpenVerificationCenter('status')}
-                />
-              </div>
-              <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
-                {(currentUser.verificationStatus || 'verified') === 'verified'
-                  ? `${pendingVouchesCount} Notredamian classmate${pendingVouchesCount === 1 ? ' is' : 's are'} awaiting peer verification. Vouch for your batchmates to keep the directory authentic.`
-                  : 'Complete your verification via 2 batchmate vouches or upload your NDC ID / Admit Card for instant verification.'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() =>
-                onOpenVerificationCenter &&
-                onOpenVerificationCenter(
-                  (currentUser.verificationStatus || 'verified') === 'verified'
-                    ? 'vouch_others'
-                    : 'status'
-                )
-              }
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-                (currentUser.verificationStatus || 'verified') === 'verified'
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>
-                {(currentUser.verificationStatus || 'verified') === 'verified'
-                  ? `Vouch for Classmates (${pendingVouchesCount})`
-                  : 'Open Verification Center'}
-              </span>
-            </button>
-          </div>
-
-          {/* Simple Cross (X) Button to Close Verification Notification */}
-          <button
-            type="button"
-            onClick={() => setIsVerificationBannerClosed(true)}
-            aria-label="Close verification notification"
-            title="Close verification notification"
-            className="absolute top-3 right-3 p-1.5 rounded-full bg-white/80 hover:bg-rose-600 dark:bg-slate-800/90 dark:hover:bg-rose-600 text-slate-500 hover:text-white dark:text-slate-300 dark:hover:text-white border border-slate-200/80 dark:border-slate-700 transition-all cursor-pointer shadow-xs"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* Create Post Card (Facebook-Style Trigger Bar -> Opens "New Post" Modal on Click) */}
       <div

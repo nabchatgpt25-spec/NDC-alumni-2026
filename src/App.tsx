@@ -110,6 +110,11 @@ function AlumniAppContent() {
       if (isMounted && req) {
         if (isLoggedIn) {
           setVerificationModalState({ isOpen: true, initialTab: 'vouch_others' });
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('vouch_for');
+            window.history.replaceState({}, '', url.pathname + (url.search || '') + (url.hash || ''));
+          }
         } else {
           setAuthModalMode('login');
         }
