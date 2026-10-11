@@ -58,6 +58,14 @@ import { BloodDonorRegistration } from './BloodDonorRegistration';
 import { getDonorProfileByUserId } from '../utils/bloodDonationService';
 import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 import { compressImageFileToDataUrl } from '../utils/mediaStorage';
+import {
+  fetchAlumniPostsFromDb,
+  createFeedPostInDb,
+  editFeedPostInDb,
+  deleteFeedPostInDb,
+  togglePostLikeInDb,
+  addPostCommentInDb,
+} from '../services/supabaseService';
 
 interface ProfileViewProps {
   profileId: number;
@@ -78,20 +86,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 }) => {
   const { isLoggedIn, currentUser, updateProfile, deleteAccount } = useAuth();
 
-  // All feed posts loaded from localStorage so we can display and manage this user's posts in the "Posts" tab
-  const [allPosts, setAllPosts] = useState<PostItem[]>(() => {
-    if (typeof window === 'undefined') return INITIAL_OFFLINE_SAVED_POSTS;
-    try {
-      const raw = localStorage.getItem('ndc_alumni_posts');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to load posts in ProfileView', e);
-    }
-    return INITIAL_OFFLINE_SAVED_POSTS;
-  });
+  // Authoritative posts loaded directly from Supabase for this alumnus profile
+  const [allPosts, setAllPosts] = useState<PostItem[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    setIsLoadingPosts(true);
+    fetchAlumniPostsFromDb(profileId, currentUser.id)
+      .then((dbPosts) => {
+        if (!mounted) return;
+        setAllPosts(dbPosts || []);
+      })
+      .catch((err) => {
+        console.warn('Error fetching posts for profile:', err);
+      })
+      .finally(() => {
+        if (mounted) setIsLoadingPosts(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [profileId, currentUser.id]);
 
   const resolveProfileById = (targetId: number): AlumniProfile => {
     if (targetId === currentUser.id || targetId === currentUser.userId) {
@@ -285,96 +301,109 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     e.target.value = '';
   };
 
-  const handleCreateProfilePost = (e: React.FormEvent) => {
+  const handleCreateProfilePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isMine) return;
     if (!newPostText.trim() && newPostImages.length === 0 && newPostVideos.length === 0) return;
-    const created: PostItem = {
-      id: Date.now(),
-      userId: currentUser.userId,
-      fullName: currentUser.fullName,
-      avatarUrl: currentUser.avatarUrl,
-      batchYear: currentUser.batchYear,
-      content: newPostText.trim(),
-      images: [...newPostImages],
-      videos: [...newPostVideos],
-      category: 'General Update',
-      likesCount: 0,
-      commentsCount: 0,
-      createdAt: 'Just now',
-      likedByMe: false,
-      comments: [],
-    };
-    syncAllPosts([created, ...allPosts]);
+
+    const contentToPost = newPostText.trim();
+    const imagesToPost = [...newPostImages];
+    const videosToPost = [...newPostVideos];
+
     setNewPostText('');
     setNewPostImages([]);
     setNewPostVideos([]);
+
+    const res = await createFeedPostInDb({
+      authorId: currentUser.id,
+      content: contentToPost,
+      images: imagesToPost,
+      videos: videosToPost,
+      category: 'General Update',
+    });
+
+    if (res.success && res.post) {
+      setAllPosts((prev) => [res.post!, ...prev]);
+    } else {
+      console.warn('Failed to publish profile post to database:', res.error);
+    }
   };
 
-  const handleSaveEditProfilePost = (postId: number) => {
+  const handleSaveEditProfilePost = async (postId: number) => {
     if (!isMine) return;
     const trimmed = editingProfilePostText.trim();
     if (!trimmed) return;
-    const updated = allPosts.map((p) =>
-      p.id === postId && (p.userId === currentUser.userId || p.userId === currentUser.id)
-        ? { ...p, content: trimmed, isEdited: true }
-        : p
-    );
-    syncAllPosts(updated);
     setEditingProfilePostId(null);
     setEditingProfilePostText('');
-  };
 
-  const handleToggleLikeProfilePost = (postId: number) => {
-    const updated = allPosts.map((p) => {
-      if (p.id === postId) {
-        const nextLiked = !p.likedByMe;
-        return {
-          ...p,
-          likedByMe: nextLiked,
-          likesCount: nextLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1),
-        };
-      }
-      return p;
-    });
-    syncAllPosts(updated);
-  };
-
-  const handleDeleteProfilePost = (postId: number) => {
-    if (!isMine) return;
-    syncAllPosts(
-      allPosts.filter(
-        (p) => !(p.id === postId && (p.userId === currentUser.userId || p.userId === currentUser.id))
-      )
+    setAllPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, content: trimmed, isEdited: true } : p))
     );
+    await editFeedPostInDb({ postId, content: trimmed });
   };
 
-  const handleAddProfilePostComment = (postId: number) => {
+  const handleToggleLikeProfilePost = async (postId: number) => {
+    setAllPosts((prev) =>
+      prev.map((p) => {
+        if (p.id === postId) {
+          const nextLiked = !p.likedByMe;
+          return {
+            ...p,
+            likedByMe: nextLiked,
+            likesCount: nextLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1),
+          };
+        }
+        return p;
+      })
+    );
+    if (currentUser.id > 0) {
+      await togglePostLikeInDb(postId, currentUser.id);
+    }
+  };
+
+  const handleDeleteProfilePost = async (postId: number) => {
+    if (!isMine) return;
+    setAllPosts((prev) => prev.filter((p) => p.id !== postId));
+    await deleteFeedPostInDb(postId);
+  };
+
+  const handleAddProfilePostComment = async (postId: number) => {
     const text = (postCommentInputs[postId] || '').trim();
     if (!text) return;
-    const newComment: PostComment = {
-      id: Date.now(),
-      postId,
-      userId: currentUser.userId,
-      fullName: currentUser.fullName,
-      avatarUrl: currentUser.avatarUrl,
-      content: text,
-      likesCount: 0,
-      likedByMe: false,
-      createdAt: 'Just now',
-      replies: [],
-    };
-    const updated = allPosts.map((p) =>
-      p.id === postId
-        ? {
-            ...p,
-            commentsCount: p.commentsCount + 1,
-            comments: [...(p.comments || []), newComment],
-          }
-        : p
-    );
-    syncAllPosts(updated);
     setPostCommentInputs((prev) => ({ ...prev, [postId]: '' }));
+
+    if (currentUser.id > 0) {
+      const ok = await addPostCommentInDb({
+        postId,
+        userId: currentUser.id,
+        content: text,
+      });
+      if (ok) {
+        const newComment: PostComment = {
+          id: Date.now(),
+          postId,
+          userId: currentUser.userId,
+          fullName: currentUser.fullName,
+          avatarUrl: currentUser.avatarUrl,
+          content: text,
+          likesCount: 0,
+          likedByMe: false,
+          createdAt: 'Just now',
+          replies: [],
+        };
+        setAllPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId
+              ? {
+                  ...p,
+                  commentsCount: (p.commentsCount || 0) + 1,
+                  comments: [...(p.comments || []), newComment],
+                }
+              : p
+          )
+        );
+      }
+    }
   };
 
   const [copiedProfilePostId, setCopiedProfilePostId] = useState<number | null>(null);

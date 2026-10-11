@@ -18,6 +18,7 @@ import {
 } from '../utils/verificationService';
 import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 import { formatToE164Phone, normalizePhoneNumber } from '../utils/phone';
+import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
 
 export { formatToE164Phone, normalizePhoneNumber };
 
@@ -468,6 +469,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (phoneAvailable !== true) {
       throw new Error('This mobile number is already registered or could not be checked. Please verify it or try again shortly.');
     }
+
+    const rawGroupInput = profileData.academicGroup || profileData.group || profileData.academicStream;
+    const streamGroup = normalizeAcademicStreamAndGroup(rawGroupInput);
+    const cleanWhatsapp = profileData.whatsapp?.trim() ? formatToE164Phone(profileData.whatsapp) : undefined;
 
     // Store full profile draft in local storage so that when user verifies email and logs in,
     // their entire profile details (blood group, academic stream, roll, etc.) are fully hydrated into Supabase.

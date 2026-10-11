@@ -438,6 +438,107 @@ export async function fetchFeedPostsFromDb(
   });
 }
 
+export async function fetchAlumniPostsFromDb(
+  authorId: number,
+  currentUserId?: number
+): Promise<PostItem[]> {
+  if (!isSupabaseConfigured || !authorId) {
+    return [];
+  }
+
+  try {
+    const { data: postsData, error: postsError } = await supabase
+      .from('posts')
+      .select(`
+        id,
+        author_id,
+        content,
+        category,
+        images,
+        videos,
+        likes_count,
+        comments_count,
+        is_pinned,
+        is_edited,
+        created_at
+      `)
+      .eq('author_id', authorId)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false });
+
+    if (postsError || !postsData) {
+      console.warn('Error fetching alumni posts from Supabase:', postsError?.message);
+      return [];
+    }
+
+    const { data: authorData } = await supabase
+      .from('alumni_profiles')
+      .select('id, full_name, avatar_url, batch_year, verification_status, profession, institution')
+      .eq('id', authorId)
+      .maybeSingle();
+
+    const author = authorData || {};
+    const postIds = postsData.map((p) => Number(p.id));
+
+    const [commentsResult, likesResult] = await Promise.all([
+      postIds.length > 0
+        ? supabase
+            .from('post_comments')
+            .select(`
+              id,
+              post_id,
+              user_id,
+              content,
+              created_at,
+              author:alumni_profiles!post_comments_user_id_fkey (
+                id,
+                full_name,
+                avatar_url,
+                batch_year
+              )
+            `)
+            .in('post_id', postIds)
+            .eq('is_deleted', false)
+            .order('created_at', { ascending: true })
+        : Promise.resolve({ data: null, error: null }),
+      currentUserId && postIds.length > 0
+        ? supabase
+            .from('post_likes')
+            .select('post_id, user_id')
+            .in('post_id', postIds)
+            .eq('user_id', currentUserId)
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    const commentsByPostId = new Map<number, any[]>();
+    ((commentsResult.data as any[]) || []).forEach((c) => {
+      const pid = Number(c.post_id);
+      if (!commentsByPostId.has(pid)) commentsByPostId.set(pid, []);
+      commentsByPostId.get(pid)!.push(c);
+    });
+
+    const myLikedPostIds = new Set<number>(
+      ((likesResult.data as any[]) || []).map((l) => Number(l.post_id))
+    );
+
+    return postsData.map((row) => {
+      const pid = Number(row.id);
+      return mapRowToFeedPost(
+        {
+          ...row,
+          author,
+          post_comments: commentsByPostId.get(pid) || [],
+          post_likes: myLikedPostIds.has(pid) ? [{ user_id: currentUserId }] : [],
+        },
+        currentUserId
+      );
+    });
+  } catch (err) {
+    console.warn('Exception in fetchAlumniPostsFromDb:', err);
+    return [];
+  }
+}
+
 /**
  * Uploads a base64 Data URL or temporary Blob URL to Supabase Storage 'post-media' bucket,
  * returning the persistent public CDN URL.
@@ -1530,32 +1631,32 @@ export async function editFeedPostInDb(params: {
 export async function deleteFeedPostInDb(postId: number): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
-    // 1. Try soft delete (update is_deleted = true)
-    const { data: updatedRows, error: updateError } = await supabase
+    const { data: updateData, error: updateErr } = await supabase
       .from('posts')
       .update({ is_deleted: true })
       .eq('id', postId)
       .select('id');
 
-    if (!updateError && updatedRows && updatedRows.length > 0) {
+    if (!updateErr && updateData && updateData.length > 0) {
       return true;
     }
 
-    // 2. If update didn't affect any rows or failed, attempt direct hard DELETE
-    const { data: deletedRows, error: delError } = await supabase
+    // Fallback: Attempt hard delete with .select('id')
+    const { data: delData, error: delErr } = await supabase
       .from('posts')
       .delete()
       .eq('id', postId)
       .select('id');
 
-    if (!delError && deletedRows && deletedRows.length > 0) {
+    if (!delErr && delData && delData.length > 0) {
       return true;
     }
 
-    if (updateError || delError) {
-      console.warn('Delete post warning from Supabase:', (updateError || delError)?.message);
-    }
-    return true;
+    console.warn(
+      'Failed to delete post from Supabase (or post not found/unauthorized):',
+      updateErr?.message || delErr?.message
+    );
+    return false;
   } catch (err) {
     console.warn('Exception deleting feed post in DB:', err);
     return false;

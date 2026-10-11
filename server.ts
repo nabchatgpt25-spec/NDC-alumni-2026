@@ -581,44 +581,67 @@ app.post(
   }
 );
 
-// Global Cross-Device Password Reset Endpoint
-app.post('/api/auth/reset-password', rateLimitGuard(15, 60_000), async (req: Request, res: Response) => {
-  try {
-    const { phone, newPassword } = req.body;
-    if (!phone?.trim() || !newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: 'Valid phone number and new password (min 6 chars) required.' });
+// Global Cross-Device Password Reset Endpoint (requires authenticated session or admin)
+app.post(
+  '/api/auth/reset-password',
+  rateLimitGuard(15, 60_000),
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { phone, newPassword } = req.body;
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ error: 'Valid new password (min 6 chars) required.' });
+      }
+
+      const isCallerAdmin = req.dbUser?.role === 'admin';
+      const alumnus = phone?.trim() ? await findAlumniByCredential(phone.trim()) : null;
+      const targetId = alumnus ? alumnus.id : req.dbUser?.id;
+
+      if (!targetId) {
+        return res.status(404).json({ error: 'No account found with this credential.' });
+      }
+
+      if (!isCallerAdmin && req.dbUser?.id !== targetId) {
+        return res.status(403).json({ error: 'Forbidden: You cannot reset passwords for other accounts.' });
+      }
+
+      const newHash = hashPasswordServer(newPassword);
+      await updateAlumniPassword(targetId, newHash);
+
+      res.json({ success: true, message: 'Password updated successfully across all devices.' });
+    } catch (error: any) {
+      console.error('Password reset failed:', error);
+      res.status(500).json({ error: error.message || 'Password reset failed.' });
     }
-
-    const alumnus = await findAlumniByCredential(phone.trim());
-    if (!alumnus) {
-      return res.status(404).json({ error: 'No account found with this mobile number.' });
-    }
-
-    const newHash = hashPasswordServer(newPassword);
-    await updateAlumniPassword(alumnus.id, newHash);
-
-    res.json({ success: true, message: 'Password updated successfully across all devices.' });
-  } catch (error: any) {
-    console.error('Password reset failed:', error);
-    res.status(500).json({ error: error.message || 'Password reset failed.' });
   }
-});
+);
 
-// Self-Service Profile / Account Deletion Endpoint
-app.post('/api/auth/delete-account', rateLimitGuard(15, 60_000), async (req: Request, res: Response) => {
-  try {
-    const { profileId } = req.body;
-    if (!profileId) {
-      return res.status(400).json({ error: 'Profile ID is required for deletion.' });
+// Self-Service Profile / Account Deletion Endpoint (requires authenticated session or admin)
+app.post(
+  '/api/auth/delete-account',
+  rateLimitGuard(15, 60_000),
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { profileId } = req.body;
+      const targetProfileId = Number(profileId) || req.dbUser?.id;
+      if (!targetProfileId) {
+        return res.status(400).json({ error: 'Profile ID is required for deletion.' });
+      }
+
+      const isCallerAdmin = req.dbUser?.role === 'admin';
+      if (!isCallerAdmin && req.dbUser?.id !== targetProfileId) {
+        return res.status(403).json({ error: 'Forbidden: You can only delete your own account.' });
+      }
+
+      await deleteAlumniProfile(targetProfileId);
+      res.json({ success: true, message: 'Profile and associated account deleted successfully.' });
+    } catch (error: any) {
+      console.error('Account deletion error:', error);
+      res.status(500).json({ error: error.message || 'Failed to delete account.' });
     }
-
-    await deleteAlumniProfile(Number(profileId));
-    res.json({ success: true, message: 'Profile and associated account deleted successfully.' });
-  } catch (error: any) {
-    console.error('Account deletion error:', error);
-    res.status(500).json({ error: error.message || 'Failed to delete account.' });
   }
-});
+);
 
 function decodeHtmlEntities(raw: string): string {
   if (!raw) return '';

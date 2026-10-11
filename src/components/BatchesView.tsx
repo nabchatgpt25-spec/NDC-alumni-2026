@@ -14,11 +14,19 @@ import {
   ShieldCheck,
   Phone,
   Mail,
+  Trophy,
+  LayoutGrid,
 } from 'lucide-react';
 import { BATCH_LIST } from '../data/mockData';
 import { BatchSummary, AlumniProfile } from '../types';
 import { NDCLogo } from './NDCLogo';
-import { fetchBatchesFromDb, fetchBatchAlumniProfilesFromDb } from '../services/supabaseService';
+import {
+  fetchBatchesFromDb,
+  fetchBatchAlumniProfilesFromDb,
+  fetchAlumniProfilesFromDb,
+  loadStoredAlumniProfiles,
+} from '../services/supabaseService';
+import { BatchParticipationLeaderboard } from './BatchParticipationLeaderboard';
 
 interface BatchesViewProps {
   onSelectBatch: (batchYear: number) => void;
@@ -136,6 +144,8 @@ function computeBatchGroupCounts(batch: BatchSummary, profiles: AlumniProfile[])
 export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewProfile }) => {
   const [batchesList, setBatchesList] = useState<BatchSummary[]>(BATCH_LIST);
   const [batchAlumniProfiles, setBatchAlumniProfiles] = useState<AlumniProfile[]>([]);
+  const [allDirectoryProfiles, setAllDirectoryProfiles] = useState<AlumniProfile[]>(() => loadStoredAlumniProfiles());
+  const [activeTabMode, setActiveTabMode] = useState<'directory' | 'leaderboard'>('directory');
   const [searchTerm, setSearchTerm] = useState('');
   const [rangeFilter, setRangeFilter] = useState<'all' | '1-20' | '21-40' | '41-60' | '61-78'>('all');
   const [activeBatchYear, setActiveBatchYear] = useState<number | null>(null);
@@ -161,6 +171,17 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
       .catch((err) => {
         console.warn('BatchesView: could not load batches from Supabase:', err);
       });
+
+    fetchAlumniProfilesFromDb()
+      .then((profiles) => {
+        if (isMounted && profiles && profiles.length > 0) {
+          setAllDirectoryProfiles(profiles);
+        }
+      })
+      .catch((err) => {
+        console.warn('BatchesView: could not load directory profiles for leaderboard:', err);
+      });
+
     return () => {
       isMounted = false;
     };
@@ -328,8 +349,49 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
         </div>
       </div>
 
-      {/* Search & Quick Jump Bar */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+      {/* View Switcher: Directory vs Participation Leaderboard */}
+      <div className="flex items-center gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTabMode('directory')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTabMode === 'directory'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <LayoutGrid className="w-4 h-4" />
+          <span>Batch Directory (1–78)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTabMode('leaderboard')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTabMode === 'leaderboard'
+              ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Trophy className="w-4 h-4 text-amber-500" />
+          <span>Batch Participation Leaderboard</span>
+        </button>
+      </div>
+
+      {activeTabMode === 'leaderboard' ? (
+        <BatchParticipationLeaderboard
+          batches={batchesList}
+          profiles={allDirectoryProfiles}
+          onSelectBatch={(selectedBatch) => {
+            setActiveBatchYear(selectedBatch);
+            setActiveTabMode('directory');
+            onSelectBatch(selectedBatch);
+          }}
+        />
+      ) : (
+        <>
+          {/* Search & Quick Jump Bar */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
         {/* Search Input + Quick Jump Button */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-xl">
           <div className="relative flex-1">
@@ -993,6 +1055,8 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
             );
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   );

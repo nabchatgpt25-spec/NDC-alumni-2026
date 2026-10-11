@@ -88,23 +88,11 @@ export const BloodNetworkView: React.FC<BloodNetworkViewProps> = ({
   const [actionBanner, setActionBanner] = useState<string | null>(null);
 
   const syncData = () => {
-    const localReqs = loadBloodRequests();
-    const localDonors = loadBloodDonors();
-    setRequests(localReqs);
-    setDonors(localDonors);
-
-    // Fetch live requests and donors from Supabase
+    // Authoritatively query Supabase for live blood emergency requests and verified donors
     fetchBloodRequestsFromDb()
       .then((dbReqs) => {
-        if (dbReqs && dbReqs.length > 0) {
-          setRequests((prev) => {
-            const map = new Map<string, BloodEmergencyRequest>();
-            dbReqs.forEach((r) => map.set(r.id, r));
-            prev.forEach((r) => {
-              if (!map.has(r.id)) map.set(r.id, r);
-            });
-            return Array.from(map.values());
-          });
+        if (dbReqs) {
+          setRequests(dbReqs);
         }
       })
       .catch((err) => {
@@ -113,15 +101,8 @@ export const BloodNetworkView: React.FC<BloodNetworkViewProps> = ({
 
     fetchBloodDonorsFromDb()
       .then((dbDonors) => {
-        if (dbDonors && dbDonors.length > 0) {
-          setDonors((prev) => {
-            const map = new Map<number, BloodDonorProfile>();
-            dbDonors.forEach((d) => map.set(d.userId, d));
-            prev.forEach((d) => {
-              if (!map.has(d.userId)) map.set(d.userId, d);
-            });
-            return Array.from(map.values());
-          });
+        if (dbDonors) {
+          setDonors(dbDonors);
         }
       })
       .catch((err) => {

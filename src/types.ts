@@ -129,6 +129,7 @@ export interface AlumniProfile {
   bio?: string;
   careerHistory?: string[];
   isPublic: boolean;
+  showContactToVerified?: boolean;
   online: boolean;
   lastSeen?: string;
   postsCount?: number;

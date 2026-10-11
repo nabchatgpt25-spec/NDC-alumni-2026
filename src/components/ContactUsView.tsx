@@ -14,8 +14,11 @@ import {
 } from 'lucide-react';
 import { WhatsAppIcon, FacebookIcon } from './SocialIcons';
 import { NDCLogo } from './NDCLogo';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export const ContactUsView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     batchYear: '',
@@ -26,10 +29,73 @@ export const ContactUsView: React.FC = () => {
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setSubmitError(null);
+
+    const cleanName = formData.name.trim();
+    const cleanEmail = formData.email.trim().toLowerCase();
+    const cleanMessage = formData.message.trim();
+
+    if (cleanName.length < 2) {
+      setSubmitError('Please enter your full name (minimum 2 characters).');
+      return;
+    }
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setSubmitError('Please enter a valid email address.');
+      return;
+    }
+    if (cleanMessage.length < 10) {
+      setSubmitError('Message must be at least 10 characters long.');
+      return;
+    }
+
+    let parsedBatch: number | null = null;
+    if (formData.batchYear.trim()) {
+      const bNum = Number(formData.batchYear.replace(/\D/g, ''));
+      if (!Number.isNaN(bNum) && bNum > 0) {
+        parsedBatch = bNum > 1900 ? bNum - 1950 : bNum;
+        if (parsedBatch < 1 || parsedBatch > 150) parsedBatch = null;
+      }
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (isSupabaseConfigured) {
+        const payload: Record<string, any> = {
+          name: cleanName,
+          email: cleanEmail,
+          phone: formData.phone.trim() || null,
+          batch_year: parsedBatch,
+          subject: formData.subject || 'General Alumni Inquiry',
+          message: cleanMessage,
+          status: 'new',
+        };
+        if (currentUser?.id && currentUser.id > 0) {
+          payload.sender_profile_id = currentUser.id;
+        }
+
+        const { error } = await supabase
+          .from('contact_inquiries')
+          .insert(payload);
+
+        if (error) {
+          console.warn('Failed to submit contact inquiry:', error.message);
+          setSubmitError(error.message || 'Failed to submit message. Please try again.');
+          return;
+        }
+      }
+
+      setSubmitted(true);
+    } catch (err: any) {
+      console.warn('Contact submit exception:', err);
+      setSubmitError(err?.message || 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -279,12 +345,20 @@ export const ContactUsView: React.FC = () => {
                   />
                 </div>
 
+                {submitError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-xl text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                    <span>{submitError}</span>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Send Message</span>
+                  <span>{isSubmitting ? 'Sending...' : 'Send Message'}</span>
                 </button>
               </form>
             )}

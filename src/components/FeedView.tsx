@@ -814,22 +814,21 @@ export const FeedView: React.FC<FeedViewProps> = ({
   // Confirm and Execute Delete Post
   const handleConfirmDelete = async () => {
     if (!postToDelete) return;
-    const targetPostId = postToDelete.id;
+    const targetPost = postToDelete;
+    const targetPostId = targetPost.id;
     setPostToDelete(null);
-    setPosts((prev) => prev.filter((p) => p.id !== targetPostId));
-    playSound('pop');
 
     try {
       const ok = await deleteFeedPostInDb(targetPostId);
       if (ok) {
+        setPosts((prev) => prev.filter((p) => p.id !== targetPostId));
+        playSound('pop');
         showToast('Post has been deleted.');
       } else {
-        // Direct hard delete fallback
-        await supabase.from('posts').delete().eq('id', targetPostId);
-        showToast('Post has been deleted.');
+        showToast('Failed to delete post. You may not have permission to delete this post.');
       }
     } catch {
-      showToast('Post removed.');
+      showToast('Failed to delete post. Please try again.');
     }
   };
 

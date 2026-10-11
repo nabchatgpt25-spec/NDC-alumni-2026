@@ -105,6 +105,7 @@ export async function getOrCreateSupabaseProfile(
     if (existing) {
       // If existing profile was inserted with fallback values (e.g. batch_year = 68),
       // update it if extraData or user_metadata contains the user's authentic data
+      const existingProfile = existing as any;
       const meta = (authUser.user_metadata || {}) as any;
       const targetBatch = Number(extraData?.batchYear ?? meta.batch_year ?? meta.batchYear);
       const normalizedTargetBatch = targetBatch > 1900 ? targetBatch - 1950 : (targetBatch > 0 ? targetBatch : 0);
@@ -112,19 +113,19 @@ export async function getOrCreateSupabaseProfile(
       const targetBlood = extraData?.bloodGroup || meta.blood_group || meta.bloodGroup;
 
       const patchPayload: Record<string, any> = {};
-      if (normalizedTargetBatch && Number(existing.batch_year) === 68 && normalizedTargetBatch !== 68) {
+      if (normalizedTargetBatch && Number(existingProfile.batch_year) === 68 && normalizedTargetBatch !== 68) {
         patchPayload.batch_year = normalizedTargetBatch;
       }
-      if (targetRoll && !existing.college_roll) {
+      if (targetRoll && !existingProfile.college_roll) {
         patchPayload.college_roll = targetRoll;
       }
-      if (targetBlood && !existing.blood_group) {
+      if (targetBlood && !existingProfile.blood_group) {
         patchPayload.blood_group = targetBlood;
       }
-      if (extraData?.profession && (!existing.profession || existing.profession === 'Alumnus')) {
+      if (extraData?.profession && (!existingProfile.profession || existingProfile.profession === 'Alumnus')) {
         patchPayload.profession = extraData.profession;
       }
-      if (extraData?.institution && !existing.institution) {
+      if (extraData?.institution && !existingProfile.institution) {
         patchPayload.institution = extraData.institution;
       }
 
@@ -133,7 +134,7 @@ export async function getOrCreateSupabaseProfile(
           const { data: updatedRow } = await supabase
             .from('alumni_profiles')
             .update(patchPayload)
-            .eq('id', (existing as any).id)
+            .eq('id', existingProfile.id)
             .select(ALUMNI_PUBLIC_COLUMNS)
             .maybeSingle();
           if (updatedRow) {

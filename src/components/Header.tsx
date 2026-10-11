@@ -30,9 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenVerificationCenter,
 }) => {
   const { currentUser, logout } = useAuth();
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
-    loadPortalNotifications()
-  );
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [pendingVouchRequestsCount, setPendingVouchRequestsCount] = useState<number>(() =>
@@ -49,23 +47,16 @@ export const Header: React.FC<HeaderProps> = ({
       );
     };
     const syncNotifications = () => {
-      const local = loadPortalNotifications();
-      setNotifications(local);
       if (currentUser?.id) {
         fetchNotificationsFromDb(currentUser.id)
           .then((dbNotifs) => {
-            if (dbNotifs && dbNotifs.length > 0) {
-              setNotifications((prev) => {
-                const map = new Map<string | number, NotificationItem>();
-                dbNotifs.forEach((n) => map.set(n.id, n));
-                prev.forEach((n) => {
-                  if (!map.has(n.id)) map.set(n.id, n);
-                });
-                return Array.from(map.values());
-              });
+            if (dbNotifs) {
+              setNotifications(dbNotifs);
             }
           })
-          .catch(() => {});
+          .catch((err) => {
+            console.warn('Failed to load notifications from database:', err);
+          });
       }
     };
     syncNotifications();

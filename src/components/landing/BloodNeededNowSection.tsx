@@ -11,6 +11,7 @@ import {
   isBloodBannerDismissed,
   dismissBloodBanner,
 } from '../../utils/bloodDonationService';
+import { fetchBloodRequestsFromDb } from '../../services/supabaseService';
 import {
   MagneticWrap,
   ScrollReveal,
@@ -31,18 +32,25 @@ export const BloodNeededNowSection: React.FC<BloodNeededNowSectionProps> = ({
     return null;
   }
 
-  const [requests, setRequests] = useState<BloodEmergencyRequest[]>(() =>
-    loadBloodRequests()
-  );
+  const [requests, setRequests] = useState<BloodEmergencyRequest[]>([]);
   const [isDismissed, setIsDismissed] = useState<boolean>(() =>
     isBloodBannerDismissed()
   );
 
   useEffect(() => {
+    let mounted = true;
     const sync = () => {
-      setRequests(loadBloodRequests());
       setIsDismissed(isBloodBannerDismissed());
+      fetchBloodRequestsFromDb()
+        .then((dbReqs) => {
+          if (mounted && dbReqs) {
+            setRequests(dbReqs);
+          }
+        })
+        .catch(() => {});
     };
+
+    sync();
 
     window.addEventListener('ndc_blood_network_updated', sync);
     window.addEventListener('ndc_blood_banner_dismissed', sync);
