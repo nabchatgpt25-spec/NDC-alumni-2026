@@ -84,7 +84,7 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
           {/* Batch Pill in Cover */}
           <div className="absolute bottom-3 right-4 px-3 py-1 rounded-full bg-black/50 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 border border-white/20">
             <GraduationCap className="w-3.5 h-3.5 text-blue-400" />
-            <span>NDC Batch {profile.batchYear < 10 ? `0${profile.batchYear}` : profile.batchYear}</span>
+            <span>NDC Batch {profile.batchYear > 100 ? profile.batchYear - 1950 : profile.batchYear} (HSC {profile.batchYear > 100 ? profile.batchYear : 1950 + profile.batchYear})</span>
           </div>
         </div>
 
@@ -116,9 +116,16 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
                 </span>
               </div>
 
-              <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                {profile.position || 'Professional'}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                  {profile.position || 'Professional'}
+                </p>
+                {profile.collegeRoll && (
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    Roll: {profile.collegeRoll}
+                  </span>
+                )}
+              </div>
 
               <div className="flex flex-wrap items-center gap-y-1 gap-x-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
                 {profile.institution && (

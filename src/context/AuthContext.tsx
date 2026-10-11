@@ -104,7 +104,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthInitializationError(null);
 
       try {
-        const profile = await getOrCreateSupabaseProfile(session.user);
+        let pendingExtra: any = undefined;
+        if (typeof window !== 'undefined' && session.user?.email) {
+          try {
+            const stored = localStorage.getItem(`ndc_pending_reg_${session.user.email.toLowerCase()}`);
+            if (stored) {
+              pendingExtra = JSON.parse(stored);
+              localStorage.removeItem(`ndc_pending_reg_${session.user.email.toLowerCase()}`);
+            }
+          } catch {}
+        }
+        const profile = await getOrCreateSupabaseProfile(session.user, pendingExtra);
         if (!active || requestId !== authResolutionIdRef.current) return;
         if (!profile) {
           throw new Error('The authenticated alumni profile could not be loaded.');
@@ -229,8 +239,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return headers;
     }
 
-    if (anonKey && !headers.Authorization) {
-      headers.Authorization = `Bearer ${anonKey}`;
+    if (effectiveAnonKey && !headers.Authorization) {
+      headers.Authorization = `Bearer ${effectiveAnonKey}`;
     }
 
     return headers;
@@ -367,7 +377,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setIsAuthInitializing(true);
     const requestId = authResolutionIdRef.current;
-    const profile = await getOrCreateSupabaseProfile(authData.user);
+    let pendingExtra: any = undefined;
+    if (typeof window !== 'undefined' && authData.user?.email) {
+      try {
+        const stored = localStorage.getItem(`ndc_pending_reg_${authData.user.email.toLowerCase()}`);
+        if (stored) {
+          pendingExtra = JSON.parse(stored);
+          localStorage.removeItem(`ndc_pending_reg_${authData.user.email.toLowerCase()}`);
+        }
+      } catch {}
+    }
+    const profile = await getOrCreateSupabaseProfile(authData.user, pendingExtra);
     const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
       setIsAuthInitializing(false);
@@ -449,15 +469,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('This mobile number is already registered or could not be checked. Please verify it or try again shortly.');
     }
 
+    // Store full profile draft in local storage so that when user verifies email and logs in,
+    // their entire profile details (blood group, academic stream, roll, etc.) are fully hydrated into Supabase.
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`ndc_pending_reg_${cleanEmail}`, JSON.stringify({
+          ...profileData,
+          collegeRoll: profileData.collegeRoll || undefined,
+          email: cleanEmail,
+          phone: cleanPhone || undefined,
+          batchYear: normalizedBatch,
+          academicStream: streamGroup.academicStream,
+          academicGroup: streamGroup.academicGroup,
+          group: streamGroup.academicStream,
+          bloodGroup: profileData.bloodGroup || undefined,
+        }));
+      } catch {}
+    }
+
     const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
       email: cleanEmail,
       password: profileData.password,
       options: {
         data: {
           full_name: profileData.fullName?.trim(),
+          name: profileData.fullName?.trim(),
           batch_year: normalizedBatch,
+          batchYear: normalizedBatch,
           phone: cleanPhone || undefined,
           college_roll: profileData.collegeRoll || undefined,
+          collegeRoll: profileData.collegeRoll || undefined,
+          academic_stream: streamGroup.academicStream,
+          academic_group: streamGroup.academicGroup,
+          group: streamGroup.academicStream,
+          section: profileData.section || (streamGroup.academicGroup ? `Group ${streamGroup.academicGroup}` : 'Section A'),
+          session: profileData.session || undefined,
+          profession: profileData.profession || 'Alumnus',
+          position: profileData.position || undefined,
+          institution: profileData.institution || undefined,
+          specialty: profileData.specialty || [],
+          degree: profileData.degree || ['HSC'],
+          city: profileData.city || 'Dhaka',
+          country: profileData.country || 'Bangladesh',
+          whatsapp: cleanWhatsapp || undefined,
+          blood_group: profileData.bloodGroup || undefined,
+          bloodGroup: profileData.bloodGroup || undefined,
+          avatar_url: profileData.avatarUrl || '/ndc-logo.png',
         },
       },
     });
@@ -527,7 +584,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           bio: updated.bio,
           whatsapp: updated.whatsapp,
           fb_link: updated.fbLink,
+          college_roll: updated.collegeRoll !== undefined ? updated.collegeRoll : undefined,
+          batch_year: updated.batchYear !== undefined ? (updated.batchYear > 100 ? updated.batchYear - 1950 : updated.batchYear) : undefined,
+          blood_group: updated.bloodGroup !== undefined ? updated.bloodGroup : undefined,
+          academic_stream: updated.academicStream !== undefined ? updated.academicStream : undefined,
+          academic_group: updated.academicGroup !== undefined ? updated.academicGroup : undefined,
+          section: updated.section !== undefined ? updated.section : undefined,
+          session: updated.session !== undefined ? updated.session : undefined,
+          cadre: updated.cadre !== undefined ? updated.cadre : undefined,
+          specialty: updated.specialty !== undefined ? updated.specialty : undefined,
+          specialty_other: updated.specialtyOther !== undefined ? updated.specialtyOther : undefined,
+          degree: updated.degree !== undefined ? updated.degree : undefined,
+          career_history: updated.careerHistory !== undefined ? updated.careerHistory : undefined,
+          badges: updated.badges !== undefined ? updated.badges : undefined,
+          is_public: updated.isPublic !== undefined ? updated.isPublic : undefined,
+          show_contact_to_verified: updated.showContactToVerified !== undefined ? updated.showContactToVerified : undefined,
+          email: updated.email !== undefined ? updated.email : undefined,
         };
+
+        // Remove undefined keys so they don't overwrite existing columns
+        Object.keys(updatePayload).forEach((k) => {
+          if (updatePayload[k] === undefined) delete updatePayload[k];
+        });
 
         if (cleanPhone !== undefined) {
           updatePayload.phone = cleanPhone;
@@ -539,6 +617,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .from('alumni_profiles')
           .update(updatePayload)
           .eq('auth_user_id', currentUser.authUserId);
+
+        // Keep Supabase auth user_metadata synchronized as well
+        supabase.auth.updateUser({
+          data: {
+            full_name: updated.fullName,
+            batch_year: updatePayload.batch_year,
+            college_roll: updated.collegeRoll,
+            blood_group: updated.bloodGroup,
+            phone: cleanPhone,
+            academic_stream: updated.academicStream,
+            academic_group: updated.academicGroup,
+          },
+        }).catch(() => {});
 
         if (updateErr) {
           if (updateErr.message.toLowerCase().includes('unique') || updateErr.message.toLowerCase().includes('phone')) {

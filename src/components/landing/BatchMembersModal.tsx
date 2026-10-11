@@ -86,7 +86,16 @@ export const BatchMembersModal: React.FC<BatchMembersModalProps> = ({
                       </h4>
                       <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                     </div>
-                    <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
+                    <div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-semibold mt-0.5">
+                      {alumnus.collegeRoll && (
+                        <span className="font-mono bg-blue-100/70 dark:bg-blue-950/60 px-1 py-0.2 rounded text-[9px] font-bold">
+                          Roll: {alumnus.collegeRoll}
+                        </span>
+                      )}
+                      <span>•</span>
+                      <span>Batch {alumnus.batchYear > 100 ? alumnus.batchYear - 1950 : alumnus.batchYear} (HSC {alumnus.batchYear > 100 ? alumnus.batchYear : 1950 + alumnus.batchYear})</span>
+                    </div>
+                    <p className="text-[11px] text-slate-700 dark:text-slate-300 font-medium truncate mt-0.5">
                       {alumnus.position || 'Professional'}
                     </p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1 mt-0.5">

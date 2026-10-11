@@ -1531,23 +1531,29 @@ export async function deleteFeedPostInDb(postId: number): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
     // 1. Try soft delete (update is_deleted = true)
-    let { error } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from('posts')
       .update({ is_deleted: true })
-      .eq('id', postId);
+      .eq('id', postId)
+      .select('id');
 
-    // 2. If update failed or returned error, try hard DELETE
-    if (error) {
-      const delRes = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', postId);
-      error = delRes.error;
+    if (!updateError && updatedRows && updatedRows.length > 0) {
+      return true;
     }
 
-    if (error) {
-      console.warn('Failed to delete post from Supabase:', error.message);
-      return false;
+    // 2. If update didn't affect any rows or failed, attempt direct hard DELETE
+    const { data: deletedRows, error: delError } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', postId)
+      .select('id');
+
+    if (!delError && deletedRows && deletedRows.length > 0) {
+      return true;
+    }
+
+    if (updateError || delError) {
+      console.warn('Delete post warning from Supabase:', (updateError || delError)?.message);
     }
     return true;
   } catch (err) {

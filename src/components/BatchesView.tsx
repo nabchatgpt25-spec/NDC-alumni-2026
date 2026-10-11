@@ -25,16 +25,46 @@ interface BatchesViewProps {
   onViewProfile?: (profileId: number) => void;
 }
 
+function matchesAcademicGroup(profile: AlumniProfile, groupValue: string): boolean {
+  const gTarget = groupValue.toLowerCase().trim();
+  const acadGrp = (profile.academicGroup || '').toLowerCase().trim();
+  const grp = (profile.group || '').toLowerCase().trim();
+
+  if (acadGrp === gTarget || acadGrp.padStart(2, '0') === gTarget || gTarget.replace(/^0+/, '') === acadGrp.replace(/^0+/, '')) {
+    return true;
+  }
+  if (grp === gTarget) return true;
+  if (grp.includes(`group ${gTarget}`) || grp.includes(`group 0${gTarget}`)) return true;
+  if (grp.endsWith(` ${gTarget}`) || grp.endsWith(` 0${gTarget}`)) return true;
+
+  const scienceMatch = grp.match(/^science\s+0?(\d{1,2})$/);
+  if (scienceMatch && (scienceMatch[1] === gTarget || scienceMatch[1].padStart(2, '0') === gTarget)) {
+    return true;
+  }
+  const humMatch = grp.match(/^(?:humanities|arts)\s+([ghlw])$/);
+  if (humMatch && humMatch[1] === gTarget) {
+    return true;
+  }
+  const comMatch = grp.match(/^(?:commerce|business studies)\s+([a-h])$/);
+  if (comMatch && comMatch[1] === gTarget) {
+    return true;
+  }
+  return false;
+}
+
 function getGroupAlumniList(
   batch: BatchSummary,
   groupValue: string,
   profiles: AlumniProfile[]
 ): AlumniProfile[] {
-  return profiles.filter(
-    (p) =>
-      (p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear) &&
-      p.group?.toLowerCase() === groupValue.toLowerCase()
-  );
+  const bNum = batch.batchYear > 100 ? batch.batchYear - 1950 : batch.batchYear;
+  const hsc = batch.batchYear > 100 ? batch.batchYear : 1950 + batch.batchYear;
+
+  return profiles.filter((p) => {
+    const isBatchMatch = p.batchYear === bNum || p.batchYear === hsc;
+    if (!isBatchMatch) return false;
+    return matchesAcademicGroup(p, groupValue);
+  });
 }
 
 const SCIENCE_GROUPS = Array.from({ length: 17 }, (_, i) =>
@@ -44,8 +74,10 @@ const HUMANITIES_GROUPS = ['G', 'H', 'L', 'W'];
 const COMMERCE_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 function computeBatchGroupCounts(batch: BatchSummary, profiles: AlumniProfile[]) {
+  const bNum = batch.batchYear > 100 ? batch.batchYear - 1950 : batch.batchYear;
+  const hsc = batch.batchYear > 100 ? batch.batchYear : 1950 + batch.batchYear;
   const realBatchProfiles = profiles.filter(
-    (p) => p.batchYear === batch.batchYear || p.batchYear - 1950 === batch.batchYear
+    (p) => p.batchYear === bNum || p.batchYear === hsc
   );
   const scienceCounts: Record<string, number> = {};
   const humanitiesCounts: Record<string, number> = {};
@@ -56,20 +88,31 @@ function computeBatchGroupCounts(batch: BatchSummary, profiles: AlumniProfile[])
   COMMERCE_GROUPS.forEach((code) => { commerceCounts[code] = 0; });
 
   for (const profile of realBatchProfiles) {
-    const groupName = (profile.group || `${profile.academicStream || ''} ${profile.academicGroup || ''}`)
-      .trim()
-      .toLowerCase();
-    const scienceMatch = groupName.match(/^science\s+0?(\d{1,2})$/);
-    const humanitiesMatch = groupName.match(/^(?:humanities|arts)\s+([ghlw])$/);
-    const commerceMatch = groupName.match(/^(?:commerce|business studies)\s+([a-h])$/);
-
-    if (scienceMatch) {
-      const code = scienceMatch[1].padStart(2, '0');
-      if (code in scienceCounts) scienceCounts[code] += 1;
-    } else if (humanitiesMatch) {
-      humanitiesCounts[humanitiesMatch[1].toUpperCase()] += 1;
-    } else if (commerceMatch) {
-      commerceCounts[commerceMatch[1].toUpperCase()] += 1;
+    let matched = false;
+    for (const code of SCIENCE_GROUPS) {
+      if (matchesAcademicGroup(profile, code)) {
+        scienceCounts[code] += 1;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      for (const code of HUMANITIES_GROUPS) {
+        if (matchesAcademicGroup(profile, code)) {
+          humanitiesCounts[code] += 1;
+          matched = true;
+          break;
+        }
+      }
+    }
+    if (!matched) {
+      for (const code of COMMERCE_GROUPS) {
+        if (matchesAcademicGroup(profile, code)) {
+          commerceCounts[code] += 1;
+          matched = true;
+          break;
+        }
+      }
     }
   }
 
@@ -379,7 +422,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                 <div>
                   <div className="flex items-center flex-wrap gap-2">
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-slate-50">
-                      Batch {activeBatch.batchYear} {activeBatch.session}
+                      Batch {activeBatch.batchYear > 100 ? activeBatch.batchYear - 1950 : activeBatch.batchYear} • HSC {activeBatch.batchYear > 100 ? activeBatch.batchYear : 1950 + activeBatch.batchYear} {activeBatch.session}
                     </h2>
                     <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
                       • {activeBatchGroupStats.grandTotal} Total Alumni
@@ -724,9 +767,11 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                             </div>
 
                             <div className="flex items-center gap-1.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
-                              <span>Roll: {alumnus.collegeRoll || 'N/A'}</span>
+                              <span className="font-mono bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded text-blue-700 dark:text-blue-300 font-bold border border-blue-200/60 dark:border-blue-800/60">
+                                Roll: {alumnus.collegeRoll || 'N/A'}
+                              </span>
                               <span>•</span>
-                              <span>{alumnus.group}</span>
+                              <span>{alumnus.group || (alumnus.academicGroup ? `Group ${alumnus.academicGroup}` : 'Science')}</span>
                             </div>
 
                             <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate mt-1">
@@ -900,7 +945,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                   {/* Batch Title */}
                   <div className="flex items-center flex-wrap gap-1.5">
                     <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                      Batch {batch.batchYear} {batch.session}
+                      Batch {batch.batchYear > 100 ? batch.batchYear - 1950 : batch.batchYear} • HSC {batch.batchYear > 100 ? batch.batchYear : 1950 + batch.batchYear}
                     </h3>
                     {batch.batchYear === 1 && (
                       <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">

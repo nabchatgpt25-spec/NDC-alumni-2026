@@ -68,7 +68,6 @@ export const ALUMNI_PUBLIC_COLUMNS = [
   'cover_url',
   'batch_year',
   'session',
-  'college_roll',
   'academic_stream',
   'academic_group',
   'section',

@@ -103,6 +103,47 @@ export async function getOrCreateSupabaseProfile(
     }
 
     if (existing) {
+      // If existing profile was inserted with fallback values (e.g. batch_year = 68),
+      // update it if extraData or user_metadata contains the user's authentic data
+      const meta = (authUser.user_metadata || {}) as any;
+      const targetBatch = Number(extraData?.batchYear ?? meta.batch_year ?? meta.batchYear);
+      const normalizedTargetBatch = targetBatch > 1900 ? targetBatch - 1950 : (targetBatch > 0 ? targetBatch : 0);
+      const targetRoll = extraData?.collegeRoll?.trim() || meta.college_roll || meta.collegeRoll;
+      const targetBlood = extraData?.bloodGroup || meta.blood_group || meta.bloodGroup;
+
+      const patchPayload: Record<string, any> = {};
+      if (normalizedTargetBatch && Number(existing.batch_year) === 68 && normalizedTargetBatch !== 68) {
+        patchPayload.batch_year = normalizedTargetBatch;
+      }
+      if (targetRoll && !existing.college_roll) {
+        patchPayload.college_roll = targetRoll;
+      }
+      if (targetBlood && !existing.blood_group) {
+        patchPayload.blood_group = targetBlood;
+      }
+      if (extraData?.profession && (!existing.profession || existing.profession === 'Alumnus')) {
+        patchPayload.profession = extraData.profession;
+      }
+      if (extraData?.institution && !existing.institution) {
+        patchPayload.institution = extraData.institution;
+      }
+
+      if (Object.keys(patchPayload).length > 0) {
+        try {
+          const { data: updatedRow } = await supabase
+            .from('alumni_profiles')
+            .update(patchPayload)
+            .eq('id', (existing as any).id)
+            .select(ALUMNI_PUBLIC_COLUMNS)
+            .maybeSingle();
+          if (updatedRow) {
+            Object.assign(existing, updatedRow);
+          }
+        } catch (patchErr) {
+          console.warn('Silent fallback updating existing profile with metadata:', patchErr);
+        }
+      }
+
       // Enrich with contact details via authorized RPC
       try {
         const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
@@ -118,15 +159,20 @@ export async function getOrCreateSupabaseProfile(
     }
 
     // 2. Otherwise, insert a new profile record for the authenticated user
-    const cleanEmail = (authUser.email || extraData?.email || '').toLowerCase().trim();
-    const batchYear = Number(extraData?.batchYear) || 68;
+    const meta = (authUser.user_metadata || {}) as any;
+    const cleanEmail = (authUser.email || extraData?.email || meta.email || '').toLowerCase().trim();
+    const rawBatch = extraData?.batchYear ?? meta.batch_year ?? meta.batchYear;
+    const batchYear = Number(rawBatch) || 68;
     const normalizedBatch = batchYear > 1900 ? batchYear - 1950 : (batchYear > 0 ? batchYear : 68);
 
     // Normalize academic stream and academic group
     const rawGroupInput =
       extraData?.academicGroup ||
       extraData?.group ||
-      extraData?.academicStream;
+      extraData?.academicStream ||
+      meta.academic_group ||
+      meta.academic_stream ||
+      meta.group;
     const streamGroup = normalizeAcademicStreamAndGroup(rawGroupInput);
 
     // New profiles strictly start with role = 'member' and verification_status = 'unverified'
@@ -136,36 +182,37 @@ export async function getOrCreateSupabaseProfile(
       verification_status: 'unverified',
       full_name:
         extraData?.fullName?.trim() ||
-        (authUser.user_metadata as any)?.full_name ||
-        (authUser.user_metadata as any)?.name ||
+        meta.full_name ||
+        meta.name ||
         (cleanEmail ? cleanEmail.split('@')[0] : null) ||
         (authUser.phone ? `Alumnus (${authUser.phone})` : 'Notredamian Alumnus'),
       avatar_url:
         extraData?.avatarUrl ||
-        (authUser.user_metadata as any)?.avatar_url ||
-        (authUser.user_metadata as any)?.picture ||
+        meta.avatar_url ||
+        meta.picture ||
         '/ndc-logo.png',
       batch_year: normalizedBatch,
-      session: extraData?.session || null,
+      session: extraData?.session || meta.session || null,
       college_roll:
         extraData?.collegeRoll?.trim() ||
-        (authUser.user_metadata as any)?.college_roll ||
+        meta.college_roll ||
+        meta.collegeRoll ||
         null,
       academic_stream: streamGroup.academicStream,
       academic_group: streamGroup.academicGroup,
-      section: extraData?.section || (streamGroup.academicGroup ? `Group ${streamGroup.academicGroup}` : 'Section A'),
-      profession: extraData?.profession || 'Alumnus',
-      position: extraData?.position || '',
-      institution: extraData?.institution || '',
-      city: extraData?.city || 'Dhaka',
-      country: extraData?.country || 'Bangladesh',
+      section: extraData?.section || meta.section || (streamGroup.academicGroup ? `Group ${streamGroup.academicGroup}` : 'Section A'),
+      profession: extraData?.profession || meta.profession || 'Alumnus',
+      position: extraData?.position || meta.position || '',
+      institution: extraData?.institution || meta.institution || '',
+      city: extraData?.city || meta.city || 'Dhaka',
+      country: extraData?.country || meta.country || 'Bangladesh',
       email: cleanEmail || null,
       phone: extraData?.phone
         ? formatToE164Phone(extraData.phone)
-        : ((authUser.user_metadata as any)?.phone ? formatToE164Phone((authUser.user_metadata as any).phone) : (authUser.phone ? formatToE164Phone(authUser.phone) : null)),
+        : (meta.phone ? formatToE164Phone(meta.phone) : (authUser.phone ? formatToE164Phone(authUser.phone) : null)),
       phone_ownership_verified: false,
-      whatsapp: extraData?.whatsapp?.trim() || null,
-      blood_group: extraData?.bloodGroup || null,
+      whatsapp: extraData?.whatsapp?.trim() || meta.whatsapp || null,
+      blood_group: extraData?.bloodGroup || meta.blood_group || meta.bloodGroup || null,
     };
 
     let { data: inserted, error: insertErr } = await supabase

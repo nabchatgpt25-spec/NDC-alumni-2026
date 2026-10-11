@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { PostItem, PostComment } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { playSound } from '../utils/audio';
 import { PostLightboxModal } from './PostLightboxModal';
 import { compressImageFileToDataUrl } from '../utils/mediaStorage';
@@ -143,7 +144,11 @@ export const FeedView: React.FC<FeedViewProps> = ({
       .catch((err) => {
         console.error('FeedView: failed to fetch Supabase posts:', err);
         if (isMounted) {
-          setFeedError('We could not load the feed. Check your connection and try again.');
+          if (!currentUser.id || currentUser.id === 0) {
+            setFeedError('Sign in to your alumni account to view Quad posts and connect with batchmates.');
+          } else {
+            setFeedError('We could not load the feed. Check your connection and try again.');
+          }
         }
       })
       .finally(() => {
@@ -812,7 +817,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
     const targetPostId = postToDelete.id;
     setPostToDelete(null);
     setPosts((prev) => prev.filter((p) => p.id !== targetPostId));
-    playSound('delete');
+    playSound('pop');
 
     try {
       const ok = await deleteFeedPostInDb(targetPostId);
@@ -1899,21 +1904,43 @@ export const FeedView: React.FC<FeedViewProps> = ({
           }
 
           if (feedError && posts.length === 0) {
+            const isGuest = !currentUser.id || currentUser.id === 0;
             return (
               <div
                 role="alert"
-                className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-amber-200 dark:border-amber-900 text-center shadow-xs"
+                className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 text-center shadow-xs"
               >
-                <AlertTriangle className="w-6 h-6 mx-auto text-amber-500 mb-3" />
-                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">Feed unavailable</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{feedError}</p>
-                <button
-                  type="button"
-                  onClick={() => void handleRefreshFeed()}
-                  className="mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
-                >
-                  Try again
-                </button>
+                {isGuest ? (
+                  <Lock className="w-8 h-8 mx-auto text-blue-600 dark:text-blue-400 mb-3" />
+                ) : (
+                  <AlertTriangle className="w-6 h-6 mx-auto text-amber-500 mb-3" />
+                )}
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                  {isGuest ? 'Alumni Community Feed' : 'Feed unavailable'}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">{feedError}</p>
+                {isGuest ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onNavigate) {
+                        onNavigate('home');
+                      }
+                      window.dispatchEvent(new CustomEvent('ndc_open_auth_modal'));
+                    }}
+                    className="mt-4 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    Sign In / Register
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleRefreshFeed()}
+                    className="mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                  >
+                    Try again
+                  </button>
+                )}
               </div>
             );
           }
