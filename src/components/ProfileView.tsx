@@ -46,6 +46,7 @@ import { INITIAL_OFFLINE_SAVED_POSTS, INITIAL_OFFLINE_DIRECTORY } from '../utils
 import { PostLightboxModal } from './PostLightboxModal';
 import {
   extractUrlsFromText,
+  extractFirstValidUrl,
   renderTextWithClickableLinks,
   SharedEmbedCard
 } from './SmartPostMediaAndEmbeds';
@@ -848,7 +849,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     const updatedData: Partial<AlumniProfile> = {
       fullName: editName,
       batchYear: cleanSavedBatch,
-      collegeRoll: editCollegeRoll?.trim() ? editCollegeRoll.trim().slice(0, 32) : (profile.collegeRoll || undefined),
+      collegeRoll: editCollegeRoll,
       bio: editBio,
       position: editPosition,
       institution: editInstitution,
@@ -1022,11 +1023,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       ? `Notre Dame HSC Year: ${profile.batchYear}`
                       : 'Notre Dame HSC Year: N/A'}
                   </span>
-                  {profile.collegeRoll && (
-                    <span className="px-3 py-1 rounded-full bg-blue-500/15 dark:bg-blue-500/20 border border-blue-400/30 text-blue-700 dark:text-blue-300 font-mono font-extrabold backdrop-blur-md">
-                      Roll: {profile.collegeRoll}
-                    </span>
-                  )}
                   <span className="text-slate-700 dark:text-slate-200 font-semibold">{profile.profession}</span>
                   {profile.cadre && <span className="text-slate-500 dark:text-slate-400">· {profile.cadre}</span>}
                   {(donorRecord?.isRegisteredDonor || profile.bloodGroup) && (
@@ -1443,30 +1439,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
               )}
 
-              {/* Attached Videos or Detected Link Preview */}
+              {/* Smart Link Share V1: Live Preview when a URL is in post text */}
               {(() => {
-                const previewLinks = Array.from(
-                  new Set([...newPostVideos, ...extractUrlsFromText(newPostText)])
-                );
-                if (previewLinks.length === 0) return null;
+                const firstUrl = extractFirstValidUrl(newPostText);
+                if (!firstUrl) return null;
                 return (
-                  <div className="space-y-2.5">
-                    {previewLinks.map((url, idx) => (
-                      <div key={idx} className="relative">
-                        <SharedEmbedCard url={url} autoPlayOnScroll={false} />
-                        {newPostVideos.includes(url) && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setNewPostVideos((prev) => prev.filter((v) => v !== url))
-                            }
-                            className="absolute top-2.5 right-2.5 p-1.5 bg-black/80 hover:bg-rose-600 text-white rounded-full cursor-pointer z-20"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                        Link Preview
+                      </span>
+                    </div>
+                    <SharedEmbedCard url={firstUrl} autoPlayOnScroll={false} />
                   </div>
                 );
               })()}
@@ -1538,12 +1522,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 const isPostMine =
                   isMine &&
                   (post.userId === currentUser.userId || post.userId === currentUser.id);
-                const postMediaLinks = Array.from(
-                  new Set([
-                    ...(post.videos || []),
-                    ...extractUrlsFromText(post.content),
-                  ])
-                );
+                const firstProfilePostUrl =
+                  extractFirstValidUrl(post.content) ||
+                  (post.videos && post.videos.length > 0 ? extractFirstValidUrl(post.videos[0]) : null);
 
                 return (
                   <article
@@ -1684,16 +1665,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       </div>
                     )}
 
-                    {/* Post Videos & Shared Social/Web Links */}
-                    {postMediaLinks.length > 0 && (
-                      <div className="space-y-3">
-                        {postMediaLinks.map((mediaUrl, idx) => (
-                          <SharedEmbedCard
-                            key={`${post.id}-profile-media-${idx}`}
-                            url={mediaUrl}
-                            autoPlayOnScroll={true}
-                          />
-                        ))}
+                    {/* Smart Link Share V1: Detected from post text or attached video */}
+                    {firstProfilePostUrl && (
+                      <div className="mb-3">
+                        <SharedEmbedCard
+                          url={firstProfilePostUrl}
+                          autoPlayOnScroll={true}
+                        />
                       </div>
                     )}
 
@@ -2092,8 +2070,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <input
                     id="edit-field-collegeRoll"
                     type="text"
-                    placeholder="12405101"
-                    maxLength={32}
+                    placeholder="e.g. 118042 or 214015"
                     value={editCollegeRoll}
                     onChange={(e) => setEditCollegeRoll(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"

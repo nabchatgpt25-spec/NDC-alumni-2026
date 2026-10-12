@@ -117,6 +117,161 @@ export function extractUrlsFromText(text: string): string[] {
 }
 
 /**
+ * Detects the first valid http/https URL in a post.
+ * Rejects unsafe protocols (javascript:, data:, vbscript:, file:, etc.)
+ * Strips common sentence-ending punctuation (.,;!?).
+ */
+export function extractFirstValidUrl(text: string): string | null {
+  if (!text) return null;
+  const urlRegex = /https?:\/\/[^\s<>"')]+/gi;
+  const matches = text.match(urlRegex);
+  if (!matches || matches.length === 0) return null;
+
+  for (const raw of matches) {
+    const cleaned = raw.replace(/[.,;!?]+$/, '').trim();
+    if (!cleaned) continue;
+    try {
+      const parsed = new URL(cleaned);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        if (parsed.hostname && parsed.hostname.includes('.')) {
+          return cleaned;
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+const VALID_YOUTUBE_HOSTNAMES = new Set([
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'music.youtube.com',
+  'youtu.be',
+  'www.youtu.be',
+  'youtube-nocookie.com',
+  'www.youtube-nocookie.com',
+]);
+
+const YOUTUBE_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
+
+export interface ValidYouTubeResult {
+  isValid: boolean;
+  videoId: string | null;
+  embedUrl: string | null;
+  isShorts: boolean;
+}
+
+export function parseValidYouTubeUrl(rawUrl: string): ValidYouTubeResult {
+  if (!rawUrl) return { isValid: false, videoId: null, embedUrl: null, isShorts: false };
+
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { isValid: false, videoId: null, embedUrl: null, isShorts: false };
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    if (!VALID_YOUTUBE_HOSTNAMES.has(host)) {
+      return { isValid: false, videoId: null, embedUrl: null, isShorts: false };
+    }
+
+    let videoId: string | null = null;
+    let isShorts = false;
+
+    if (host === 'youtu.be' || host === 'www.youtu.be') {
+      const segment = parsed.pathname.slice(1).split('/')[0]?.split('?')[0];
+      if (segment && YOUTUBE_ID_PATTERN.test(segment)) {
+        videoId = segment;
+      }
+    } else if (parsed.pathname.startsWith('/shorts/')) {
+      const segment = parsed.pathname.replace(/^\/shorts\//, '').split('/')[0]?.split('?')[0];
+      if (segment && YOUTUBE_ID_PATTERN.test(segment)) {
+        videoId = segment;
+        isShorts = true;
+      }
+    } else if (parsed.pathname.startsWith('/embed/')) {
+      const segment = parsed.pathname.replace(/^\/embed\//, '').split('/')[0]?.split('?')[0];
+      if (segment && YOUTUBE_ID_PATTERN.test(segment)) {
+        videoId = segment;
+      }
+    } else if (parsed.pathname.startsWith('/live/')) {
+      const segment = parsed.pathname.replace(/^\/live\//, '').split('/')[0]?.split('?')[0];
+      if (segment && YOUTUBE_ID_PATTERN.test(segment)) {
+        videoId = segment;
+      }
+    } else if (parsed.pathname === '/watch' || parsed.searchParams.has('v')) {
+      const v = parsed.searchParams.get('v');
+      if (v && YOUTUBE_ID_PATTERN.test(v)) {
+        videoId = v;
+      }
+    }
+
+    if (videoId) {
+      return {
+        isValid: true,
+        videoId,
+        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?rel=0`,
+        isShorts,
+      };
+    }
+  } catch {
+    // URL parse failed
+  }
+
+  return { isValid: false, videoId: null, embedUrl: null, isShorts: false };
+}
+
+export interface SiteMetadata {
+  siteName: string;
+  hostname: string;
+  colorClass: string;
+}
+
+export function getSiteMetadata(rawUrl: string): SiteMetadata {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.toLowerCase().replace(/^(www\.|m\.|web\.)/i, '');
+
+    if (host === 'facebook.com' || host === 'fb.watch' || host === 'fb.com') {
+      return { siteName: 'Facebook', hostname: host, colorClass: 'bg-[#1877F2] text-white' };
+    }
+    if (host === 'instagram.com') {
+      return { siteName: 'Instagram', hostname: host, colorClass: 'bg-gradient-to-r from-pink-600 via-rose-500 to-amber-500 text-white' };
+    }
+    if (host === 'linkedin.com' || host === 'lnkd.in') {
+      return { siteName: 'LinkedIn', hostname: host, colorClass: 'bg-[#0A66C2] text-white' };
+    }
+    if (host === 'twitter.com' || host === 'x.com') {
+      return { siteName: 'X (Twitter)', hostname: host, colorClass: 'bg-slate-900 dark:bg-black text-white' };
+    }
+    if (host === 'github.com') {
+      return { siteName: 'GitHub', hostname: host, colorClass: 'bg-slate-800 dark:bg-slate-900 text-white' };
+    }
+    if (host === 'reddit.com') {
+      return { siteName: 'Reddit', hostname: host, colorClass: 'bg-[#FF4500] text-white' };
+    }
+    if (host === 'tiktok.com') {
+      return { siteName: 'TikTok', hostname: host, colorClass: 'bg-slate-900 dark:bg-black text-white' };
+    }
+    if (host === 'vimeo.com') {
+      return { siteName: 'Vimeo', hostname: host, colorClass: 'bg-sky-600 text-white' };
+    }
+
+    const firstPart = host.split('.')[0] || host;
+    const formatted = firstPart.length > 2
+      ? firstPart.charAt(0).toUpperCase() + firstPart.slice(1)
+      : host;
+
+    return { siteName: formatted, hostname: host, colorClass: 'bg-slate-700 dark:bg-slate-800 text-slate-100' };
+  } catch {
+    return { siteName: 'Website', hostname: rawUrl, colorClass: 'bg-slate-700 dark:bg-slate-800 text-slate-100' };
+  }
+}
+
+/**
  * Renders post text with full clickable hyperlinks so shared links are always interactive and visible
  */
 export function renderTextWithClickableLinks(text: string): React.ReactNode {
@@ -1277,184 +1432,82 @@ const FacebookEmbedCard: React.FC<{
 };
 
 /**
- * Renders any shared social post or video link (YouTube, Facebook, Instagram, LinkedIn, TikTok, Vimeo, Direct Video, or Web URL)
- * with full visibility and scroll-based auto-play / auto-pause for videos.
+/**
+ * Smart Link Share V1 Component
+ * - Embeds valid YouTube links as responsive, lazy-loaded videos using youtube-nocookie.com
+ * - Accepts only valid YouTube hostnames and 11-char video IDs
+ * - For Facebook, Instagram, and other sites, shows a simple card with site name and URL (no fake metadata/embeds)
+ * - Adds "View Original" opening in a new tab with rel="noopener noreferrer"
+ * - Rejects unsafe URLs (e.g. javascript:)
  */
 export const SharedEmbedCard: React.FC<{
   url: string;
   autoPlayOnScroll?: boolean;
-}> = ({ url, autoPlayOnScroll = true }) => {
-  const info = parseUrlForEmbed(url);
-  const { data: unfurled } = useLinkUnfurl(
-    info.normalizedUrl,
-    info.type === 'linkedin' || info.type === 'instagram' || info.type === 'generic-link'
-  );
+}> = ({ url }) => {
+  if (!url || typeof url !== 'string') return null;
 
-  if (info.type === 'direct-video') {
-    return <AutoPlayVideoPlayer src={info.normalizedUrl} autoPlayOnScroll={autoPlayOnScroll} />;
+  const trimmed = url.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Reject unsafe URLs (e.g. javascript:, vbscript:, data:, file:)
+  if (
+    lower.startsWith('javascript:') ||
+    lower.startsWith('vbscript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('file:')
+  ) {
+    return null;
   }
 
-  if (info.type === 'youtube' && info.embedUrl) {
-    return (
-      <AutoPlayYouTubeEmbed
-        embedUrl={info.embedUrl}
-        originalUrl={info.normalizedUrl}
-        titleHint={info.titleHint}
-        autoPlayOnScroll={autoPlayOnScroll}
-      />
-    );
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+  } catch {
+    return null;
   }
 
-  if (info.type === 'facebook-video' || info.type === 'facebook-post' || info.type === 'facebook-photo') {
-    return <FacebookEmbedCard info={info} autoPlayOnScroll={autoPlayOnScroll} />;
-  }
+  const safeUrl = parsed.toString();
 
-  if (info.type === 'instagram') {
-    return (
-      <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
-        <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-pink-600 via-rose-500 to-amber-500 text-white text-xs">
-          <div className="flex items-center gap-2 font-bold">
-            <VideoIcon className="w-3.5 h-3.5" />
-            <span>{unfurled?.title || info.titleHint}</span>
-          </div>
-          <a
-            href={info.normalizedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-bold bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg transition-colors"
-          >
-            <span>Open on Instagram</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-
-        {unfurled?.videoUrl ? (
-          <AutoPlayVideoPlayer
-            src={unfurled.videoUrl}
-            poster={unfurled.imageUrl}
-            autoPlayOnScroll={autoPlayOnScroll}
-          />
-        ) : info.embedUrl ? (
-          <div className="w-full bg-white flex justify-center">
-            <iframe
-              src={info.embedUrl}
-              title={info.titleHint}
-              className="w-full min-h-[580px] border-0"
-              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-              allowFullScreen
-            />
-          </div>
-        ) : unfurled?.imageUrl ? (
-          <img
-            src={unfurled.imageUrl}
-            alt={unfurled.title || 'Instagram preview'}
-            className="w-full max-h-[420px] object-cover"
-            referrerPolicy="no-referrer"
-          />
-        ) : null}
-
-        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200/70 dark:border-slate-800 flex items-center justify-between gap-2 text-xs">
-          <span className="text-slate-600 dark:text-slate-300 break-all font-medium">
-            {info.originalUrl}
-          </span>
-          <a
-            href={info.normalizedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-pink-600 dark:text-pink-400 font-bold shrink-0 hover:underline"
-          >
-            View on Instagram →
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (info.type === 'linkedin') {
-    return (
-      <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
-        <div className="flex items-center justify-between px-4 py-2.5 bg-sky-700 text-white text-xs">
-          <div className="flex items-center gap-2 font-bold">
-            <Globe className="w-3.5 h-3.5" />
-            <span>LinkedIn Shared Post</span>
-          </div>
-          <a
-            href={info.normalizedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-bold bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg transition-colors"
-          >
-            <span>Open on LinkedIn</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-
-        {info.embedUrl ? (
-          <div className="w-full bg-slate-50 dark:bg-slate-950">
-            <iframe
-              src={info.embedUrl}
-              title="LinkedIn Embedded Post"
-              className="w-full min-h-[520px] border-0"
-              allowFullScreen
-            />
-          </div>
-        ) : (
-          <a
-            href={info.normalizedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block p-4 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 transition-colors border-t border-slate-200/60 dark:border-slate-800 space-y-2"
-          >
-            {unfurled?.imageUrl && (
-              <img
-                src={unfurled.imageUrl}
-                alt={unfurled.title || 'LinkedIn preview'}
-                className="w-full max-h-64 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
-                referrerPolicy="no-referrer"
-              />
-            )}
-            <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              {unfurled?.title || info.titleHint}
-            </div>
-            {unfurled?.description && (
-              <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3">
-                {unfurled.description}
-              </p>
-            )}
-            <div className="text-xs text-slate-500 dark:text-slate-400 break-all">
-              {info.originalUrl}
-            </div>
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-600 dark:text-sky-400">
-              <span>Read full post on LinkedIn</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </div>
-          </a>
-        )}
-      </div>
-    );
-  }
-
-  if (info.type === 'tiktok' && info.embedUrl) {
+  // 1. YouTube: embed responsive, lazy-loaded video using youtube-nocookie.com
+  const yt = parseValidYouTubeUrl(safeUrl);
+  if (yt.isValid && yt.embedUrl) {
     return (
       <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-slate-950 shadow-xs">
-        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 text-white text-xs">
-          <span className="font-bold">{info.titleHint}</span>
+        {/* YouTube Header Bar with View Original */}
+        <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-900 text-white text-xs border-b border-slate-800">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold text-[10px] uppercase tracking-wider shrink-0">
+              YouTube
+            </span>
+            <span className="font-semibold text-slate-300 truncate text-[11px] sm:text-xs">
+              {yt.isShorts ? 'YouTube Shorts' : 'YouTube Video'}
+            </span>
+          </div>
+
           <a
-            href={info.normalizedUrl}
+            href={safeUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-400 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 hover:underline shrink-0 transition-colors cursor-pointer"
+            title="Open on YouTube"
           >
-            <span>Open TikTok</span>
+            <span>View Original</span>
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
-        <div className="w-full flex justify-center bg-black">
+
+        {/* Responsive Lazy-Loaded Iframe using youtube-nocookie.com */}
+        <div className="w-full aspect-video bg-black">
           <iframe
-            src={info.embedUrl}
-            title={info.titleHint}
-            className="w-full min-h-[580px] border-0"
-            allow="autoplay; encrypted-media;"
+            src={yt.embedUrl}
+            title="YouTube video player"
+            loading="lazy"
+            className="w-full h-full border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
           />
         </div>
@@ -1462,86 +1515,83 @@ export const SharedEmbedCard: React.FC<{
     );
   }
 
-  if (info.type === 'vimeo' && info.embedUrl) {
+  // 2. Direct Video files (mp4, webm, mov, ogg)
+  const isDirectVideo = /\.(mp4|webm|mov|ogg)(\?.*)?$/i.test(safeUrl);
+  if (isDirectVideo) {
     return (
       <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-black shadow-xs">
-        <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-white text-xs">
-          <span className="font-bold">{info.titleHint}</span>
+        <div className="flex items-center justify-between px-3.5 py-2 bg-slate-900 text-white text-xs border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white font-bold text-[10px] uppercase tracking-wider">
+              Video
+            </span>
+            <span className="text-[11px] text-slate-300 truncate font-mono">{parsed.hostname}</span>
+          </div>
           <a
-            href={info.normalizedUrl}
+            href={safeUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-400 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer"
           >
-            <span>Watch on Vimeo</span>
+            <span>View Original</span>
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
-        <div className="aspect-video w-full">
-          <iframe
-            src={info.embedUrl}
-            title={info.titleHint}
-            className="w-full h-full border-0"
-            allow="autoplay; fullscreen; picture-in-picture"
-            allowFullScreen
+        <div className="w-full aspect-video bg-black flex items-center justify-center">
+          <video
+            src={safeUrl}
+            controls
+            playsInline
+            preload="metadata"
+            className="w-full h-full object-contain"
           />
         </div>
       </div>
     );
   }
 
-  // Generic Link Preview Card (Websites, News, Blogs, Portfolios, X/Twitter, Other Platforms) - 100% Full Visibility
-  const websitePreviewImage =
-    unfurled?.imageUrl ||
-    `https://image.thum.io/get/width/900/crop/600/noanimate/${info.normalizedUrl}`;
+  // 3. For Facebook, Instagram, and other sites:
+  // Simple card with site name and URL. Do not pretend to have fetched metadata or embed these sites.
+  // Add "View Original" opening in a new tab with rel="noopener noreferrer".
+  const meta = getSiteMetadata(safeUrl);
 
   return (
-    <a
-      href={info.normalizedUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="block rounded-2xl overflow-hidden border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-800/50 dark:hover:bg-slate-800 transition-all group shadow-xs"
-    >
-      <div className="w-full max-h-64 overflow-hidden bg-slate-900 border-b border-slate-200/60 dark:border-slate-800 relative">
-        <img
-          src={websitePreviewImage}
-          alt={unfurled?.title || info.titleHint}
-          className="w-full max-h-64 object-cover group-hover:scale-102 transition-transform"
-          referrerPolicy="no-referrer"
-          onError={(e) => {
-            (e.target as HTMLImageElement).parentElement!.style.display = 'none';
-          }}
-        />
-      </div>
-      <div className="p-4 flex items-start justify-between gap-3">
-        <div className="space-y-1.5 min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-            <img
-              src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(info.hostname)}&sz=32`}
-              alt=""
-              className="w-4 h-4 rounded-xs"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-            <span>{unfurled?.publisher || info.hostname}</span>
+    <div className="rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition-colors shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600/60 flex items-center justify-center shrink-0 shadow-2xs">
+            <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           </div>
-          <div className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors break-words">
-            {unfurled?.title || info.titleHint}
-          </div>
-          {unfurled?.description && (
-            <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
-              {unfurled.description}
-            </p>
-          )}
-          <div className="text-xs text-slate-500 dark:text-slate-400 break-all">
-            {info.originalUrl}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${meta.colorClass}`}>
+                {meta.siteName}
+              </span>
+              <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                {meta.hostname}
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-xs sm:max-w-md mt-0.5 font-mono">
+              {safeUrl}
+            </div>
           </div>
         </div>
-        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 group-hover:text-blue-600 shrink-0">
-          <ExternalLink className="w-4 h-4" />
-        </div>
+
+        <a
+          href={safeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer self-start sm:self-auto"
+        >
+          <span>View Original</span>
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
       </div>
-    </a>
+    </div>
   );
 };
+
+export const SmartLinkCard = SharedEmbedCard;
+

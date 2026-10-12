@@ -44,6 +44,7 @@ import { PostLightboxModal } from './PostLightboxModal';
 import { compressImageFileToDataUrl } from '../utils/mediaStorage';
 import {
   extractUrlsFromText,
+  extractFirstValidUrl,
   normalizeUrlInput,
   renderTextWithClickableLinks,
   SharedEmbedCard
@@ -1439,32 +1440,25 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   </div>
                 )}
 
-                {/* Live Detected Shared Link Preview (YouTube, Facebook, Instagram, LinkedIn, etc.) */}
+                {/* Smart Link Share V1: Live Preview when a URL is in post text */}
                 {(() => {
-                  const detectedTextUrls = extractUrlsFromText(postContent).filter(
-                    (u) => !attachedVideos.includes(u)
-                  );
-                  if (detectedTextUrls.length === 0) return null;
+                  const firstUrl = extractFirstValidUrl(postContent);
+                  if (!firstUrl) return null;
                   return (
-                    <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2.5">
+                    <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                           <Link2 className="w-4 h-4 text-blue-500" />
-                          <span>Shared Link Preview ({detectedTextUrls.length})</span>
+                          <span>Link Preview</span>
                         </span>
-                        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                          Full Visibility Active
+                        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                          Smart Link Share
                         </span>
                       </div>
-                      <div className="space-y-2.5">
-                        {detectedTextUrls.map((detectedUrl, idx) => (
-                          <SharedEmbedCard
-                            key={`${detectedUrl}-${idx}`}
-                            url={detectedUrl}
-                            autoPlayOnScroll={false}
-                          />
-                        ))}
-                      </div>
+                      <SharedEmbedCard
+                        url={firstUrl}
+                        autoPlayOnScroll={false}
+                      />
                     </div>
                   );
                 })()}
@@ -1897,11 +1891,10 @@ export const FeedView: React.FC<FeedViewProps> = ({
                 post.authorId === currentUser.id ||
                 post.authorId === currentUser.userId)
             );
-            const extractedUrls = extractUrlsFromText(post.content);
-            const allSharedMediaAndLinks = Array.from(
-              new Set([...(post.videos || []), ...extractedUrls])
-            );
-            const hasSharedLinks = extractedUrls.length > 0;
+            const firstPostUrl =
+              extractFirstValidUrl(post.content) ||
+              (post.videos && post.videos.length > 0 ? extractFirstValidUrl(post.videos[0]) : null);
+            const hasSharedLinks = Boolean(firstPostUrl);
             const isLongContent = post.content.length > 360 && !hasSharedLinks;
             const isExpanded = expandedPostIds.has(post.id);
             const displayedText =
@@ -2122,16 +2115,13 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   </div>
                 )}
 
-                {/* Post Videos & Shared Social/Web Links (YouTube, Facebook, Instagram, LinkedIn, Direct Videos, etc.) */}
-                {allSharedMediaAndLinks.length > 0 && (
-                  <div className="space-y-3.5 mb-4">
-                    {allSharedMediaAndLinks.map((mediaUrl, idx) => (
-                      <SharedEmbedCard
-                        key={`${post.id}-media-${idx}`}
-                        url={mediaUrl}
-                        autoPlayOnScroll={autoPlayOnScroll}
-                      />
-                    ))}
+                {/* Smart Link Share V1: Detected from post text or attached video */}
+                {firstPostUrl && (
+                  <div className="mb-4">
+                    <SharedEmbedCard
+                      url={firstPostUrl}
+                      autoPlayOnScroll={autoPlayOnScroll}
+                    />
                   </div>
                 )}
 
