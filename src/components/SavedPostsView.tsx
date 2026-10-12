@@ -36,6 +36,19 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedSavedPostId, setCopiedSavedPostId] = useState<number | null>(null);
 
+  // Sync state if saved posts change in background
+  useEffect(() => {
+    const handleSync = () => {
+      setSavedPostsState(getSavedPosts());
+    };
+    window.addEventListener('ndc_saved_posts_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('ndc_saved_posts_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
   // Lightbox modal state
   const [lightboxState, setLightboxState] = useState<{
     isOpen: boolean;

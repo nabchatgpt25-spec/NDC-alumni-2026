@@ -49,6 +49,8 @@ import {
   renderTextWithClickableLinks,
   SharedEmbedCard
 } from './SmartPostMediaAndEmbeds';
+import { LinkPreview } from './feed/LinkPreview';
+import { fetchLinkPreview, type LinkMetadata } from '../services/linkPreviewService';
 import {
   getUserPreferences,
   saveUserPreferences,
@@ -195,6 +197,11 @@ export const FeedView: React.FC<FeedViewProps> = ({
   const [autoPlayOnScroll, setAutoPlayOnScroll] = useState<boolean>(
     () => getUserPreferences().autoplay_videos_on_scroll
   );
+
+  // Link preview detection in Composer
+  const [detectedLinkUrl, setDetectedLinkUrl] = useState<string | null>(null);
+  const [composerLinkMetadata, setComposerLinkMetadata] = useState<LinkMetadata | null>(null);
+  const [isLoadingLinkPreview, setIsLoadingLinkPreview] = useState(false);
 
   // Facebook-style "New Post" Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -537,19 +544,39 @@ export const FeedView: React.FC<FeedViewProps> = ({
     }
   };
 
-  // Handle pasting images directly from clipboard into textarea
+  // Handle pasting images or links directly from clipboard into textarea
   const handlePasteClipboard = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    // 1. Check for image files in clipboard
     const items = e.clipboardData?.items;
-    if (!items) return;
-    const imageFiles: File[] = [];
-    for (let i = 0; i < items.length; i += 1) {
-      if (items[i].type.startsWith('image/')) {
-        const file = items[i].getAsFile();
-        if (file) imageFiles.push(file);
+    if (items) {
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i += 1) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length > 0) {
+        processUploadedFiles(imageFiles);
       }
     }
-    if (imageFiles.length > 0) {
-      processUploadedFiles(imageFiles);
+
+    // 2. Check for URL text in clipboard
+    const pastedText = e.clipboardData?.getData('text') || '';
+    const extractedUrl = extractFirstValidUrl(pastedText);
+    if (extractedUrl && !detectedLinkUrl) {
+      setDetectedLinkUrl(extractedUrl);
+      setIsLoadingLinkPreview(true);
+      fetchLinkPreview(extractedUrl)
+        .then((meta) => {
+          setComposerLinkMetadata(meta);
+        })
+        .catch(() => {
+          // Silently fall back
+        })
+        .finally(() => {
+          setIsLoadingLinkPreview(false);
+        });
     }
   };
 
@@ -708,6 +735,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
       ? `${metaPrefix}\n\n${rawContent}`
       : rawContent;
 
+    const resolvedLinkedUrl = detectedLinkUrl || extractFirstValidUrl(finalContent) || pendingVideoOrSocialLink || undefined;
+    const resolvedLinkMetadata = composerLinkMetadata || undefined;
+
     setIsSubmittingPost(true);
     const tempPostId = -Date.now();
     const optimisticPost: PostItem = {
@@ -719,6 +749,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
       content: finalContent,
       images: attachedImages,
       videos: finalVideos,
+      linked_url: resolvedLinkedUrl,
+      link_metadata: resolvedLinkMetadata,
       likesCount: 0,
       commentsCount: 0,
       createdAt: 'Just now',
@@ -750,6 +782,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
         category: selectedCategory,
         images: attachedImages,
         videos: finalVideos,
+        linked_url: resolvedLinkedUrl,
+        link_metadata: resolvedLinkMetadata,
       });
 
       if (!res.success || !res.post) {
@@ -766,6 +800,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
       setAttachedVideos([]);
       setVideoUrlInput('');
       setShowVideoUrlInput(false);
+      setDetectedLinkUrl(null);
+      setComposerLinkMetadata(null);
       setSelectedCategory('General Update');
       setPostBackground('default');
       setPostFeeling(null);
@@ -1440,25 +1476,74 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   </div>
                 )}
 
-                {/* Smart Link Share V1: Live Preview when a URL is in post text */}
+                {/* Live Link Preview: small preview thumbnail under textarea with spinner while loading */}
                 {(() => {
-                  const firstUrl = extractFirstValidUrl(postContent);
-                  if (!firstUrl) return null;
+                  const activeUrl = detectedLinkUrl || extractFirstValidUrl(postContent);
+                  if (!activeUrl && !isLoadingLinkPreview) return null;
+
                   return (
-                    <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2">
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2.5">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                           <Link2 className="w-4 h-4 text-blue-500" />
                           <span>Link Preview</span>
                         </span>
-                        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                          Smart Link Share
-                        </span>
+                        {detectedLinkUrl && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDetectedLinkUrl(null);
+                              setComposerLinkMetadata(null);
+                            }}
+                            className="text-[11px] text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                          >
+                            Remove preview
+                          </button>
+                        )}
                       </div>
-                      <SharedEmbedCard
-                        url={firstUrl}
-                        autoPlayOnScroll={false}
-                      />
+
+                      {isLoadingLinkPreview ? (
+                        <div className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800">
+                          <RefreshCw className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                              Fetching link preview...
+                            </p>
+                            <p className="text-[11px] text-slate-400 truncate font-mono">
+                              {activeUrl}
+                            </p>
+                          </div>
+                        </div>
+                      ) : composerLinkMetadata ? (
+                        <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                          <div className="flex items-center gap-3 p-2.5">
+                            {composerLinkMetadata.image ? (
+                              <img
+                                src={composerLinkMetadata.image}
+                                alt={composerLinkMetadata.title}
+                                className="w-16 h-16 rounded-lg object-cover shrink-0"
+                              />
+                            ) : (
+                              <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 text-slate-400">
+                                <Globe className="w-6 h-6" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                                {composerLinkMetadata.site_name || composerLinkMetadata.type}
+                              </span>
+                              <h5 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                                {composerLinkMetadata.title || activeUrl}
+                              </h5>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
+                                {composerLinkMetadata.description || activeUrl}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : activeUrl ? (
+                        <LinkPreview url={activeUrl} autoPlayOnScroll={false} />
+                      ) : null}
                     </div>
                   );
                 })()}
@@ -1893,7 +1978,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
             );
             const firstPostUrl =
               extractFirstValidUrl(post.content) ||
-              (post.videos && post.videos.length > 0 ? extractFirstValidUrl(post.videos[0]) : null);
+              (post.videos && post.videos.length > 0 ? extractFirstValidUrl(post.videos[0]) || post.videos[0] : null);
             const hasSharedLinks = Boolean(firstPostUrl);
             const isLongContent = post.content.length > 360 && !hasSharedLinks;
             const isExpanded = expandedPostIds.has(post.id);
@@ -2115,11 +2200,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   </div>
                 )}
 
-                {/* Smart Link Share V1: Detected from post text or attached video */}
-                {firstPostUrl && (
+                {/* Universal Link Preview: link_metadata or detected URL */}
+                {(post.link_metadata || post.linked_url || firstPostUrl) && (
                   <div className="mb-4">
-                    <SharedEmbedCard
-                      url={firstPostUrl}
+                    <LinkPreview
+                      url={post.linked_url || firstPostUrl || undefined}
+                      data={post.link_metadata}
                       autoPlayOnScroll={autoPlayOnScroll}
                     />
                   </div>

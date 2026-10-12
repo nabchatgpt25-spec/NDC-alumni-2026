@@ -147,6 +147,9 @@ export function isPostSaved(postId: number): boolean {
 
 export function setSavedPosts(posts: PostItem[]) {
   saveSavedPosts(posts);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ndc_saved_posts_updated', { detail: { posts } }));
+  }
 }
 
 export function toggleSavePost(post: PostItem): boolean {
@@ -163,6 +166,13 @@ export function toggleSavePost(post: PostItem): boolean {
     }
   }
   saveSavedPosts(currentSaved);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('ndc_saved_posts_updated', {
+        detail: { postId: post.id, isSaved: isSavedNow, posts: currentSaved },
+      })
+    );
+  }
   return isSavedNow;
 }
 

@@ -213,7 +213,7 @@ export function parseValidYouTubeUrl(rawUrl: string): ValidYouTubeResult {
       return {
         isValid: true,
         videoId,
-        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?rel=0`,
+        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1&playsinline=1&rel=0`,
         isShorts,
       };
     }
@@ -753,37 +753,82 @@ export const AutoPlayVideoPlayer: React.FC<{
 }> = ({ src, poster, autoPlayOnScroll = true }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isMuted, setIsMuted] = useState(true);
+  // Resume with sound by default (unmuted)
+  const [isMuted, setIsMuted] = useState(false);
+  const isMutedRef = useRef(false);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   useEffect(() => {
     const videoEl = videoRef.current;
     const containerEl = containerRef.current;
     if (!videoEl || !containerEl) return;
 
-    if (!autoPlayOnScroll) {
-      if (!videoEl.paused) {
-        videoEl.pause();
+    // When the user interacts with the page, ensure sound is unmuted if user desires sound
+    const handleUserInteraction = () => {
+      if (!isMutedRef.current && videoEl && videoEl.muted) {
+        videoEl.muted = false;
+        setIsMuted(false);
       }
-      return;
-    }
+    };
+    window.addEventListener('click', handleUserInteraction, { passive: true });
+    window.addEventListener('touchstart', handleUserInteraction, { passive: true });
 
+    const checkVisibility = () => {
+      if (!containerEl || !videoEl) return;
+      const rect = containerEl.getBoundingClientRect();
+      const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+      const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0);
+      const ratio = rect.height > 0 ? visibleHeight / rect.height : 0;
+
+      // When scrolled out of viewport: pause
+      if (rect.bottom < 40 || rect.top > windowHeight - 40 || ratio < 0.35) {
+        if (!videoEl.paused) {
+          videoEl.pause();
+        }
+      } else if (ratio >= 0.5) {
+        // When visible again in viewport: resume with sound
+        if (autoPlayOnScroll && videoEl.paused) {
+          document.querySelectorAll('video').forEach((otherVid) => {
+            if (otherVid !== videoEl && !otherVid.paused) {
+              otherVid.pause();
+            }
+          });
+
+          // Resume with sound
+          videoEl.muted = isMutedRef.current;
+          videoEl.play().catch(() => {
+            // If browser blocks unmuted playback before first gesture, fallback to muted temporarily
+            videoEl.muted = true;
+            videoEl.play().catch(() => {});
+          });
+        }
+      }
+    };
+
+    // 1. IntersectionObserver for viewport entry and exit
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
-            document.querySelectorAll('video').forEach((otherVid) => {
-              if (otherVid !== videoEl && !otherVid.paused) {
-                otherVid.pause();
-              }
-            });
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            if (autoPlayOnScroll) {
+              document.querySelectorAll('video').forEach((otherVid) => {
+                if (otherVid !== videoEl && !otherVid.paused) {
+                  otherVid.pause();
+                }
+              });
 
-            videoEl.muted = isMuted;
-            videoEl.play().catch(() => {
-              videoEl.muted = true;
-              setIsMuted(true);
-              videoEl.play().catch(() => {});
-            });
-          } else if (!entry.isIntersecting || entry.intersectionRatio < 0.25) {
+              // Resume with sound
+              videoEl.muted = isMutedRef.current;
+              videoEl.play().catch(() => {
+                videoEl.muted = true;
+                videoEl.play().catch(() => {});
+              });
+            }
+          } else if (!entry.isIntersecting || entry.intersectionRatio < 0.35) {
+            // Pause any video that is scrolled out of the viewport
             if (!videoEl.paused) {
               videoEl.pause();
             }
@@ -791,16 +836,36 @@ export const AutoPlayVideoPlayer: React.FC<{
         });
       },
       {
-        threshold: [0, 0.25, 0.45, 0.75],
+        threshold: [0, 0.15, 0.35, 0.5, 0.75, 1.0],
       }
     );
 
     observer.observe(containerEl);
 
+    // 2. Window scroll & resize listeners for high-speed scrolling accuracy
+    let rafId: number | null = null;
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        checkVisibility();
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll, { passive: true });
+
     return () => {
       observer.disconnect();
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
     };
-  }, [autoPlayOnScroll, isMuted]);
+  }, [autoPlayOnScroll]);
 
   const toggleMute = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -809,6 +874,7 @@ export const AutoPlayVideoPlayer: React.FC<{
     const nextMuted = !isMuted;
     videoEl.muted = nextMuted;
     setIsMuted(nextMuted);
+    isMutedRef.current = nextMuted;
   };
 
   return (
@@ -828,7 +894,7 @@ export const AutoPlayVideoPlayer: React.FC<{
         className="w-full max-h-[520px] object-contain bg-black"
       />
 
-      {/* Mute/unmute control; autoplay remains managed by the visibility observer. */}
+      {/* Mute/unmute control; autoplay remains managed by visibility */}
       <div className="absolute top-3 right-3 flex items-center pointer-events-none z-10">
         <button
           type="button"
@@ -860,10 +926,29 @@ export const AutoPlayYouTubeEmbed: React.FC<{
 }> = ({ embedUrl, originalUrl, titleHint = 'YouTube Video', autoPlayOnScroll = true }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const ytPlayerRef = useRef<any>(null);
+  const wasPlayingRef = useRef<boolean>(false);
   const [isInView, setIsInView] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
 
-  const sendYouTubeCommand = (func: 'playVideo' | 'pauseVideo' | 'mute' | 'unMute') => {
+  // Ensure iframe URL contains enablejsapi=1, playsinline=1, and origin for postMessage API control
+  const normalizedEmbedUrl = React.useMemo(() => {
+    try {
+      const u = new URL(embedUrl);
+      u.searchParams.set('enablejsapi', '1');
+      u.searchParams.set('playsinline', '1');
+      u.searchParams.set('rel', '0');
+      if (typeof window !== 'undefined') {
+        u.searchParams.set('origin', window.location.origin);
+      }
+      return u.toString();
+    } catch {
+      const sep = embedUrl.includes('?') ? '&' : '?';
+      return `${embedUrl}${sep}enablejsapi=1&playsinline=1&rel=0`;
+    }
+  }, [embedUrl]);
+
+  const sendYouTubeCommand = (func: 'playVideo' | 'pauseVideo' | 'stopVideo' | 'mute' | 'unMute') => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     try {
@@ -875,65 +960,182 @@ export const AutoPlayYouTubeEmbed: React.FC<{
         }),
         '*'
       );
+      win.postMessage(
+        JSON.stringify({
+          event: 'command',
+          func,
+          args: '',
+        }),
+        '*'
+      );
+      win.postMessage(`{"event":"command","func":"${func}","args":""}`, '*');
     } catch {
       // Ignore cross-origin frame timing errors
     }
   };
 
+  // Connect YouTube IFrame API to track play state and pause programmatically
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (typeof window !== 'undefined') {
+      if (!(window as any).YT) {
+        const existing = document.getElementById('youtube-iframe-api');
+        if (!existing) {
+          const tag = document.createElement('script');
+          tag.id = 'youtube-iframe-api';
+          tag.src = 'https://www.youtube.com/iframe_api';
+          document.body.appendChild(tag);
+        }
+      }
+
+      const initPlayer = () => {
+        if (isCancelled || !iframeRef.current || !(window as any).YT?.Player) return;
+        try {
+          ytPlayerRef.current = new (window as any).YT.Player(iframeRef.current, {
+            events: {
+              onStateChange: (event: any) => {
+                // 1 = Playing, 2 = Paused, 0 = Ended
+                if (event.data === 1) {
+                  wasPlayingRef.current = true;
+                } else if (event.data === 2) {
+                  wasPlayingRef.current = false;
+                }
+              },
+            },
+          });
+        } catch {
+          // Fallback to postMessage
+        }
+      };
+
+      if ((window as any).YT?.Player) {
+        initPlayer();
+      } else {
+        const timer = setInterval(() => {
+          if ((window as any).YT?.Player) {
+            clearInterval(timer);
+            initPlayer();
+          }
+        }, 150);
+        setTimeout(() => clearInterval(timer), 4000);
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch {}
+      }
+    };
+  }, []);
+
+  // Monitor visibility: pause when scrolled out of viewport, resume with sound when visible again
   useEffect(() => {
     const containerEl = containerRef.current;
     if (!containerEl) return;
 
-    if (!autoPlayOnScroll) {
-      sendYouTubeCommand('pauseVideo');
+    const pausePlayback = () => {
       setIsInView(false);
-      return;
-    }
+      // 1. Programmatic YT Player API pause
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function') {
+        try {
+          ytPlayerRef.current.pauseVideo();
+        } catch {}
+      }
+      // 2. Redundant postMessage commands
+      sendYouTubeCommand('pauseVideo');
+      sendYouTubeCommand('stopVideo');
+    };
 
-    let retryTimer1: number | undefined;
-    let retryTimer2: number | undefined;
+    const resumePlayback = () => {
+      setIsInView(true);
+      // Resume if user was actively playing this video, or if autoPlayOnScroll is enabled
+      if (wasPlayingRef.current || autoPlayOnScroll) {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.playVideo === 'function') {
+          try {
+            ytPlayerRef.current.unMute();
+            ytPlayerRef.current.playVideo();
+          } catch {}
+        }
+        sendYouTubeCommand('unMute');
+        sendYouTubeCommand('playVideo');
+      }
+    };
+
+    const checkVisibility = () => {
+      if (!containerEl) return;
+      const rect = containerEl.getBoundingClientRect();
+      const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+      const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0);
+      const ratio = rect.height > 0 ? visibleHeight / rect.height : 0;
+
+      // Scrolled out of viewport: pause immediately
+      if (rect.bottom < 40 || rect.top > windowHeight - 40 || ratio < 0.35) {
+        pausePlayback();
+      } else if (ratio >= 0.5) {
+        resumePlayback();
+      }
+    };
 
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
-            setIsInView(true);
-            const triggerPlay = () => {
-              if (isMuted) {
-                sendYouTubeCommand('mute');
-              }
-              sendYouTubeCommand('playVideo');
-            };
-            triggerPlay();
-            retryTimer1 = window.setTimeout(triggerPlay, 350);
-            retryTimer2 = window.setTimeout(triggerPlay, 900);
-          } else if (!entry.isIntersecting || entry.intersectionRatio < 0.25) {
-            setIsInView(false);
-            window.clearTimeout(retryTimer1);
-            window.clearTimeout(retryTimer2);
-            sendYouTubeCommand('pauseVideo');
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            resumePlayback();
+          } else if (!entry.isIntersecting || entry.intersectionRatio < 0.35) {
+            pausePlayback();
           }
         });
       },
       {
-        threshold: [0, 0.25, 0.45, 0.75],
+        threshold: [0, 0.15, 0.35, 0.5, 0.75, 1.0],
       }
     );
 
     observer.observe(containerEl);
-    return () => {
-      window.clearTimeout(retryTimer1);
-      window.clearTimeout(retryTimer2);
-      observer.disconnect();
+
+    let rafId: number | null = null;
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        checkVisibility();
+      });
     };
-  }, [autoPlayOnScroll, isMuted]);
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [autoPlayOnScroll]);
 
   const handleToggleYouTubeMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
     if (nextMuted) {
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.mute === 'function') {
+        try {
+          ytPlayerRef.current.mute();
+        } catch {}
+      }
       sendYouTubeCommand('mute');
     } else {
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.unMute === 'function') {
+        try {
+          ytPlayerRef.current.unMute();
+          ytPlayerRef.current.playVideo();
+        } catch {}
+      }
       sendYouTubeCommand('unMute');
       sendYouTubeCommand('playVideo');
     }
@@ -961,7 +1163,7 @@ export const AutoPlayYouTubeEmbed: React.FC<{
                   : 'bg-slate-800 text-slate-400'
               }`}
             >
-              {isInView ? '● Auto-Play ON' : '○ Paused on Scroll'}
+              {isInView ? '● Active in View' : '○ Paused on Scroll'}
             </span>
           )}
         </div>
@@ -1001,12 +1203,12 @@ export const AutoPlayYouTubeEmbed: React.FC<{
       <div className="aspect-video w-full bg-black">
         <iframe
           ref={iframeRef}
-          src={embedUrl}
+          src={normalizedEmbedUrl}
           title={titleHint}
           onLoad={() => {
-            if (autoPlayOnScroll && isInView) {
-              if (isMuted) sendYouTubeCommand('mute');
-              sendYouTubeCommand('playVideo');
+            const win = iframeRef.current?.contentWindow;
+            if (win) {
+              win.postMessage('{"event":"listening"}', '*');
             }
           }}
           className="w-full h-full border-0"
@@ -1096,22 +1298,62 @@ const FacebookEmbedCard: React.FC<{
     const containerEl = containerRef.current;
     if (!containerEl) return;
 
+    const checkVisibility = () => {
+      if (!containerEl) return;
+      const rect = containerEl.getBoundingClientRect();
+      const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+      const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0);
+      const ratio = rect.height > 0 ? visibleHeight / rect.height : 0;
+
+      if (rect.bottom < 40 || rect.top > windowHeight - 40 || ratio < 0.35) {
+        setIsInView(false);
+        if (showIframeEmbed) {
+          setShowIframeEmbed(false);
+        }
+      } else if (ratio >= 0.5) {
+        setIsInView(true);
+      }
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
             setIsInView(true);
-          } else if (!entry.isIntersecting || entry.intersectionRatio < 0.25) {
+          } else if (!entry.isIntersecting || entry.intersectionRatio < 0.35) {
             setIsInView(false);
+            if (showIframeEmbed) {
+              setShowIframeEmbed(false);
+            }
           }
         });
       },
-      { threshold: [0, 0.25, 0.45, 0.75] }
+      { threshold: [0, 0.15, 0.35, 0.5, 0.75, 1.0] }
     );
 
     observer.observe(containerEl);
-    return () => observer.disconnect();
-  }, [isVideo, autoPlayOnScroll]);
+
+    let rafId: number | null = null;
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        checkVisibility();
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [isVideo, autoPlayOnScroll, showIframeEmbed]);
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1443,7 +1685,7 @@ const FacebookEmbedCard: React.FC<{
 export const SharedEmbedCard: React.FC<{
   url: string;
   autoPlayOnScroll?: boolean;
-}> = ({ url }) => {
+}> = ({ url, autoPlayOnScroll = true }) => {
   if (!url || typeof url !== 'string') return null;
 
   const trimmed = url.trim();
@@ -1471,47 +1713,16 @@ export const SharedEmbedCard: React.FC<{
 
   const safeUrl = parsed.toString();
 
-  // 1. YouTube: embed responsive, lazy-loaded video using youtube-nocookie.com
+  // 1. YouTube: embed responsive video with autoplay and scroll-stop
   const yt = parseValidYouTubeUrl(safeUrl);
   if (yt.isValid && yt.embedUrl) {
     return (
-      <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-slate-950 shadow-xs">
-        {/* YouTube Header Bar with View Original */}
-        <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-900 text-white text-xs border-b border-slate-800">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="px-2 py-0.5 rounded-md bg-red-600 text-white font-bold text-[10px] uppercase tracking-wider shrink-0">
-              YouTube
-            </span>
-            <span className="font-semibold text-slate-300 truncate text-[11px] sm:text-xs">
-              {yt.isShorts ? 'YouTube Shorts' : 'YouTube Video'}
-            </span>
-          </div>
-
-          <a
-            href={safeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 hover:underline shrink-0 transition-colors cursor-pointer"
-            title="Open on YouTube"
-          >
-            <span>View Original</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-
-        {/* Responsive Lazy-Loaded Iframe using youtube-nocookie.com */}
-        <div className="w-full aspect-video bg-black">
-          <iframe
-            src={yt.embedUrl}
-            title="YouTube video player"
-            loading="lazy"
-            className="w-full h-full border-0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        </div>
-      </div>
+      <AutoPlayYouTubeEmbed
+        embedUrl={yt.embedUrl}
+        originalUrl={safeUrl}
+        titleHint={yt.isShorts ? 'YouTube Shorts' : 'YouTube Video'}
+        autoPlayOnScroll={autoPlayOnScroll}
+      />
     );
   }
 
@@ -1539,13 +1750,7 @@ export const SharedEmbedCard: React.FC<{
           </a>
         </div>
         <div className="w-full aspect-video bg-black flex items-center justify-center">
-          <video
-            src={safeUrl}
-            controls
-            playsInline
-            preload="metadata"
-            className="w-full h-full object-contain"
-          />
+          <AutoPlayVideoPlayer src={safeUrl} autoPlayOnScroll={autoPlayOnScroll} />
         </div>
       </div>
     );
@@ -1594,4 +1799,4 @@ export const SharedEmbedCard: React.FC<{
 };
 
 export const SmartLinkCard = SharedEmbedCard;
-
+export const Video = AutoPlayVideoPlayer;

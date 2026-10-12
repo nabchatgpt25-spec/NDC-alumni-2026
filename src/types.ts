@@ -270,6 +270,8 @@ export interface PostItem {
   category?: 'General Update' | 'Tech & Innovation' | 'Professional Insights' | 'Reunion' | 'Achievement';
   isEdited?: boolean;
   isSaved?: boolean;
+  linked_url?: string;
+  link_metadata?: any;
 }
 
 export interface NotificationItem {

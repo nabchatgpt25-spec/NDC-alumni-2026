@@ -264,6 +264,8 @@ function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
     content: row.content || '',
     images: Array.isArray(row.images) ? row.images : [],
     videos: Array.isArray(row.videos) ? row.videos : [],
+    linked_url: row.linked_url || undefined,
+    link_metadata: row.link_metadata || undefined,
     likesCount: Number(row.likes_count) || (row.post_likes?.length ?? 0),
     commentsCount: comments.length,
     createdAt: new Date(row.created_at).toLocaleDateString(),
@@ -647,6 +649,8 @@ export async function createFeedPostInDb(params: {
   category: string;
   images?: string[];
   videos?: string[];
+  linked_url?: string;
+  link_metadata?: any;
 }): Promise<{ success: boolean; post?: PostItem; error?: string }> {
   if (!isSupabaseConfigured) {
     const fallbackId = Date.now();
@@ -816,32 +820,79 @@ export async function createFeedPostInDb(params: {
     }
 
     // 5. Prepare insert payload with real alumni_profiles.id and CDN-hosted media URLs
-    const insertPayload = {
+    const insertPayload: Record<string, any> = {
       author_id: realAuthorId,
       content: safeContent,
       category: safeCategory,
       images: uploadedImages,
       videos: uploadedVideos,
     };
+    if (params.linked_url) {
+      insertPayload.linked_url = params.linked_url;
+    }
+    if (params.link_metadata) {
+      insertPayload.link_metadata = params.link_metadata;
+    }
 
     // 6. Insert into public.posts
-    const { data: insertedRow, error: insertError } = await supabase
-      .from('posts')
-      .insert(insertPayload)
-      .select(`
-        id,
-        author_id,
-        content,
-        category,
-        images,
-        videos,
-        likes_count,
-        comments_count,
-        is_pinned,
-        is_edited,
-        created_at
-      `)
-      .single();
+    let insertedRow: any = null;
+    let insertError: any = null;
+
+    try {
+      const res = await supabase
+        .from('posts')
+        .insert(insertPayload)
+        .select(`
+          id,
+          author_id,
+          content,
+          category,
+          images,
+          videos,
+          likes_count,
+          comments_count,
+          is_pinned,
+          is_edited,
+          created_at
+        `)
+        .single();
+      insertedRow = res.data;
+      insertError = res.error;
+    } catch (err: any) {
+      insertError = err;
+    }
+
+    // If error was due to unknown columns (e.g. migration 012 not yet applied by owner), retry without link columns
+    if (insertError && (params.linked_url || params.link_metadata)) {
+      const basePayload = {
+        author_id: realAuthorId,
+        content: safeContent,
+        category: safeCategory,
+        images: uploadedImages,
+        videos: uploadedVideos,
+      };
+      const retryRes = await supabase
+        .from('posts')
+        .insert(basePayload)
+        .select(`
+          id,
+          author_id,
+          content,
+          category,
+          images,
+          videos,
+          likes_count,
+          comments_count,
+          is_pinned,
+          is_edited,
+          created_at
+        `)
+        .single();
+      if (!retryRes.error && retryRes.data) {
+        insertedRow = retryRes.data;
+        insertError = null;
+      }
+    }
 
     if (insertError || !insertedRow) {
       console.error('Supabase createFeedPost insert error:', insertError);
