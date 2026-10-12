@@ -460,9 +460,41 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   // Edit form state (restored from localStorage draft if available)
   const sanitizeHscYear = (y?: number) => (y && y >= 1949 ? y : 0);
+  const currentYear = new Date().getFullYear();
+  const maxAllowedHscYear = currentYear + 1;
+  const minAllowedHscYear = 1949;
+  const hscYearOptions = React.useMemo(() => {
+    const list: number[] = [];
+    for (let y = minAllowedHscYear; y <= maxAllowedHscYear; y++) {
+      list.push(y);
+    }
+    return list;
+  }, [minAllowedHscYear, maxAllowedHscYear]);
+
   const [editError, setEditError] = useState<string>('');
   const [editName, setEditName] = useState<string>(initialEditDraft?.editName ?? profile.fullName);
   const [editBatch, setEditBatch] = useState<number>(sanitizeHscYear(initialEditDraft?.editBatch ?? profile.batchYear));
+  const [editBatchSelect, setEditBatchSelect] = useState<string>(() => {
+    const init = sanitizeHscYear(initialEditDraft?.editBatch ?? profile.batchYear);
+    return init >= minAllowedHscYear && init <= maxAllowedHscYear ? String(init) : '';
+  });
+  const [editBatchInput, setEditBatchInput] = useState<string>('');
+
+  const handleBatchSelectChange = (val: string) => {
+    setEditBatchSelect(val);
+    setEditBatchInput('');
+    const num = val ? Number(val) : 0;
+    setEditBatch(num);
+  };
+
+  const handleBatchInputChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 4);
+    setEditBatchInput(digits);
+    // Logic: If user types in text field, use that value. Text field overrides dropdown. If empty, fall back to dropdown selection.
+    const effectiveStr = digits || editBatchSelect;
+    const num = effectiveStr ? Number(effectiveStr) : 0;
+    setEditBatch(num);
+  };
   const [editCollegeRoll, setEditCollegeRoll] = useState<string>(initialEditDraft?.editCollegeRoll ?? (profile.collegeRoll || ''));
   const [editBio, setEditBio] = useState<string>(initialEditDraft?.editBio ?? (profile.bio || ''));
   const [editPosition, setEditPosition] = useState<string>(initialEditDraft?.editPosition ?? (profile.position || ''));
@@ -493,7 +525,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const savedDraft = loadEditDraft();
       if (savedDraft) {
         setEditName(savedDraft.editName ?? currentUser.fullName);
-        setEditBatch(sanitizeHscYear(savedDraft.editBatch ?? currentUser.batchYear));
+        const b = sanitizeHscYear(savedDraft.editBatch ?? currentUser.batchYear);
+        setEditBatch(b);
+        setEditBatchSelect(b >= minAllowedHscYear && b <= maxAllowedHscYear ? String(b) : '');
+        setEditBatchInput('');
         setEditCollegeRoll(savedDraft.editCollegeRoll ?? (currentUser.collegeRoll || ''));
         setEditBio(savedDraft.editBio ?? (currentUser.bio || ''));
         setEditPosition(savedDraft.editPosition ?? (currentUser.position || ''));
@@ -515,7 +550,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         setEditBadges(savedDraft.editBadges ?? (currentUser.badges || []));
       } else {
         setEditName(currentUser.fullName);
-        setEditBatch(sanitizeHscYear(currentUser.batchYear));
+        const b = sanitizeHscYear(currentUser.batchYear);
+        setEditBatch(b);
+        setEditBatchSelect(b >= minAllowedHscYear && b <= maxAllowedHscYear ? String(b) : '');
+        setEditBatchInput('');
         setEditCollegeRoll(currentUser.collegeRoll || '');
         setEditBio(currentUser.bio || '');
         setEditPosition(currentUser.position || '');
@@ -797,10 +835,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         ? editProfessionOther.trim()
         : editProfession;
 
-    const currentYear = new Date().getFullYear();
-    const rawBatchVal = Number(editBatch);
-    if (!editBatch || isNaN(rawBatchVal) || rawBatchVal < 1949 || rawBatchVal > currentYear + 1) {
-      setEditError(`Please provide a valid Notre Dame HSC Year between 1949 and ${currentYear + 1}.`);
+    const effectiveYearStr = editBatchInput.trim() ? editBatchInput.trim() : editBatchSelect.trim();
+    const rawBatchVal = Number(effectiveYearStr);
+    if (!effectiveYearStr || isNaN(rawBatchVal) || rawBatchVal < minAllowedHscYear || rawBatchVal > maxAllowedHscYear) {
+      setEditError(`Please provide a valid Notre Dame HSC Year between ${minAllowedHscYear} and ${maxAllowedHscYear}.`);
       handleScrollToField('batchYear');
       return;
     }
@@ -810,7 +848,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     const updatedData: Partial<AlumniProfile> = {
       fullName: editName,
       batchYear: cleanSavedBatch,
-      collegeRoll: editCollegeRoll,
+      collegeRoll: editCollegeRoll?.trim() ? editCollegeRoll.trim().slice(0, 32) : (profile.collegeRoll || undefined),
       bio: editBio,
       position: editPosition,
       institution: editInstitution,
@@ -984,6 +1022,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       ? `Notre Dame HSC Year: ${profile.batchYear}`
                       : 'Notre Dame HSC Year: N/A'}
                   </span>
+                  {profile.collegeRoll && (
+                    <span className="px-3 py-1 rounded-full bg-blue-500/15 dark:bg-blue-500/20 border border-blue-400/30 text-blue-700 dark:text-blue-300 font-mono font-extrabold backdrop-blur-md">
+                      Roll: {profile.collegeRoll}
+                    </span>
+                  )}
                   <span className="text-slate-700 dark:text-slate-200 font-semibold">{profile.profession}</span>
                   {profile.cadre && <span className="text-slate-500 dark:text-slate-400">· {profile.cadre}</span>}
                   {(donorRecord?.isRegisteredDonor || profile.bloodGroup) && (
@@ -1986,7 +2029,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 1. Personal Information
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Full Name
                   </label>
@@ -2000,25 +2043,46 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   />
                 </div>
 
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Notre Dame HSC Year
                   </label>
-                  <input
-                    id="edit-field-batchYear"
-                    type="number"
-                    inputMode="numeric"
-                    min={1949}
-                    max={new Date().getFullYear() + 1}
-                    placeholder="e.g. 2024"
-                    value={editBatch && editBatch >= 1949 ? editBatch : ''}
-                    onChange={(e) => {
-                      const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
-                      setEditBatch(digits ? Number(digits) : 0);
-                    }}
-                    required
-                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <div className="grid grid-cols-2 gap-2" id="edit-field-batchYear">
+                    {/* Left: select dropdown showing all years 1949 to (current year + 1) */}
+                    <div className="relative min-w-0 flex items-center">
+                      <select
+                        value={editBatchSelect}
+                        onChange={(e) => handleBatchSelectChange(e.target.value)}
+                        className="w-full px-3 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer truncate"
+                        aria-label="Select Notre Dame HSC Year"
+                      >
+                        <option value="" className="text-slate-400">Select Year...</option>
+                        {hscYearOptions.map((yr) => (
+                          <option key={yr} value={yr}>
+                            {yr}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute right-2.5 pointer-events-none text-slate-400">
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+
+                    {/* Right: text field for manual entry with placeholder "Or type year..." */}
+                    <div className="min-w-0">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1949}
+                        max={maxAllowedHscYear}
+                        placeholder="Or type year..."
+                        value={editBatchInput}
+                        onChange={(e) => handleBatchInputChange(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        aria-label="Or type Notre Dame HSC Year"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="sm:col-span-2">
@@ -2028,7 +2092,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <input
                     id="edit-field-collegeRoll"
                     type="text"
-                    placeholder="e.g. 118042 or 214015"
+                    placeholder="12405101"
+                    maxLength={32}
                     value={editCollegeRoll}
                     onChange={(e) => setEditCollegeRoll(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"

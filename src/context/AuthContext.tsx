@@ -586,7 +586,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cleanPhone = norm.formatted;
     }
 
-    setCurrentUser((prev) => ({ ...prev, ...updated, phone: cleanPhone ?? prev.phone }));
+    const cleanRoll = updated.collegeRoll?.trim() ? updated.collegeRoll.trim().slice(0, 32) : undefined;
+    const finalRoll = cleanRoll || currentUser.collegeRoll || undefined;
+
+    setCurrentUser((prev) => ({
+      ...prev,
+      ...updated,
+      phone: cleanPhone ?? prev.phone,
+      collegeRoll: finalRoll,
+    }));
     if (isSupabaseConfigured && currentUser.authUserId) {
       try {
         const updatePayload: Record<string, any> = {
@@ -601,7 +609,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           bio: updated.bio,
           whatsapp: updated.whatsapp,
           fb_link: updated.fbLink,
-          college_roll: updated.collegeRoll !== undefined ? updated.collegeRoll : undefined,
           batch_year:
             updated.batchYear !== undefined
               ? (updated.batchYear && Number(updated.batchYear) >= 1949 && Number(updated.batchYear) <= new Date().getFullYear() + 1
@@ -629,6 +636,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (updatePayload[k] === undefined) delete updatePayload[k];
         });
 
+        if (cleanRoll) {
+          updatePayload.college_roll = cleanRoll;
+        }
+
         if (cleanPhone !== undefined) {
           updatePayload.phone = cleanPhone;
           // Protect against identifier hijacking: changing phone clears verification
@@ -645,7 +656,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           data: {
             full_name: updated.fullName,
             batch_year: updatePayload.batch_year,
-            college_roll: updated.collegeRoll,
+            college_roll: finalRoll,
             blood_group: updated.bloodGroup,
             phone: cleanPhone,
             academic_stream: updated.academicStream,

@@ -22,7 +22,8 @@ import {
   Heart,
   HelpCircle,
   KeyRound,
-  UserPlus
+  UserPlus,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { BATCH_LIST } from '../data/mockData';
@@ -100,6 +101,7 @@ interface RegistrationFormDraft {
   fullName?: string;
   batchYear?: string;
   academicGroup?: string;
+  collegeRoll?: string;
   bmdcNumber?: string;
   position?: string;
   institution?: string;
@@ -148,9 +150,47 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Register Form State (14 fields) initialized from localStorage draft
   const [initialDraft] = useState<RegistrationFormDraft>(() => loadRegistrationDraft());
   const [fullName, setFullName] = useState(initialDraft.fullName || '');
-  const [batchYear, setBatchYear] = useState<string>(initialDraft.batchYear || '');
+
+  const currentYear = new Date().getFullYear();
+  const maxAllowedHscYear = currentYear + 1;
+  const minAllowedHscYear = 1949;
+  const hscYearOptions = React.useMemo(() => {
+    const list: number[] = [];
+    for (let y = minAllowedHscYear; y <= maxAllowedHscYear; y++) {
+      list.push(y);
+    }
+    return list;
+  }, [minAllowedHscYear, maxAllowedHscYear]);
+
+  const [batchYearSelect, setBatchYearSelect] = useState<string>(() => {
+    const d = (initialDraft.batchYear || '').trim();
+    const n = Number(d);
+    return n >= minAllowedHscYear && n <= maxAllowedHscYear ? d : '';
+  });
+  const [batchYearInput, setBatchYearInput] = useState<string>(() => {
+    return initialDraft.batchYear || '';
+  });
+  const [batchYear, setBatchYear] = useState<string>(() => {
+    const d = (initialDraft.batchYear || '').trim();
+    return d;
+  });
+
+  const handleBatchSelectChange = (val: string) => {
+    setBatchYearSelect(val);
+    setBatchYearInput('');
+    setBatchYear(val);
+  };
+
+  const handleBatchInputChange = (raw: string) => {
+    const digitsOnly = raw.replace(/\D/g, '').slice(0, 4);
+    setBatchYearInput(digitsOnly);
+    // Logic: If user types in text field, use that value. Text field overrides dropdown. If empty, fall back to dropdown selection.
+    const effective = digitsOnly || batchYearSelect;
+    setBatchYear(effective);
+  };
+
   const [academicGroup, setAcademicGroup] = useState<string>(initialDraft.academicGroup || '');
-  const [bmdcNumber, setBmdcNumber] = useState(initialDraft.bmdcNumber || '');
+  const [bmdcNumber, setBmdcNumber] = useState(initialDraft.collegeRoll || initialDraft.bmdcNumber || '');
   const [selectedAvatar] = useState(AVATAR_PRESETS[0]);
   const [position, setPosition] = useState(initialDraft.position || '');
   const [institution, setInstitution] = useState(initialDraft.institution || '');
@@ -193,6 +233,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         fullName,
         batchYear,
         academicGroup,
+        collegeRoll: bmdcNumber,
         bmdcNumber,
         position,
         institution,
@@ -350,15 +391,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMessage('Please provide your Full Name.');
       return;
     }
-    if (!batchYear.trim() || !/^\d{4}$/.test(batchYear.trim())) {
+    const effectiveBatchYear = batchYearInput.trim() ? batchYearInput.trim() : batchYearSelect.trim();
+    if (!effectiveBatchYear) {
+      setErrorMessage('Please select or enter your Notre Dame HSC Year.');
+      return;
+    }
+    if (!/^\d{4}$/.test(effectiveBatchYear)) {
       setErrorMessage('Please enter a valid 4-digit Notre Dame HSC Year (e.g., 2024).');
       return;
     }
-    const parsedYear = Math.round(Number(batchYear.trim()));
-    const currentYear = new Date().getFullYear();
-    const maxAllowedYear = currentYear + 1;
-    if (parsedYear < 1949 || parsedYear > maxAllowedYear) {
-      setErrorMessage(`Please enter a valid 4-digit Notre Dame HSC Year between 1949 and ${maxAllowedYear} (e.g., 2024).`);
+    const parsedYear = Math.round(Number(effectiveBatchYear));
+    if (parsedYear < minAllowedHscYear || parsedYear > maxAllowedHscYear) {
+      setErrorMessage(`Please enter a valid 4-digit Notre Dame HSC Year between ${minAllowedHscYear} and ${maxAllowedHscYear} (e.g., 2024).`);
       return;
     }
     if (!phone.trim()) {
@@ -873,29 +917,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
+                  className="sm:col-span-2"
                 >
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Notre Dame HSC Year <span className="text-rose-500">*</span>
                   </label>
-                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-500 dark:text-slate-400">
-                      <GraduationCap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Left: select dropdown showing all years 1949 to (current year + 1) */}
+                    <div className="relative min-w-0 flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                      <div className="pl-3 text-slate-500 dark:text-slate-400 pointer-events-none">
+                        <GraduationCap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <select
+                        value={batchYearSelect}
+                        onChange={(e) => handleBatchSelectChange(e.target.value)}
+                        className="w-full pl-2 pr-7 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white bg-transparent focus:outline-none appearance-none cursor-pointer truncate"
+                        aria-label="Select Notre Dame HSC Year"
+                      >
+                        <option value="" className="bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400">
+                          Select Year...
+                        </option>
+                        {hscYearOptions.map((yr) => (
+                          <option key={yr} value={yr} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {yr}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute right-2.5 pointer-events-none text-slate-400">
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </div>
                     </div>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1949}
-                      max={new Date().getFullYear() + 1}
-                      step={1}
-                      placeholder="e.g. 2024"
-                      value={batchYear}
-                      onChange={(e) => {
-                        const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 4);
-                        setBatchYear(digitsOnly);
-                      }}
-                      required
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
+
+                    {/* Right: text field for manual entry with placeholder "Or type year..." */}
+                    <div className="relative min-w-0 flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1949}
+                        max={maxAllowedHscYear}
+                        step={1}
+                        placeholder="Or type year..."
+                        value={batchYearInput}
+                        onChange={(e) => handleBatchInputChange(e.target.value)}
+                        className="w-full px-3 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        aria-label="Or type Notre Dame HSC Year"
+                      />
+                    </div>
                   </div>
                 </motion.div>
 
@@ -904,6 +971,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.14 }}
+                  className="sm:col-span-2"
                 >
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     College Roll / Registration ID
