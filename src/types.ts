@@ -265,9 +265,23 @@ export interface PostItem {
   likesCount: number;
   commentsCount: number;
   createdAt: string;
-  likedByMe: boolean;
-  comments: PostComment[];
-  category?: 'General Update' | 'Tech & Innovation' | 'Professional Insights' | 'Reunion' | 'Achievement';
+  category?:
+    | 'Blood Donation'
+    | 'Emergency & Medical Aid'
+    | 'General Update'
+    | 'Tech & Innovation'
+    | 'Professional Insights'
+    | 'Job & Career Opportunities'
+    | 'Business & Startups'
+    | 'Higher Studies & Research'
+    | 'Campus Memories'
+    | 'Reunion'
+    | 'Sports & Tournaments'
+    | 'Achievement'
+    | 'Social Welfare & Relief'
+    | 'Book Club, Arts & Culture'
+    | 'Prayer & Condolence'
+    | string;
   isEdited?: boolean;
   isSaved?: boolean;
   linked_url?: string;

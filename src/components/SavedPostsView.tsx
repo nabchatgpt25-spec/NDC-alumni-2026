@@ -270,14 +270,6 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
                       <span>{post.createdAt}</span>
-                      {post.category && (
-                        <>
-                          <span>•</span>
-                          <span className="font-medium text-slate-600 dark:text-slate-300">
-                            {post.category}
-                          </span>
-                        </>
-                      )}
                     </div>
                   </div>
                 </div>

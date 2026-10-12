@@ -12,7 +12,7 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
-export function playSound(kind: 'like' | 'comment' | 'post' | 'pop' | 'theme' | 'tap') {
+export function playSound(kind: 'like' | 'comment' | 'post' | 'pop' | 'theme' | 'tap' | 'click') {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
@@ -33,6 +33,7 @@ export function playSound(kind: 'like' | 'comment' | 'post' | 'pop' | 'theme' | 
       pop: [600],
       theme: [523.25, 659.25, 783.99, 1046.5], // C-E-G-C chime
       tap: [720],
+      click: [720],
     };
 
     const seq = freqs[kind] || freqs.pop;

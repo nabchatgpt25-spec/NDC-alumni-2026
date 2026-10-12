@@ -858,10 +858,14 @@ export async function createFeedPostInDb(params: {
     // 4. Validate and sanitize content and category to satisfy schema constraints
     const validCategories = [
       'General Update',
+      'Blood Donation',
       'Tech & Innovation',
       'Professional Insights',
       'Reunion',
       'Achievement',
+      'Campus Memories',
+      'Higher Studies & Research',
+      'Prayer & Condolence',
     ];
     const safeCategory = params.category && validCategories.includes(params.category)
       ? params.category
@@ -948,6 +952,38 @@ export async function createFeedPostInDb(params: {
         .single();
       if (!retryRes.error && retryRes.data) {
         insertedRow = retryRes.data;
+        insertError = null;
+      }
+    }
+
+    // If error was due to enum constraint on category in older schemas, retry with General Update
+    if (insertError && insertError.message && /enum|category|post_category_type/i.test(insertError.message)) {
+      const enumFallbackPayload = {
+        author_id: realAuthorId,
+        content: safeContent,
+        category: 'General Update',
+        images: uploadedImages,
+        videos: uploadedVideos,
+      };
+      const enumRetryRes = await supabase
+        .from('posts')
+        .insert(enumFallbackPayload)
+        .select(`
+          id,
+          author_id,
+          content,
+          category,
+          images,
+          videos,
+          likes_count,
+          comments_count,
+          is_pinned,
+          is_edited,
+          created_at
+        `)
+        .single();
+      if (!enumRetryRes.error && enumRetryRes.data) {
+        insertedRow = { ...enumRetryRes.data, category: safeCategory };
         insertError = null;
       }
     }
@@ -1701,10 +1737,14 @@ export async function editFeedPostInDb(params: {
 
     const validCategories = [
       'General Update',
+      'Blood Donation',
       'Tech & Innovation',
       'Professional Insights',
       'Reunion',
       'Achievement',
+      'Campus Memories',
+      'Higher Studies & Research',
+      'Prayer & Condolence',
     ];
     const safeCategory = params.category && validCategories.includes(params.category)
       ? params.category

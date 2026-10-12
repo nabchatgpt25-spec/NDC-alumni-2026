@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Heart,
   MessageCircle,
@@ -34,7 +35,19 @@ import {
   UploadCloud,
   ArrowUpLeft,
   Video,
-  Link2
+  Link2,
+  Droplet,
+  BookOpen,
+  HeartHandshake,
+  Check,
+  Search,
+  Flame,
+  Activity,
+  Rocket,
+  Trophy,
+  Palette,
+  GraduationCap,
+  Filter,
 } from 'lucide-react';
 import { PostItem, PostComment } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -85,16 +98,196 @@ interface FeedViewProps {
   onNavigate?: (route: string) => void;
 }
 
-type PostCategory = 'General Update' | 'Tech & Innovation' | 'Professional Insights' | 'Reunion' | 'Achievement';
+type PostCategory =
+  | 'Blood Donation'
+  | 'Emergency & Medical Aid'
+  | 'Tech & Innovation'
+  | 'Professional Insights'
+  | 'Job & Career Opportunities'
+  | 'Business & Startups'
+  | 'Higher Studies & Research'
+  | 'Campus Memories'
+  | 'Reunion'
+  | 'Sports & Tournaments'
+  | 'Achievement'
+  | 'Social Welfare & Relief'
+  | 'Book Club, Arts & Culture'
+  | 'Prayer & Condolence'
+  | 'General Update';
+
+export type CategoryGroup =
+  | '🚨 Life-Saving & Health'
+  | '💼 Careers & Tech'
+  | '🎓 Academics & Heritage'
+  | '🤝 Community & Brotherhood';
+
+export interface CategoryItem {
+  label: PostCategory;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  bg: string;
+  border: string;
+  badge?: string;
+  isUrgent?: boolean;
+  group: CategoryGroup;
+  description: string;
+}
 
 const FEED_PAGE_SIZE = 12;
 
-const CATEGORIES: { label: PostCategory; icon: typeof MessageSquare; color: string; bg: string }[] = [
-  { label: 'General Update', icon: MessageSquare, color: 'text-slate-600 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' },
-  { label: 'Tech & Innovation', icon: Sparkles, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/40' },
-  { label: 'Professional Insights', icon: Briefcase, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
-  { label: 'Reunion', icon: Users, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/40' },
-  { label: 'Achievement', icon: Award, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/40' },
+const CATEGORIES: CategoryItem[] = [
+  {
+    label: 'Blood Donation',
+    icon: Droplet,
+    color: 'text-rose-600 dark:text-rose-400',
+    bg: 'bg-rose-50 dark:bg-rose-950/40',
+    border: 'border-rose-200 dark:border-rose-800',
+    badge: 'Urgent / Life-Saving',
+    isUrgent: true,
+    group: '🚨 Life-Saving & Health',
+    description: 'Urgent blood appeals, plasma needs, platelets & verified donor coordination across hospitals',
+  },
+  {
+    label: 'Emergency & Medical Aid',
+    icon: Activity,
+    color: 'text-red-600 dark:text-red-400',
+    bg: 'bg-red-50 dark:bg-red-950/40',
+    border: 'border-red-200 dark:border-red-800',
+    badge: 'Medical Care',
+    isUrgent: true,
+    group: '🚨 Life-Saving & Health',
+    description: 'Critical healthcare aid, emergency medicine, hospital coordination & patient assistance',
+  },
+  {
+    label: 'Tech & Innovation',
+    icon: Sparkles,
+    color: 'text-blue-600 dark:text-blue-400',
+    bg: 'bg-blue-50 dark:bg-blue-950/40',
+    border: 'border-blue-200 dark:border-blue-800',
+    badge: 'Tech & AI',
+    group: '💼 Careers & Tech',
+    description: 'Software development, engineering breakthroughs, AI experiments & open-source projects',
+  },
+  {
+    label: 'Professional Insights',
+    icon: Briefcase,
+    color: 'text-emerald-600 dark:text-emerald-400',
+    bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+    border: 'border-emerald-200 dark:border-emerald-800',
+    badge: 'Industry Trends',
+    group: '💼 Careers & Tech',
+    description: 'Corporate leadership, industry insights, career tips, executive guidance & market views',
+  },
+  {
+    label: 'Job & Career Opportunities',
+    icon: GraduationCap,
+    color: 'text-teal-600 dark:text-teal-400',
+    bg: 'bg-teal-50 dark:bg-teal-950/40',
+    border: 'border-teal-200 dark:border-teal-800',
+    badge: 'Hiring & Referrals',
+    group: '💼 Careers & Tech',
+    description: 'Alumni job openings, hiring notices, internships & internal company referrals',
+  },
+  {
+    label: 'Business & Startups',
+    icon: Rocket,
+    color: 'text-violet-600 dark:text-violet-400',
+    bg: 'bg-violet-50 dark:bg-violet-950/40',
+    border: 'border-violet-200 dark:border-violet-800',
+    badge: 'Ventures & Scaling',
+    group: '💼 Careers & Tech',
+    description: 'Alumni startup launches, venture funding, product demos & entrepreneurial partnerships',
+  },
+  {
+    label: 'Higher Studies & Research',
+    icon: BookOpen,
+    color: 'text-indigo-600 dark:text-indigo-400',
+    bg: 'bg-indigo-50 dark:bg-indigo-950/40',
+    border: 'border-indigo-200 dark:border-indigo-800',
+    badge: 'Academics & Study Abroad',
+    group: '🎓 Academics & Heritage',
+    description: 'Foreign university admissions, scholarship alerts, GRE/IELTS & research papers',
+  },
+  {
+    label: 'Campus Memories',
+    icon: Camera,
+    color: 'text-cyan-600 dark:text-cyan-400',
+    bg: 'bg-cyan-50 dark:bg-cyan-950/40',
+    border: 'border-cyan-200 dark:border-cyan-800',
+    badge: 'Heritage & Nostalgia',
+    group: '🎓 Academics & Heritage',
+    description: 'Vintage NDC photos, memories of Father Timm & Father Peixotto, and historic college moments',
+  },
+  {
+    label: 'Reunion',
+    icon: Users,
+    color: 'text-purple-600 dark:text-purple-400',
+    bg: 'bg-purple-50 dark:bg-purple-950/40',
+    border: 'border-purple-200 dark:border-purple-800',
+    badge: 'Get-Together',
+    group: '🎓 Academics & Heritage',
+    description: 'Batch reunions, regional chapter meetups, annual picnics & offline alumni gatherings',
+  },
+  {
+    label: 'Sports & Tournaments',
+    icon: Trophy,
+    color: 'text-amber-600 dark:text-amber-400',
+    bg: 'bg-amber-50 dark:bg-amber-950/40',
+    border: 'border-amber-200 dark:border-amber-800',
+    badge: 'Athletics & Club',
+    group: '🎓 Academics & Heritage',
+    description: 'Notre Dame football leagues, cricket cups, badminton tournaments & club activities',
+  },
+  {
+    label: 'Achievement',
+    icon: Award,
+    color: 'text-yellow-600 dark:text-yellow-400',
+    bg: 'bg-yellow-50 dark:bg-yellow-950/40',
+    border: 'border-yellow-200 dark:border-yellow-800',
+    badge: 'Honors & Milestones',
+    group: '🤝 Community & Brotherhood',
+    description: 'National honors, corporate promotions, certifications & proud milestone accomplishments',
+  },
+  {
+    label: 'Social Welfare & Relief',
+    icon: HeartHandshake,
+    color: 'text-emerald-600 dark:text-emerald-400',
+    bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+    border: 'border-emerald-200 dark:border-emerald-800',
+    badge: 'Humanitarian',
+    group: '🤝 Community & Brotherhood',
+    description: 'Disaster and flood relief, winter clothing drives, student scholarships & charity drives',
+  },
+  {
+    label: 'Book Club, Arts & Culture',
+    icon: Palette,
+    color: 'text-fuchsia-600 dark:text-fuchsia-400',
+    bg: 'bg-fuchsia-50 dark:bg-fuchsia-950/40',
+    border: 'border-fuchsia-200 dark:border-fuchsia-800',
+    badge: 'Arts & Culture',
+    group: '🤝 Community & Brotherhood',
+    description: 'Debating, photography, creative writings, theater, poetry & cultural retrospectives',
+  },
+  {
+    label: 'Prayer & Condolence',
+    icon: Heart,
+    color: 'text-rose-600 dark:text-rose-400',
+    bg: 'bg-rose-50 dark:bg-rose-950/40',
+    border: 'border-rose-200 dark:border-rose-800',
+    badge: 'Care & Solidarity',
+    group: '🤝 Community & Brotherhood',
+    description: 'Prayers for ill batchmates and family, condolences & remembrance of departed brothers',
+  },
+  {
+    label: 'General Update',
+    icon: MessageSquare,
+    color: 'text-slate-600 dark:text-slate-300',
+    bg: 'bg-slate-100 dark:bg-slate-800',
+    border: 'border-slate-200 dark:border-slate-700',
+    badge: 'Community',
+    group: '🤝 Community & Brotherhood',
+    description: 'Everyday campus memories, reflections, questions & general fraternal discussions',
+  },
 ];
 
 export const FeedView: React.FC<FeedViewProps> = ({
@@ -186,6 +379,27 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
   const [postContent, setPostContent] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<PostCategory>('General Update');
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
+  const [composerCategoryGroup, setComposerCategoryGroup] = useState<string>('All');
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        categoryDropdownRef.current &&
+        !categoryDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsCategoryDropdownOpen(false);
+      }
+    };
+    if (isCategoryDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCategoryDropdownOpen]);
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [attachedVideos, setAttachedVideos] = useState<string[]>([]);
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false);
@@ -195,6 +409,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeFilterCategory, setActiveFilterCategory] = useState<string>('All');
+
   const [autoPlayOnScroll, setAutoPlayOnScroll] = useState<boolean>(
     () => getUserPreferences().autoplay_videos_on_scroll
   );
@@ -1214,23 +1429,28 @@ export const FeedView: React.FC<FeedViewProps> = ({
                 New Post
               </h2>
 
-              <span
-                title="Feed posts are public to all visitors"
-                aria-label="Public post audience"
-                className="p-2 -mr-1 rounded-full text-slate-700 dark:text-slate-200"
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoryDropdownOpen((prev) => !prev);
+                  playSound('click');
+                }}
+                title="Public audience · Click to select post category"
+                aria-label="Public post audience and category"
+                className="p-2 -mr-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
               >
                 <Globe className="w-5 h-5 text-blue-500" />
-              </span>
+              </button>
             </div>
 
             {/* 2. Scrollable Body */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-              {/* Author Info + Facebook-style Action Pills Row */}
+              {/* Author Info + Audience Pill & Category Dropdown (Under Globe Image) */}
               <div className="flex items-start gap-3">
                 <img
                   src={currentUser.avatarUrl}
                   alt={currentUser.fullName}
-                  className="w-12 h-12 rounded-full object-cover ring-2 ring-blue-500/20 shrink-0"
+                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover ring-2 ring-blue-500/20 shrink-0"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1251,34 +1471,161 @@ export const FeedView: React.FC<FeedViewProps> = ({
                       </span>
                     )}
                   </div>
-                </div>
-              </div>
 
-              {/* Category Quick Selection Pills */}
-              <div className="pt-1">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
-                  Select Post Category
-                </div>
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  {CATEGORIES.map((cat) => {
-                    const Icon = cat.icon;
-                    const isSelected = selectedCategory === cat.label;
-                    return (
-                      <button
-                        key={cat.label}
+                  {/* Under the user info: Audience & Category Dropdown */}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {/* Globe Public Audience Badge */}
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium border border-slate-200/80 dark:border-slate-700/70 shrink-0">
+                      <Globe className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Public</span>
+                    </span>
+
+                    {/* Category Dropdown Trigger (Under globe image) */}
+                    <div ref={categoryDropdownRef} className="relative">
+                      <motion.button
                         type="button"
-                        onClick={() => setSelectedCategory(cat.label)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                          isSelected
-                            ? 'bg-blue-600 text-white shadow-xs'
-                            : `${cat.bg} ${cat.color} hover:opacity-85`
+                        onClick={() => {
+                          setIsCategoryDropdownOpen((prev) => !prev);
+                          playSound('click');
+                        }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        aria-expanded={isCategoryDropdownOpen}
+                        aria-haspopup="listbox"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border shadow-2xs ${
+                          selectedCategory === 'Blood Donation'
+                            ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-800 ring-1 ring-rose-400/40 font-bold'
+                            : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80'
                         }`}
                       >
-                        <Icon className="w-3.5 h-3.5" />
-                        <span>{cat.label}</span>
-                      </button>
-                    );
-                  })}
+                        {(() => {
+                          const currentCat = CATEGORIES.find((c) => c.label === selectedCategory) || CATEGORIES[0];
+                          const CurrentIcon = currentCat.icon;
+                          const isBlood = selectedCategory === 'Blood Donation';
+                          return (
+                            <>
+                              <CurrentIcon className={`w-3.5 h-3.5 ${isBlood ? 'text-rose-600 fill-rose-600 animate-pulse' : 'text-slate-500 dark:text-slate-400'}`} />
+                              <span className="truncate max-w-[130px] sm:max-w-none">{selectedCategory}</span>
+                            </>
+                          );
+                        })()}
+                        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-0.5 transition-transform ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
+                      </motion.button>
+
+                      {/* Dropdown Menu when alumni click it: shows post categories */}
+                      <AnimatePresence>
+                        {isCategoryDropdownOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                            className="absolute left-0 top-full mt-1.5 z-50 w-72 sm:w-80 p-3 rounded-2xl bg-white/98 dark:bg-slate-900/98 backdrop-blur-2xl border border-slate-200/90 dark:border-slate-700/80 shadow-2xl shadow-slate-950/25 space-y-2.5 max-h-[380px] flex flex-col"
+                          >
+                            {/* Search categories */}
+                            <div className="relative shrink-0">
+                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={categorySearchQuery}
+                                onChange={(e) => setCategorySearchQuery(e.target.value)}
+                                placeholder="Search post categories..."
+                                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                              />
+                              {categorySearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCategorySearchQuery('')}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Categories List: Blood Donation is highlighted, others simple, all as standard category buttons */}
+                            <div className="overflow-y-auto space-y-1 pr-1 flex-1 custom-scrollbar">
+                              {CATEGORIES.filter((cat) => {
+                                if (!categorySearchQuery.trim()) return true;
+                                const q = categorySearchQuery.toLowerCase();
+                                return (
+                                  cat.label.toLowerCase().includes(q) ||
+                                  cat.description.toLowerCase().includes(q)
+                                );
+                              }).map((cat) => {
+                                const isBlood = cat.label === 'Blood Donation';
+                                const Icon = cat.icon;
+                                const isSelected = selectedCategory === cat.label;
+
+                                return (
+                                  <button
+                                    key={cat.label}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedCategory(cat.label);
+                                      setIsCategoryDropdownOpen(false);
+                                      setCategorySearchQuery('');
+                                      if (isBlood) playSound('like');
+                                      else playSound('click');
+                                    }}
+                                    className={`w-full px-2.5 py-2 rounded-xl text-left transition-colors cursor-pointer flex items-center justify-between gap-2.5 ${
+                                      isSelected
+                                        ? isBlood
+                                          ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 font-bold border border-rose-300 dark:border-rose-800'
+                                          : 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200/80 dark:border-blue-800/60'
+                                        : isBlood
+                                        ? 'bg-rose-50/70 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100/80 dark:hover:bg-rose-900/40 border border-rose-200/80 dark:border-rose-800/60 font-semibold'
+                                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border border-transparent'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div
+                                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                          isBlood
+                                            ? 'bg-rose-600 text-white shadow-xs'
+                                            : isSelected
+                                            ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400'
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                                        }`}
+                                      >
+                                        <Icon className={`w-3.5 h-3.5 ${isBlood ? 'fill-white text-white' : ''}`} />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-xs truncate">{cat.label}</span>
+                                          {isBlood && (
+                                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold uppercase bg-rose-600 text-white">
+                                              Urgent
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {isSelected && (
+                                      <Check className={`w-4 h-4 shrink-0 ${isBlood ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'}`} />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Dropdown Footer */}
+                            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
+                              <span>{CATEGORIES.length} Post Categories</span>
+                              <button
+                                type="button"
+                                onClick={() => setIsCategoryDropdownOpen(false)}
+                                className="font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1835,16 +2182,24 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
             {/* 4. Bottom Sticky Bar: Audience/Category Summary Pill + Blue "Post" Button */}
             <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 shrink-0">
-              <div
-                title="Feed posts are public to all visitors"
-                aria-label="Public post audience"
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200"
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoryDropdownOpen((prev) => !prev);
+                  playSound('click');
+                }}
+                title="Click to change post category"
+                aria-label="Public post audience and category"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer border border-slate-200/60 dark:border-slate-700/60"
               >
                 <Globe className="w-3.5 h-3.5 text-blue-500" />
                 <span>Public</span>
                 <span className="text-slate-400">·</span>
-                <span className="text-blue-600 dark:text-blue-400">{selectedCategory}</span>
-              </div>
+                <span className={selectedCategory === 'Blood Donation' ? 'text-rose-600 dark:text-rose-400 font-extrabold' : 'text-blue-600 dark:text-blue-400'}>
+                  {selectedCategory}
+                </span>
+                <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
+              </button>
 
               <button
                 type="button"
@@ -1866,25 +2221,108 @@ export const FeedView: React.FC<FeedViewProps> = ({
         </div>
       )}
 
-      {/* Category Filter Bar */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        {['All', ...CATEGORIES.map((c) => c.label)].map((catLabel) => {
-          const active = activeFilterCategory === catLabel;
-          return (
-            <button
-              key={catLabel}
-              type="button"
-              onClick={() => setActiveFilterCategory(catLabel)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                active
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200/80 dark:border-slate-800 hover:border-blue-400'
-              }`}
-            >
-              {catLabel}
-            </button>
-          );
-        })}
+      {/* ===================================================================== */}
+      {/* FEED CATEGORY FILTER: QUICK-PILL TOPIC CAROUSEL                       */}
+      {/* ===================================================================== */}
+      <div className="space-y-2.5">
+
+        {/* Streamlined Quick-Pill Carousel */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none pt-0.5">
+          {['All', ...CATEGORIES.map((c) => c.label)].map((catLabel) => {
+            const active = activeFilterCategory === catLabel;
+            const isBlood = catLabel === 'Blood Donation';
+            const catItem = CATEGORIES.find((c) => c.label === catLabel);
+            const Icon = catItem ? catItem.icon : Globe;
+            return (
+              <motion.button
+                key={catLabel}
+                type="button"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => {
+                  setActiveFilterCategory(catLabel);
+                  if (isBlood) playSound('like');
+                  else playSound('click');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 border ${
+                  active
+                    ? isBlood
+                      ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/30 ring-2 ring-rose-400'
+                      : 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                    : isBlood
+                    ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-800 hover:bg-rose-100 font-extrabold'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200/80 dark:border-slate-800 hover:border-blue-400'
+                }`}
+              >
+                {isBlood ? (
+                  <Droplet className={`w-3.5 h-3.5 ${active ? 'fill-white text-white' : 'fill-rose-500 text-rose-500'}`} />
+                ) : (
+                  <Icon className="w-3.5 h-3.5" />
+                )}
+                <span>{catLabel}</span>
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {/* Dedicated Active Blood Donation Alert Banner on Feed */}
+        {activeFilterCategory === 'Blood Donation' && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 rounded-2xl bg-gradient-to-r from-rose-500/15 via-rose-500/10 to-rose-500/5 dark:from-rose-950/50 dark:via-rose-950/30 dark:to-slate-900 border border-rose-400/60 dark:border-rose-700/60 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-900 dark:text-rose-100"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-600/25 animate-pulse">
+                <Droplet className="w-5 h-5 fill-white text-white" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-xs sm:text-sm font-black text-rose-900 dark:text-rose-100">
+                    Urgent Blood Appeals & Patient Support
+                  </h4>
+                  <span className="px-2 py-0.2 rounded-full text-[10px] font-black bg-rose-600 text-white uppercase tracking-wider">
+                    Emergency Priority
+                  </span>
+                </div>
+                <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
+                  Showing critical blood requests and plasma appeals from batchmates and hospital attendants.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory('Blood Donation');
+                  setIsCreateModalOpen(true);
+                  setTimeout(() => composerTextareaRef.current?.focus(), 100);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Post Appeal</span>
+              </button>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('emergency')}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 text-xs font-bold cursor-pointer"
+                >
+                  Blood Network
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveFilterCategory('All')}
+                className="px-2.5 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-xs font-semibold cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {/* Posts Stream */}
@@ -2057,14 +2495,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
                         <span>Batch {post.batchYear}</span>
                         <span>·</span>
                         <span>{post.createdAt}</span>
-                        {post.category && (
-                          <>
-                            <span>·</span>
-                            <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold text-[10px]">
-                              {post.category}
-                            </span>
-                          </>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -2557,21 +2987,30 @@ export const FeedView: React.FC<FeedViewProps> = ({
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
                 Category
               </label>
-              <div className="flex flex-wrap gap-1.5">
-                {CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.label}
-                    type="button"
-                    onClick={() => setEditCategory(cat.label)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                      editCategory === cat.label
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+                {CATEGORIES.map((cat) => {
+                  const Icon = cat.icon;
+                  const isSelected = editCategory === cat.label;
+                  return (
+                    <button
+                      key={cat.label}
+                      type="button"
+                      onClick={() => setEditCategory(cat.label)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                        isSelected
+                          ? cat.isUrgent
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : 'bg-blue-600 text-white shadow-xs'
+                          : cat.isUrgent
+                          ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0" />
+                      <span>{cat.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

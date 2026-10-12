@@ -1554,14 +1554,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <span>Batch {post.batchYear}</span>
                             <span>·</span>
                             <span>{post.createdAt}</span>
-                            {post.category && (
-                              <>
-                                <span>·</span>
-                                <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold text-[10px]">
-                                  {post.category}
-                                </span>
-                              </>
-                            )}
                           </div>
                         </div>
                       </div>

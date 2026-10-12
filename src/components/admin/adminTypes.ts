@@ -155,10 +155,14 @@ export interface PostRow {
   content: string;
   category:
     | 'General Update'
+    | 'Blood Donation'
     | 'Tech & Innovation'
     | 'Professional Insights'
     | 'Reunion'
-    | 'Achievement';
+    | 'Achievement'
+    | 'Campus Memories'
+    | 'Higher Studies & Research'
+    | 'Prayer & Condolence';
   images: string[];
   videos: string[];
   likes_count: number;
