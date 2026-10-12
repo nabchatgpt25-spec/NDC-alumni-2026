@@ -435,8 +435,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
     const cleanEmail = (profileData.email || '').trim().toLowerCase();
     const rawPhone = (profileData.phone || '').trim();
-    const rawBatch = profileData.batchYear;
-    const normalizedBatch = rawBatch ? (rawBatch > 1900 ? rawBatch - 1950 : (rawBatch > 0 ? rawBatch : 68)) : 68;
+    const currentYear = new Date().getFullYear();
+    const rawBatchNum = profileData.batchYear ? Math.round(Number(profileData.batchYear)) : null;
+    const cleanBatchYear = rawBatchNum && rawBatchNum >= 1949 && rawBatchNum <= currentYear + 1
+      ? rawBatchNum
+      : null;
+
+    if (!cleanBatchYear) {
+      throw new Error(`Please provide a valid Notre Dame HSC Year between 1949 and ${currentYear + 1}.`);
+    }
 
     if (!isSupabaseConfigured) {
       throw new Error('Supabase client is not configured.');
@@ -485,8 +492,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           college_roll: cleanRoll,
           email: cleanEmail,
           phone: cleanPhone || undefined,
-          batchYear: profileData.batchYear || normalizedBatch,
-          batch_year: normalizedBatch,
+          batchYear: cleanBatchYear || 0,
+          batch_year: cleanBatchYear,
           academicStream: streamGroup.academicStream,
           academicGroup: streamGroup.academicGroup,
           group: streamGroup.academicStream,
@@ -502,8 +509,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data: {
           full_name: profileData.fullName?.trim(),
           name: profileData.fullName?.trim(),
-          batch_year: normalizedBatch,
-          batchYear: profileData.batchYear || normalizedBatch,
+          batch_year: cleanBatchYear,
+          batchYear: cleanBatchYear || 0,
           phone: cleanPhone || undefined,
           college_roll: cleanRoll,
           collegeRoll: cleanRoll,
@@ -550,8 +557,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         college_roll: cleanRoll,
         email: cleanEmail,
         phone: cleanPhone || undefined,
-        batchYear: profileData.batchYear || normalizedBatch,
-        batch_year: normalizedBatch,
+        batchYear: cleanBatchYear || 0,
+        batch_year: cleanBatchYear,
       });
     } catch (syncErr) {
       console.warn('Post-signup profile sync warning:', syncErr);
@@ -595,7 +602,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           whatsapp: updated.whatsapp,
           fb_link: updated.fbLink,
           college_roll: updated.collegeRoll !== undefined ? updated.collegeRoll : undefined,
-          batch_year: updated.batchYear !== undefined ? (updated.batchYear > 100 ? updated.batchYear - 1950 : updated.batchYear) : undefined,
+          batch_year:
+            updated.batchYear !== undefined
+              ? (updated.batchYear && Number(updated.batchYear) >= 1949 && Number(updated.batchYear) <= new Date().getFullYear() + 1
+                  ? Math.round(Number(updated.batchYear))
+                  : null)
+              : undefined,
           blood_group: updated.bloodGroup !== undefined ? updated.bloodGroup : undefined,
           academic_stream: updated.academicStream !== undefined ? updated.academicStream : undefined,
           academic_group: updated.academicGroup !== undefined ? updated.academicGroup : undefined,

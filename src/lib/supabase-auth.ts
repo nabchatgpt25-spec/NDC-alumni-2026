@@ -30,8 +30,8 @@ export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
       '/ndc-logo.png',
     coverUrl: row.cover_url || undefined,
     batchYear:
-      row.batch_year !== null && row.batch_year !== undefined && Number(row.batch_year) > 0
-        ? (Number(row.batch_year) > 100 ? Number(row.batch_year) : 1950 + Number(row.batch_year))
+      row.batch_year !== null && row.batch_year !== undefined && Number(row.batch_year) >= 1949
+        ? Math.round(Number(row.batch_year))
         : 0,
     session: row.session || undefined,
     collegeRoll: row.college_roll ? String(row.college_roll).trim() : undefined,
@@ -111,13 +111,17 @@ export async function getOrCreateSupabaseProfile(
       const existingProfile = existing as any;
       const meta = (authUser.user_metadata || {}) as any;
       const targetBatch = Number(extraData?.batchYear ?? extraData?.batch_year ?? meta.batch_year ?? meta.batchYear);
-      const normalizedTargetBatch = targetBatch > 1900 ? targetBatch - 1950 : (targetBatch > 0 ? targetBatch : 0);
+      const currentYear = new Date().getFullYear();
+      const cleanTargetBatch =
+        targetBatch >= 1949 && targetBatch <= currentYear + 1
+          ? Math.round(targetBatch)
+          : null;
       const targetRoll = extraData?.collegeRoll?.trim() || extraData?.college_roll?.trim() || meta.college_roll || meta.collegeRoll;
       const targetBlood = extraData?.bloodGroup || meta.blood_group || meta.bloodGroup;
 
       const patchPayload: Record<string, any> = {};
-      if (normalizedTargetBatch && (!existingProfile.batch_year || Number(existingProfile.batch_year) === 68) && normalizedTargetBatch !== Number(existingProfile.batch_year)) {
-        patchPayload.batch_year = normalizedTargetBatch;
+      if (cleanTargetBatch && (!existingProfile.batch_year || Number(existingProfile.batch_year) < 1949) && cleanTargetBatch !== Number(existingProfile.batch_year)) {
+        patchPayload.batch_year = cleanTargetBatch;
       }
       if (targetRoll && !existingProfile.college_roll) {
         patchPayload.college_roll = targetRoll;
@@ -173,7 +177,10 @@ export async function getOrCreateSupabaseProfile(
     const cleanEmail = (authUser.email || extraData?.email || meta.email || '').toLowerCase().trim();
     const rawBatch = extraData?.batchYear ?? extraData?.batch_year ?? meta.batch_year ?? meta.batchYear;
     const batchYearNum = Number(rawBatch);
-    const normalizedBatch = batchYearNum > 1900 ? batchYearNum - 1950 : (batchYearNum > 0 ? batchYearNum : 68);
+    const currentYear = new Date().getFullYear();
+    const cleanBatchYear = batchYearNum >= 1949 && batchYearNum <= currentYear + 1
+      ? Math.round(batchYearNum)
+      : null;
     const targetRoll = extraData?.collegeRoll?.trim() || extraData?.college_roll?.trim() || meta.college_roll || meta.collegeRoll || null;
 
     // Normalize academic stream and academic group
@@ -202,7 +209,7 @@ export async function getOrCreateSupabaseProfile(
         meta.avatar_url ||
         meta.picture ||
         '/ndc-logo.png',
-      batch_year: normalizedBatch,
+      batch_year: cleanBatchYear,
       session: extraData?.session || meta.session || null,
       college_roll: targetRoll,
       academic_stream: streamGroup.academicStream,

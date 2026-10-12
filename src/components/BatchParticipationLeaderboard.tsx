@@ -48,12 +48,11 @@ export const BatchParticipationLeaderboard: React.FC<BatchParticipationLeaderboa
   // Compute leaderboard data across all batches
   const leaderboardData = useMemo(() => {
     const items: BatchLeaderboardItem[] = batches.map((batch) => {
-      const bNum = batch.batchYear > 100 ? batch.batchYear - 1950 : batch.batchYear;
-      const hsc = batch.batchYear > 100 ? batch.batchYear : 1950 + batch.batchYear;
+      const hsc = batch.batchYear;
 
       // Find all registered alumni belonging to this batch
       const batchProfiles = profiles.filter((p) => {
-        return p.batchYear === bNum || p.batchYear === hsc;
+        return p.batchYear === batch.batchYear;
       });
 
       const registeredCount = batchProfiles.length;
@@ -75,7 +74,7 @@ export const BatchParticipationLeaderboard: React.FC<BatchParticipationLeaderboa
         avgCompletionRate = Math.round(totalCompletion / batchProfiles.length);
       } else {
         // Fallback default for batches with no registered members yet
-        avgCompletionRate = Math.max(15, Math.min(85, Math.round(((78 - bNum) * 0.8 + 20) % 70) + 15));
+        avgCompletionRate = Math.max(15, Math.min(85, Math.round(((2028 - hsc) * 0.8 + 20) % 70) + 15));
       }
 
       // Activity score based on posts, verified members, and registered engagement
@@ -96,7 +95,7 @@ export const BatchParticipationLeaderboard: React.FC<BatchParticipationLeaderboa
 
       return {
         batchYear: batch.batchYear,
-        batchNumber: bNum,
+        batchNumber: hsc,
         hscYear: hsc,
         session: batch.session,
         totalAlumniCount: batch.total,

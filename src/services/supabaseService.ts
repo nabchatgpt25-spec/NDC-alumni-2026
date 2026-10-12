@@ -52,9 +52,7 @@ export async function fetchAlumniProfilesFromDb(params?: {
       .order('batch_year', { ascending: false });
 
     if (params?.batchYear) {
-      const bNum = params.batchYear > 100 ? params.batchYear - 1950 : params.batchYear;
-      const hsc = params.batchYear > 100 ? params.batchYear : 1950 + params.batchYear;
-      query = query.in('batch_year', [bNum, hsc]);
+      query = query.eq('batch_year', params.batchYear);
     }
     if (params?.academicStream) {
       query = query.eq('academic_stream', params.academicStream);
@@ -156,7 +154,7 @@ export async function fetchBatchesFromDb(): Promise<BatchSummary[]> {
 
     const result = data.map((b) => ({
       batchYear: b.batch_year,
-      hscYear: b.hsc_year || (b.batch_year > 1900 ? b.batch_year : 1950 + b.batch_year),
+      hscYear: b.hsc_year || b.batch_year,
       session: b.session || `${b.batch_year - 2}-${String(b.batch_year).slice(-2)}`,
       total: Number(b.registered_count ?? 0),
       representative: b.representative_name || undefined,
@@ -176,10 +174,7 @@ const batchProfilesCache = new Map<number, { data: AlumniProfile[]; expiresAt: n
 export async function fetchBatchAlumniProfilesFromDb(batchYear: number): Promise<AlumniProfile[]> {
   if (!isSupabaseConfigured || !Number.isFinite(batchYear)) return [];
 
-  const bNum = batchYear > 100 ? batchYear - 1950 : batchYear;
-  const hsc = batchYear > 100 ? batchYear : 1950 + batchYear;
-
-  const cached = batchProfilesCache.get(bNum);
+  const cached = batchProfilesCache.get(batchYear);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data;
   }
@@ -192,7 +187,7 @@ export async function fetchBatchAlumniProfilesFromDb(batchYear: number): Promise
         .from('alumni_profiles')
         .select(ALUMNI_PUBLIC_COLUMNS)
         .eq('is_public', true)
-        .in('batch_year', [bNum, hsc])
+        .eq('batch_year', batchYear)
         .order('id', { ascending: true })
         .range(offset, offset + pageSize - 1);
 
@@ -201,7 +196,7 @@ export async function fetchBatchAlumniProfilesFromDb(batchYear: number): Promise
       if (data.length < pageSize) break;
     }
 
-    batchProfilesCache.set(bNum, { data: profiles, expiresAt: Date.now() + 3 * 60 * 1000 });
+    batchProfilesCache.set(batchYear, { data: profiles, expiresAt: Date.now() + 3 * 60 * 1000 });
     return profiles;
   } catch (err) {
     console.warn('Supabase batch profile statistics error:', err);
@@ -265,7 +260,7 @@ function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
     userId: Number(row.author_id),
     fullName: author.full_name || 'Notredamian Alumnus',
     avatarUrl: author.avatar_url || '/ndc-logo.png',
-    batchYear: author.batch_year || 68,
+    batchYear: author.batch_year || 0,
     content: row.content || '',
     images: Array.isArray(row.images) ? row.images : [],
     videos: Array.isArray(row.videos) ? row.videos : [],
@@ -279,7 +274,7 @@ function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
     pinned: Boolean(row.is_pinned),
     author: author.full_name || 'Notredamian Alumnus',
     authorAvatar: author.avatar_url || '/ndc-logo.png',
-    authorBatch: author.batch_year || 68,
+    authorBatch: author.batch_year || 0,
     authorRole: 'Alumnus',
     verified: author.verification_status === 'verified',
     timestamp: new Date(row.created_at).toLocaleDateString(),
@@ -660,7 +655,7 @@ export async function createFeedPostInDb(params: {
       userId: params.authorId || 1,
       fullName: 'Notredamian Alumnus',
       avatarUrl: '/ndc-logo.png',
-      batchYear: 68,
+      batchYear: 0,
       content: params.content.trim() || 'Shared an update',
       images: params.images || [],
       videos: params.videos || [],
@@ -674,7 +669,7 @@ export async function createFeedPostInDb(params: {
       pinned: false,
       author: 'Notredamian Alumnus',
       authorAvatar: '/ndc-logo.png',
-      authorBatch: 68,
+      authorBatch: 0,
       authorRole: 'Alumnus',
       verified: true,
       timestamp: 'Just now',
@@ -1030,7 +1025,7 @@ export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[
       requesterId: Number(r.requester_profile_id || r.requester?.id || 1),
       requesterName: r.requester?.full_name || 'Notredamian Alumnus',
       requesterAvatar: r.requester?.avatar_url || '/ndc-logo.png',
-      requesterBatch: r.requester?.batch_year || 68,
+      requesterBatch: r.requester?.batch_year || 0,
       status: r.status,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
@@ -1043,7 +1038,7 @@ export async function fetchBloodRequestsFromDb(): Promise<BloodEmergencyRequest[
         donorUserId: Number(resp.donor_user_id),
         donorName: resp.donor?.full_name || 'Brother Donor',
         donorAvatar: resp.donor?.avatar_url || '/ndc-logo.png',
-        donorBatchYear: resp.donor?.batch_year || 68,
+        donorBatchYear: resp.donor?.batch_year || 0,
         donorBloodGroup: resp.donor?.blood_group || r.blood_group,
         donorPreferredArea: r.hospital_area,
         respondedAt: new Date(resp.responded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -1122,7 +1117,7 @@ export async function fetchBloodDonorsFromDb(): Promise<BloodDonorProfile[]> {
       userId: Number(d.user_id),
       fullName: d.alumnus?.full_name || 'Notredamian Donor',
       avatarUrl: d.alumnus?.avatar_url || '/ndc-logo.png',
-      batchYear: d.alumnus?.batch_year || 68,
+      batchYear: d.alumnus?.batch_year || 0,
       verificationStatus: d.alumnus?.verification_status || 'verified',
       bloodGroup: d.blood_group,
       isRegisteredDonor: d.is_registered_donor,

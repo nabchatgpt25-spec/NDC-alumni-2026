@@ -52,9 +52,9 @@ export function matchesUniversalSearch(profile: AlumniProfile, rawQuery: string)
   const q = rawQuery.toLowerCase().trim();
   if (!q) return true;
 
-  const hscYear = 1950 + profile.batchYear; // e.g., Batch 76 -> HSC 2026
-  const admissionStartYear = 1948 + profile.batchYear;
-  const admissionEndYear = 1949 + profile.batchYear;
+  const hscYear = profile.batchYear;
+  const admissionStartYear = profile.batchYear ? profile.batchYear - 2 : 0;
+  const admissionEndYear = profile.batchYear ? profile.batchYear - 1 : 0;
   const batchSummary = BATCH_LIST.find((b) => b.batchYear === profile.batchYear);
 
   // Build a comprehensive searchable corpus for the profile
@@ -262,12 +262,7 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
       }
       if (batchFilter) {
         const filterNum = parseInt(batchFilter, 10);
-        const pBatchNum = p.batchYear > 100 ? p.batchYear - 1950 : p.batchYear;
-        const pHscYear = p.batchYear > 100 ? p.batchYear : 1950 + p.batchYear;
-        const filterBatchNum = filterNum > 100 ? filterNum - 1950 : filterNum;
-        const filterHscYear = filterNum > 100 ? filterNum : 1950 + filterNum;
-
-        if (p.batchYear !== filterNum && pBatchNum !== filterBatchNum && pHscYear !== filterHscYear) {
+        if (p.batchYear !== filterNum) {
           return false;
         }
       }
@@ -427,12 +422,12 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
             onChange={(e) => setBatchFilter(e.target.value)}
             className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           >
-            <option value="">All Batches (1 - 78)</option>
+            <option value="">{`All Batches (1949 - ${new Date().getFullYear() + 1})`}</option>
             {batches.map((b) => {
               const summary = BATCH_LIST.find((x) => x.batchYear === b);
               return (
                 <option key={b} value={b}>
-                  Batch {b < 10 ? `0${b}` : b} ({summary?.session})
+                  HSC {b} ({summary?.session})
                 </option>
               );
             })}
@@ -583,7 +578,9 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
 
                     <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5">
                       <span>
-                        Batch {profile.batchYear > 100 ? profile.batchYear - 1950 : profile.batchYear} (HSC {profile.batchYear > 100 ? profile.batchYear : 1950 + profile.batchYear})
+                        {profile.batchYear && profile.batchYear >= 1949
+                          ? `Notre Dame HSC Year: ${profile.batchYear}`
+                          : 'Notre Dame HSC Year: N/A'}
                       </span>
                       {profile.collegeRoll && (
                         <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100/70 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">

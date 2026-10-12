@@ -64,11 +64,8 @@ function getGroupAlumniList(
   groupValue: string,
   profiles: AlumniProfile[]
 ): AlumniProfile[] {
-  const bNum = batch.batchYear > 100 ? batch.batchYear - 1950 : batch.batchYear;
-  const hsc = batch.batchYear > 100 ? batch.batchYear : 1950 + batch.batchYear;
-
   return profiles.filter((p) => {
-    const isBatchMatch = p.batchYear === bNum || p.batchYear === hsc;
+    const isBatchMatch = p.batchYear === batch.batchYear;
     if (!isBatchMatch) return false;
     return matchesAcademicGroup(p, groupValue);
   });
@@ -81,10 +78,8 @@ const HUMANITIES_GROUPS = ['G', 'H', 'L', 'W'];
 const COMMERCE_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 function computeBatchGroupCounts(batch: BatchSummary, profiles: AlumniProfile[]) {
-  const bNum = batch.batchYear > 100 ? batch.batchYear - 1950 : batch.batchYear;
-  const hsc = batch.batchYear > 100 ? batch.batchYear : 1950 + batch.batchYear;
   const realBatchProfiles = profiles.filter(
-    (p) => p.batchYear === bNum || p.batchYear === hsc
+    (p) => p.batchYear === batch.batchYear
   );
   const scienceCounts: Record<string, number> = {};
   const humanitiesCounts: Record<string, number> = {};
@@ -234,18 +229,9 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
     if (!q) return null;
     const num = Number(q);
     if (!Number.isNaN(num)) {
-      // Exact batch number (1 to 78)
-      if (num >= 1 && num <= 78) {
+      if (num >= 1949 && num <= 2100) {
         return batchesList.find((b) => b.batchYear === num) || null;
       }
-      // 4-digit HSC year (e.g., 2016 -> Batch 66, since Batch 1 is HSC 1951)
-      if (num >= 1951 && num <= 1950 + 78) {
-        const targetBatchNum = num - 1950;
-        return batchesList.find((b) => b.batchYear === targetBatchNum) || null;
-      }
-      // 1949 or 1950 admission year -> Batch 1 or Batch 2
-      if (num === 1949) return batchesList[0] || null;
-      if (num === 1950) return batchesList[1] || null;
     }
     return null;
   }, [searchTerm, batchesList]);
@@ -257,40 +243,26 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
     const list = batchesList.filter((b) => {
       // When not searching, apply range filter; when searching, search across all 78 batches
       if (!q) {
-        if (rangeFilter === '1-20' && (b.batchYear < 1 || b.batchYear > 20)) return false;
-        if (rangeFilter === '21-40' && (b.batchYear < 21 || b.batchYear > 40)) return false;
-        if (rangeFilter === '41-60' && (b.batchYear < 41 || b.batchYear > 60)) return false;
-        if (rangeFilter === '61-78' && (b.batchYear < 61 || b.batchYear > 78)) return false;
+        if (rangeFilter === '1-20' && (b.batchYear < 1951 || b.batchYear > 1970)) return false;
+        if (rangeFilter === '21-40' && (b.batchYear < 1971 || b.batchYear > 1990)) return false;
+        if (rangeFilter === '41-60' && (b.batchYear < 1991 || b.batchYear > 2010)) return false;
+        if (rangeFilter === '61-78' && (b.batchYear < 2011 || b.batchYear > 2028)) return false;
         return true;
       }
 
-      const batchNumStr = b.batchYear.toString();
-      const batchPadded = b.batchYear < 10 ? `0${b.batchYear}` : `${b.batchYear}`;
-      const startYear = String(1948 + b.batchYear);
-      const sessionEndYear = String(1949 + b.batchYear);
-      const hscFullYear = String(1950 + b.batchYear);
-      const hscShortYear = hscFullYear.slice(-2);
-
+      const yearStr = b.batchYear.toString();
       const cleanQ = q.replace(/^batch\s*/i, '').replace(/^hsc\s*/i, '');
 
-      const matchesNum =
-        batchNumStr === cleanQ ||
-        batchPadded === cleanQ ||
-        `batch ${batchNumStr}`.includes(q) ||
-        `batch ${batchPadded}`.includes(q);
-
       const matchesYear =
-        hscFullYear === cleanQ ||
-        startYear === cleanQ ||
-        sessionEndYear === cleanQ ||
-        `hsc ${hscShortYear}` === q ||
-        `hsc ${hscFullYear}` === q ||
-        hscFullYear.includes(cleanQ);
+        yearStr === cleanQ ||
+        `hsc ${yearStr}`.includes(q) ||
+        `batch ${yearStr}`.includes(q) ||
+        yearStr.includes(cleanQ);
 
       const matchesSession = b.session.toLowerCase().includes(q);
       const matchesRep = b.representative?.toLowerCase().includes(q);
 
-      return matchesNum || matchesYear || matchesSession || matchesRep;
+      return matchesYear || matchesSession || matchesRep;
     });
 
     // Prioritize exact quickJumpBatch at the top of search results
@@ -431,7 +403,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
               className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer shrink-0"
             >
               <span>
-                Jump to Batch {quickJumpBatch.batchYear} (HSC {1950 + quickJumpBatch.batchYear})
+                Jump to HSC {quickJumpBatch.batchYear}
               </span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -478,12 +450,12 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-base shadow-xs">
-                  {activeBatch.batchYear < 10 ? `0${activeBatch.batchYear}` : activeBatch.batchYear}
+                  {activeBatch.batchYear > 1900 ? `'${String(activeBatch.batchYear).slice(-2)}` : (activeBatch.batchYear < 10 ? `0${activeBatch.batchYear}` : activeBatch.batchYear)}
                 </div>
                 <div>
                   <div className="flex items-center flex-wrap gap-2">
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-slate-50">
-                      Batch {activeBatch.batchYear > 100 ? activeBatch.batchYear - 1950 : activeBatch.batchYear} • HSC {activeBatch.batchYear > 100 ? activeBatch.batchYear : 1950 + activeBatch.batchYear} {activeBatch.session}
+                      HSC {activeBatch.batchYear} {activeBatch.session}
                     </h2>
                     <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
                       • {activeBatchGroupStats.grandTotal} Total Alumni
@@ -996,7 +968,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                   {/* Top row with batch number badge and session year */}
                   <div className="flex items-center justify-between mb-3">
                     <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-sm">
-                      {batch.batchYear < 10 ? `0${batch.batchYear}` : batch.batchYear}
+                      {batch.batchYear > 1900 ? `'${String(batch.batchYear).slice(-2)}` : (batch.batchYear < 10 ? `0${batch.batchYear}` : batch.batchYear)}
                     </div>
                     <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                       {batch.session}
@@ -1006,14 +978,14 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                   {/* Batch Title */}
                   <div className="flex items-center flex-wrap gap-1.5">
                     <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                      Batch {batch.batchYear > 100 ? batch.batchYear - 1950 : batch.batchYear} • HSC {batch.batchYear > 100 ? batch.batchYear : 1950 + batch.batchYear}
+                      HSC {batch.batchYear}
                     </h3>
-                    {batch.batchYear === 1 && (
+                    {batch.batchYear === 1949 && (
                       <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
                         1st Pioneer
                       </span>
                     )}
-                    {batch.batchYear === 78 && (
+                    {batch.batchYear === new Date().getFullYear() + 1 && (
                       <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
                         Latest
                       </span>

@@ -28,26 +28,21 @@ export const DOC_TYPE_LABELS: Record<VerificationDocType, string> = {
 };
 
 /**
- * Helper to compare batch years whether stored as 2-digit Batch Number (e.g., 68)
- * or 4-digit HSC Year (e.g., 2018, where 1950 + 68 = 2018).
+ * Helper to ensure batch year is a valid 4-digit HSC Year (1949-2100).
  */
-export const normalizeToBatchNumber = (batchOrYear: number): number => {
-  if (!batchOrYear) return 68;
-  return batchOrYear > 1900 ? batchOrYear - 1950 : batchOrYear;
+export const normalizeToBatchNumber = (batchOrYear?: number | null): number => {
+  if (!batchOrYear || batchOrYear < 1949) return 0;
+  return batchOrYear;
 };
 
-export const formatBatchDisplay = (batchOrYear: number): string => {
-  if (!batchOrYear) return 'Batch 68';
-  if (batchOrYear > 1900) {
-    const batchNum = batchOrYear - 1950;
-    return `Batch ${batchNum} (HSC ${batchOrYear})`;
-  }
-  return `Batch ${batchOrYear} (HSC ${1950 + batchOrYear})`;
+export const formatBatchDisplay = (batchOrYear?: number | null): string => {
+  if (!batchOrYear || batchOrYear < 1949) return 'N/A';
+  return `HSC ${batchOrYear}`;
 };
 
 export const isSameBatch = (batchA?: number, batchB?: number): boolean => {
-  if (!batchA || !batchB) return false;
-  return normalizeToBatchNumber(batchA) === normalizeToBatchNumber(batchB);
+  if (!batchA || !batchB || batchA < 1949 || batchB < 1949) return false;
+  return batchA === batchB;
 };
 
 /**
@@ -60,7 +55,7 @@ export const getVouchShareLink = (user: AlumniProfile): string => {
       : 'https://ndcbogura.alumniworld.xyz/';
   const safeName = (user.fullName || 'Notredamian Alumnus').trim();
   const safeRoll = (user.collegeRoll || '').trim();
-  const safeBatch = user.batchYear || 68;
+  const safeBatch = user.batchYear && user.batchYear >= 1949 ? user.batchYear : 'N/A';
   const safeId = user.id || 1001;
   return `${origin}?vouch_for=${safeId}&roll=${encodeURIComponent(safeRoll)}&batch=${safeBatch}&name=${encodeURIComponent(safeName)}`;
 };
@@ -70,7 +65,8 @@ export const getVouchShareLink = (user: AlumniProfile): string => {
  */
 export const getWhatsAppVouchShareUrl = (user: AlumniProfile): string => {
   const link = getVouchShareLink(user);
-  const text = `Assalamu Alaikum / Brother! I have registered my Notre Dame College Alumni profile (${user.fullName || 'Notredamian'}, Roll: ${user.collegeRoll || 'NDC'}, Batch ${user.batchYear || 68}). Please click this link to vouch for me or verify my profile: ${link}`;
+  const batchLabel = user.batchYear && user.batchYear >= 1949 ? `HSC ${user.batchYear}` : 'HSC Year: N/A';
+  const text = `Assalamu Alaikum / Brother! I have registered my Notre Dame College Alumni profile (${user.fullName || 'Notredamian'}, Roll: ${user.collegeRoll || 'NDC'}, ${batchLabel}). Please click this link to vouch for me or verify my profile: ${link}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 };
 
@@ -203,10 +199,12 @@ export const submitDocumentForAdminReview = async (
   const submissions = loadAdminDocSubmissions();
   const existingIdx = submissions.findIndex((s) => s.userId === user.id);
 
+  const cleanBatch = user.batchYear && user.batchYear >= 1949 ? user.batchYear : 0;
+
   // Persist directly to Supabase admin_doc_submissions table
   const dbSubmissionId = await submitAdminDocSubmissionInDb({
     userId: user.id,
-    batchYear: user.batchYear || 68,
+    batchYear: cleanBatch,
     collegeRoll: user.collegeRoll || '118042',
     academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
     academicGroup: user.academicGroup || null,
@@ -220,7 +218,7 @@ export const submitDocumentForAdminReview = async (
     userId: user.id,
     fullName: user.fullName || 'Notredamian Alumnus',
     avatarUrl: user.avatarUrl || '/ndc-logo.png',
-    batchYear: user.batchYear || 68,
+    batchYear: cleanBatch,
     collegeRoll: user.collegeRoll || '118042',
     group: user.group || 'Science',
     phone: user.phone || user.whatsapp,
@@ -358,12 +356,14 @@ export const registerUserVouchRequest = async (
   user: AlumniProfile,
   customNote?: string
 ): Promise<VouchRequest> => {
+  const cleanBatch = user.batchYear && user.batchYear >= 1949 ? user.batchYear : 0;
+
   // 1. Create or retrieve real UUID from Supabase verification_requests table
   let dbRequestId: string | null = null;
   try {
     dbRequestId = await createVerificationRequestInDb({
       requesterId: user.id,
-      batchYear: user.batchYear || 68,
+      batchYear: cleanBatch,
       collegeRoll: user.collegeRoll || '118042',
       academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
       academicGroup: user.academicGroup || null,
@@ -392,7 +392,7 @@ export const registerUserVouchRequest = async (
     requesterId: user.id,
     requesterName: user.fullName || 'Notredamian Alumnus',
     requesterAvatar: user.avatarUrl || '/ndc-logo.png',
-    batchYear: user.batchYear || 68,
+    batchYear: cleanBatch,
     collegeRoll: user.collegeRoll || '118042',
     group: (user.group as 'Science' | 'Business Studies' | 'Humanities') || 'Science',
     section: user.section || 'General Section',
@@ -406,7 +406,9 @@ export const registerUserVouchRequest = async (
     vouches: [],
     message:
       customNote ||
-      `Batch ${user.batchYear || 68} brother. Please vouch for my profile so I can participate in our batch lounge.`,
+      (user.batchYear && user.batchYear >= 1949
+        ? `HSC ${user.batchYear} brother. Please vouch for my profile so I can participate in our batch lounge.`
+        : 'Notre Dame College brother. Please vouch for my profile so I can participate in our batch lounge.'),
   };
 
   requests.unshift(newRequest);
@@ -572,11 +574,15 @@ export const vouchForAlumniProfile = async (
     const res = await submitPeerVouch(
       req.id,
       voucher,
-      comment || `Confirmed classmate from Batch ${normalizeToBatchNumber(targetProfile.batchYear)}.`
+      comment ||
+        (targetProfile.batchYear && targetProfile.batchYear >= 1949
+          ? `Confirmed classmate from HSC ${targetProfile.batchYear}.`
+          : 'Confirmed Notre Dame College classmate.')
     );
 
     const vouchesList = res.request.vouches.map(
-      (v) => `${v.voucherName} (Batch ${normalizeToBatchNumber(v.voucherBatch)})`
+      (v) =>
+        `${v.voucherName} (${v.voucherBatch && v.voucherBatch >= 1949 ? `HSC ${v.voucherBatch}` : 'HSC N/A'})`
     );
     const updatedProfile: AlumniProfile = {
       ...targetProfile,

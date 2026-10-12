@@ -86,7 +86,7 @@ export interface AlumniProfile {
   fullName: string;
   avatarUrl: string;
   coverUrl?: string;
-  batchYear: number;
+  batchYear?: number | null;
   session?: string;
   collegeRoll?: string;
   academicStream?: AcademicStreamType | null;

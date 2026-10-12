@@ -348,7 +348,7 @@ export async function queryPaginatedAlumniProfiles(params: ProfileFilterParams) 
           id: Number(r.id),
           fullName: r.full_name || 'Notredamian Alumnus',
           avatarUrl: r.avatar_url || '/ndc-logo.png',
-          batchYear: Number(r.batch_year) || 68,
+          batchYear: Number(r.batch_year) > 100 ? Number(r.batch_year) : (Number(r.batch_year) > 0 ? 1950 + Number(r.batch_year) : 0),
           session: r.session || null,
           collegeRoll: r.college_roll || null,
           academicStream: r.academic_stream || 'Science',
@@ -562,7 +562,7 @@ export async function createOrRegisterAlumniProfile(input: {
             id: Number(data.id),
             fullName: data.full_name,
             avatarUrl: data.avatar_url,
-            batchYear: data.batch_year,
+            batchYear: Number(data.batch_year) > 100 ? Number(data.batch_year) : (Number(data.batch_year) > 0 ? 1950 + Number(data.batch_year) : 0),
             session: data.session,
             collegeRoll: data.college_roll,
             academicStream: data.academic_stream,
@@ -613,7 +613,7 @@ export async function findAlumniByCredential(credential: string) {
           id: Number(data.id),
           fullName: data.full_name,
           avatarUrl: data.avatar_url,
-          batchYear: Number(data.batch_year),
+          batchYear: Number(data.batch_year) > 100 ? Number(data.batch_year) : (Number(data.batch_year) > 0 ? 1950 + Number(data.batch_year) : 0),
           session: data.session,
           collegeRoll: data.college_roll,
           academicStream: data.academic_stream,
@@ -652,13 +652,15 @@ export async function findAlumniByCredential(credential: string) {
               email_confirm: true,
             });
           }
+          const metaB = Number((matched.user_metadata as any)?.batch_year ?? (matched.user_metadata as any)?.batchYear);
           const restored = await createOrRegisterAlumniProfile({
             userUid: matched.id,
             fullName:
               (matched.user_metadata as any)?.full_name ||
               (matched.user_metadata as any)?.name ||
               clean.split('@')[0],
-            batchYear: Number((matched.user_metadata as any)?.batch_year) || 68,
+            batchYear: metaB > 100 ? metaB : (metaB > 0 ? 1950 + metaB : 0),
+            collegeRoll: (matched.user_metadata as any)?.college_roll || (matched.user_metadata as any)?.collegeRoll || null,
             email: clean,
             phone: (matched.user_metadata as any)?.phone || null,
           });
@@ -1010,13 +1012,15 @@ export async function getVerificationQueue(statusFilter?: string) {
             }
 
             const applicant = r.applicant || {};
+            const rawQueueBatch = r.batch_year || applicant.batch_year;
+            const queueHscYear = rawQueueBatch ? (Number(rawQueueBatch) > 100 ? Number(rawQueueBatch) : 1950 + Number(rawQueueBatch)) : 0;
             return {
               id: r.id,
               submissionCode: `DOC-${String(r.id).slice(0, 8)}`,
               profileId: r.user_id,
               fullName: applicant.full_name || 'Notredamian Alumnus',
               avatarUrl: applicant.avatar_url || '/ndc-logo.png',
-              batchYear: r.batch_year || applicant.batch_year || 68,
+              batchYear: queueHscYear,
               collegeRoll: r.college_roll || applicant.college_roll || '',
               academicStream: r.academic_stream || applicant.academic_stream || 'Science',
               academicGroup: r.academic_group || applicant.academic_group || null,

@@ -561,7 +561,9 @@ export const VerificationCenterModal: React.FC<VerificationCenterModalProps> = (
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        <span>Access to Batch {normalizeToBatchNumber(currentUser.batchYear)} Private Lounge</span>
+                        <span>
+                          Access to HSC {currentUser.batchYear && currentUser.batchYear >= 1949 ? currentUser.batchYear : 'N/A'} Private Lounge
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />

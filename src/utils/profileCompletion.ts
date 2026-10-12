@@ -21,10 +21,14 @@ export interface ProfileCompletionResult {
 export function calculateProfileCompletion(
   profile: Partial<AlumniProfile>
 ): ProfileCompletionResult {
+  const currentYear = new Date().getFullYear();
+  const rawBatchNum = Number(profile.batchYear);
   const hasValidBatch =
     profile.batchYear !== undefined &&
     profile.batchYear !== null &&
-    /^\d{4}$/.test(String(profile.batchYear).trim());
+    !isNaN(rawBatchNum) &&
+    rawBatchNum >= 1949 &&
+    rawBatchNum <= currentYear + 1;
 
   const hasSpecialty =
     Array.isArray(profile.specialty) &&

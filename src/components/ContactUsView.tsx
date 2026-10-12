@@ -56,9 +56,8 @@ export const ContactUsView: React.FC = () => {
     let parsedBatch: number | null = null;
     if (formData.batchYear.trim()) {
       const bNum = Number(formData.batchYear.replace(/\D/g, ''));
-      if (!Number.isNaN(bNum) && bNum > 0) {
-        parsedBatch = bNum > 1900 ? bNum - 1950 : bNum;
-        if (parsedBatch < 1 || parsedBatch > 150) parsedBatch = null;
+      if (!Number.isNaN(bNum) && bNum >= 1949 && bNum <= new Date().getFullYear() + 1) {
+        parsedBatch = bNum;
       }
     }
 

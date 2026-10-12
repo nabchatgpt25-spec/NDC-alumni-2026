@@ -84,7 +84,11 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
           {/* Batch Pill in Cover */}
           <div className="absolute bottom-3 right-4 px-3 py-1 rounded-full bg-black/50 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 border border-white/20">
             <GraduationCap className="w-3.5 h-3.5 text-blue-400" />
-            <span>NDC Batch {profile.batchYear > 100 ? profile.batchYear - 1950 : profile.batchYear} (HSC {profile.batchYear > 100 ? profile.batchYear : 1950 + profile.batchYear})</span>
+            <span>
+              {profile.batchYear && profile.batchYear >= 1949
+                ? `Notre Dame HSC Year: ${profile.batchYear}`
+                : 'Notre Dame HSC Year: N/A'}
+            </span>
           </div>
         </div>
 

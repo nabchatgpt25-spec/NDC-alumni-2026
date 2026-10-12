@@ -351,13 +351,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
     if (!batchYear.trim() || !/^\d{4}$/.test(batchYear.trim())) {
-      setErrorMessage('Please enter a valid 4-digit Notre Dame HSC Year (e.g., 2016).');
+      setErrorMessage('Please enter a valid 4-digit Notre Dame HSC Year (e.g., 2024).');
       return;
     }
-    const parsedYear = Number(batchYear.trim());
-    const maxAllowedYear = new Date().getFullYear() + 2;
+    const parsedYear = Math.round(Number(batchYear.trim()));
+    const currentYear = new Date().getFullYear();
+    const maxAllowedYear = currentYear + 1;
     if (parsedYear < 1949 || parsedYear > maxAllowedYear) {
-      setErrorMessage(`Please enter a valid 4-digit Notre Dame HSC Year between 1949 and ${maxAllowedYear} (e.g., 2016).`);
+      setErrorMessage(`Please enter a valid 4-digit Notre Dame HSC Year between 1949 and ${maxAllowedYear} (e.g., 2024).`);
       return;
     }
     if (!phone.trim()) {
@@ -884,9 +885,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       type="number"
                       inputMode="numeric"
                       min={1949}
-                      max={new Date().getFullYear() + 2}
+                      max={new Date().getFullYear() + 1}
                       step={1}
-                      placeholder="e.g. 2016"
+                      placeholder="e.g. 2024"
                       value={batchYear}
                       onChange={(e) => {
                         const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 4);

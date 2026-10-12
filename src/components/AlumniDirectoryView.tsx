@@ -93,12 +93,7 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
       }
       if (selectedBatch) {
         const filterNum = parseInt(selectedBatch, 10);
-        const pBatchNum = profile.batchYear > 100 ? profile.batchYear - 1950 : profile.batchYear;
-        const pHscYear = profile.batchYear > 100 ? profile.batchYear : 1950 + profile.batchYear;
-        const filterBatchNum = filterNum > 100 ? filterNum - 1950 : filterNum;
-        const filterHscYear = filterNum > 100 ? filterNum : 1950 + filterNum;
-
-        if (profile.batchYear !== filterNum && pBatchNum !== filterBatchNum && pHscYear !== filterHscYear) {
+        if (profile.batchYear !== filterNum) {
           return false;
         }
       }
@@ -215,10 +210,10 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
               aria-label="Filter by Batch"
               className="w-full px-3 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
             >
-              <option value="">All Batches (1 - 78)</option>
+              <option value="">{`All Batches (1949 - ${new Date().getFullYear() + 1})`}</option>
               {BATCH_LIST.map((b) => (
                 <option key={b.batchYear} value={b.batchYear}>
-                  Batch {b.batchYear < 10 ? `0${b.batchYear}` : b.batchYear} ({b.session})
+                  HSC {b.batchYear} ({b.session})
                 </option>
               ))}
             </select>
@@ -356,7 +351,9 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
 
                     <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5">
                       <span>
-                        Batch {profile.batchYear > 100 ? profile.batchYear - 1950 : profile.batchYear} (HSC {profile.batchYear > 100 ? profile.batchYear : 1950 + profile.batchYear})
+                        {profile.batchYear && profile.batchYear >= 1949
+                          ? `Notre Dame HSC Year: ${profile.batchYear}`
+                          : 'Notre Dame HSC Year: N/A'}
                       </span>
                       {profile.collegeRoll && (
                         <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100/70 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">

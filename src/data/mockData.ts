@@ -54,8 +54,8 @@ export const DEFAULT_BLANK_USER: AlumniProfile = {
   fullName: 'Notredamian Alumnus',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
   coverUrl: campusHeroImg,
-  batchYear: 68,
-  session: '2016-18 (HSC 2018)',
+  batchYear: undefined,
+  session: undefined,
   group: 'Science',
   collegeRoll: '118042',
   profession: 'Engineer / Tech',
@@ -84,33 +84,30 @@ export const ALUMNI_PROFILES: AlumniProfile[] = loadStoredAlumniProfiles();
 
 export const INITIAL_POSTS: PostItem[] = [];
 
-// Notre Dame College Dhaka Generational Batches (Est. 1949, Batches 1 to 78)
-const SPECIAL_BATCH_NOTES: Record<number, { note: string }> = {
-  1: { note: 'Pioneer' },
-  22: { note: 'Liberation Era' },
-  25: { note: 'Silver Jubilee' },
-  50: { note: 'Golden Jubilee' },
-  70: { note: '70 Years' },
-  74: { note: 'Platinum' },
-  75: { note: '75th Diamond' },
-  78: { note: 'Latest Cohort' },
-};
+// Notre Dame College Generational Batches (Est. 1949, HSC 1949 to current year + 1)
+const START_HSC_YEAR = 1949;
+const END_HSC_YEAR = new Date().getFullYear() + 1;
 
-export const BATCH_LIST: BatchSummary[] = Array.from({ length: 78 }, (_, idx) => {
-  const batchNum = idx + 1;
-  const startYear = 1948 + batchNum;
-  const sessionEndYear = startYear + 1;
-  const hscYear = startYear + 2;
-  const sessionEndShort = String(sessionEndYear).slice(-2);
-  const hscYearShort = String(hscYear).slice(-2);
-  const special = SPECIAL_BATCH_NOTES[batchNum];
+export const BATCH_LIST: BatchSummary[] = Array.from(
+  { length: END_HSC_YEAR - START_HSC_YEAR + 1 },
+  (_, idx) => {
+    const hscYear = START_HSC_YEAR + idx;
+    const startYear = hscYear - 2;
+    const sessionEndYear = hscYear - 1;
+    const sessionEndShort = String(sessionEndYear).slice(-2);
+    const hscYearShort = String(hscYear).slice(-2);
 
-  return {
-    batchYear: batchNum,
-    session: `(${startYear}-${sessionEndShort}), HSC ${hscYearShort}`,
-    total: null,
-    specialNote: special?.note,
-  };
-});
+    let note: string | undefined = undefined;
+    if (hscYear === START_HSC_YEAR) note = '1st Pioneer';
+    else if (hscYear === END_HSC_YEAR) note = 'Latest Cohort';
+
+    return {
+      batchYear: hscYear,
+      session: `(${startYear}-${sessionEndShort}), HSC ${hscYearShort}`,
+      total: null,
+      specialNote: note,
+    };
+  }
+);
 
 export const NOTIFICATIONS_LIST: NotificationItem[] = [];

@@ -43,12 +43,13 @@ export const BatchLoungesGrid: React.FC<BatchLoungesGridProps> = ({
 
       if (!matchesSearch) return false;
 
-      // Era filter
-      if (activeEra === 'recent') return b.batchYear >= 68; // HSC 2018+
-      if (activeEra === '2010s') return b.batchYear >= 61 && b.batchYear <= 67; // 2010 - 2017
-      if (activeEra === '2000s') return b.batchYear >= 51 && b.batchYear <= 60; // 2000 - 2009
-      if (activeEra === '90s') return b.batchYear >= 41 && b.batchYear <= 50; // 1990 - 1999
-      if (activeEra === 'pioneers') return b.batchYear <= 40; // 1949 - 1989
+      // Era filter with real HSC year
+      const year = b.batchYear;
+      if (activeEra === 'recent') return year >= 2018;
+      if (activeEra === '2010s') return year >= 2010 && year <= 2017;
+      if (activeEra === '2000s') return year >= 2000 && year <= 2009;
+      if (activeEra === '90s') return year >= 1990 && year <= 1999;
+      if (activeEra === 'pioneers') return year <= 1989;
 
       return true;
     });
@@ -150,7 +151,7 @@ export const BatchLoungesGrid: React.FC<BatchLoungesGridProps> = ({
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                        Batch {batch.batchYear < 10 ? `0${batch.batchYear}` : batch.batchYear}
+                        HSC {batch.batchYear}
                       </span>
                       <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                         <Lock className="w-2.5 h-2.5 text-slate-400" />

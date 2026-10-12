@@ -56,8 +56,8 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
   const [contributorName, setContributorName] = useState<string>(
     currentUser?.fullName || 'Notre Dame Alumnus'
   );
-  const [contributorBatch, setContributorBatch] = useState<number>(
-    currentUser?.batchYear || 58
+  const [contributorBatch, setContributorBatch] = useState<number | undefined>(
+    currentUser?.batchYear && currentUser.batchYear >= 1949 ? currentUser.batchYear : undefined
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -154,7 +154,10 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
               uploaderAvatar:
                 currentUser?.avatarUrl ||
                 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-              batchYear: contributorBatch || currentUser?.batchYear || 58,
+              batchYear:
+                contributorBatch && contributorBatch >= 1949
+                  ? contributorBatch
+                  : (currentUser?.batchYear && currentUser.batchYear >= 1949 ? currentUser.batchYear : undefined),
               uploadedAt: 'Just now',
               likesCount: 1,
               likedByMe: true,
@@ -259,13 +262,18 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                Batch Year
+                Notre Dame HSC Year
               </label>
               <input
                 type="number"
-                value={contributorBatch}
-                onChange={(e) => setContributorBatch(Number(e.target.value))}
-                placeholder="e.g. 58"
+                min={1949}
+                max={new Date().getFullYear() + 1}
+                value={contributorBatch && contributorBatch >= 1949 ? contributorBatch : ''}
+                onChange={(e) => {
+                  const val = e.target.value ? Number(e.target.value) : undefined;
+                  setContributorBatch(val);
+                }}
+                placeholder="e.g. 2024"
                 className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500"
               />
             </div>

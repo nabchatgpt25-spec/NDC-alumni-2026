@@ -167,9 +167,14 @@ function formatAlumniRowToProfile(row: any) {
       row.avatarUrl ||
       'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
     coverUrl: row.coverUrl || undefined,
-    batchYear: row.batchYear || 68,
+    batchYear: (() => {
+      const b = row.batchYear ?? row.batch_year;
+      if (!b) return 0;
+      const num = Number(b);
+      return num > 100 ? num : (num > 0 ? 1950 + num : 0);
+    })(),
     session: row.session || undefined,
-    collegeRoll: row.collegeRoll || '',
+    collegeRoll: row.collegeRoll || row.college_roll || '',
     academicStream: row.academicStream,
     academicGroup: row.academicGroup,
     group: row.academicStream || 'Science',
@@ -360,7 +365,11 @@ async function handleUnifiedLoginCore(req: Request, res: Response) {
                 (signInData.user.user_metadata as any)?.full_name ||
                 (signInData.user.user_metadata as any)?.name ||
                 cleanEmail.split('@')[0],
-              batchYear: Number((signInData.user.user_metadata as any)?.batch_year) || 68,
+              batchYear: (() => {
+                const metaB = Number((signInData.user.user_metadata as any)?.batch_year ?? (signInData.user.user_metadata as any)?.batchYear);
+                return metaB > 100 ? metaB : (metaB > 0 ? 1950 + metaB : 0);
+              })(),
+              collegeRoll: (signInData.user.user_metadata as any)?.college_roll || (signInData.user.user_metadata as any)?.collegeRoll || '',
               email: cleanEmail,
               passwordHash: hashPasswordServer(password),
             });

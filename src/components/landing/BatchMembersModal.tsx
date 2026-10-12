@@ -93,7 +93,11 @@ export const BatchMembersModal: React.FC<BatchMembersModalProps> = ({
                         </span>
                       )}
                       <span>•</span>
-                      <span>Batch {alumnus.batchYear > 100 ? alumnus.batchYear - 1950 : alumnus.batchYear} (HSC {alumnus.batchYear > 100 ? alumnus.batchYear : 1950 + alumnus.batchYear})</span>
+                      <span>
+                        {alumnus.batchYear && alumnus.batchYear >= 1949
+                          ? `Notre Dame HSC Year: ${alumnus.batchYear}`
+                          : 'Notre Dame HSC Year: N/A'}
+                      </span>
                     </div>
                     <p className="text-[11px] text-slate-700 dark:text-slate-300 font-medium truncate mt-0.5">
                       {alumnus.position || 'Professional'}

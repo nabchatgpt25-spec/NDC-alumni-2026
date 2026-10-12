@@ -459,8 +459,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [initialEditDraft] = useState<Record<string, any> | null>(() => loadEditDraft());
 
   // Edit form state (restored from localStorage draft if available)
+  const sanitizeHscYear = (y?: number) => (y && y >= 1949 ? y : 0);
+  const [editError, setEditError] = useState<string>('');
   const [editName, setEditName] = useState<string>(initialEditDraft?.editName ?? profile.fullName);
-  const [editBatch, setEditBatch] = useState<number>(initialEditDraft?.editBatch ?? profile.batchYear);
+  const [editBatch, setEditBatch] = useState<number>(sanitizeHscYear(initialEditDraft?.editBatch ?? profile.batchYear));
   const [editCollegeRoll, setEditCollegeRoll] = useState<string>(initialEditDraft?.editCollegeRoll ?? (profile.collegeRoll || ''));
   const [editBio, setEditBio] = useState<string>(initialEditDraft?.editBio ?? (profile.bio || ''));
   const [editPosition, setEditPosition] = useState<string>(initialEditDraft?.editPosition ?? (profile.position || ''));
@@ -491,7 +493,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const savedDraft = loadEditDraft();
       if (savedDraft) {
         setEditName(savedDraft.editName ?? currentUser.fullName);
-        setEditBatch(savedDraft.editBatch ?? currentUser.batchYear);
+        setEditBatch(sanitizeHscYear(savedDraft.editBatch ?? currentUser.batchYear));
         setEditCollegeRoll(savedDraft.editCollegeRoll ?? (currentUser.collegeRoll || ''));
         setEditBio(savedDraft.editBio ?? (currentUser.bio || ''));
         setEditPosition(savedDraft.editPosition ?? (currentUser.position || ''));
@@ -513,7 +515,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         setEditBadges(savedDraft.editBadges ?? (currentUser.badges || []));
       } else {
         setEditName(currentUser.fullName);
-        setEditBatch(currentUser.batchYear);
+        setEditBatch(sanitizeHscYear(currentUser.batchYear));
         setEditCollegeRoll(currentUser.collegeRoll || '');
         setEditBio(currentUser.bio || '');
         setEditPosition(currentUser.position || '');
@@ -795,9 +797,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         ? editProfessionOther.trim()
         : editProfession;
 
+    const currentYear = new Date().getFullYear();
+    const rawBatchVal = Number(editBatch);
+    if (!editBatch || isNaN(rawBatchVal) || rawBatchVal < 1949 || rawBatchVal > currentYear + 1) {
+      setEditError(`Please provide a valid Notre Dame HSC Year between 1949 and ${currentYear + 1}.`);
+      handleScrollToField('batchYear');
+      return;
+    }
+    setEditError('');
+    const cleanSavedBatch = Math.round(rawBatchVal);
+
     const updatedData: Partial<AlumniProfile> = {
       fullName: editName,
-      batchYear: Number(editBatch),
+      batchYear: cleanSavedBatch,
       collegeRoll: editCollegeRoll,
       bio: editBio,
       position: editPosition,
@@ -968,7 +980,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 <div className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2">
                   <span className="px-3 py-1 rounded-full bg-blue-500/15 dark:bg-blue-500/20 border border-blue-400/30 text-blue-700 dark:text-blue-300 font-extrabold backdrop-blur-md">
-                    Batch {profile.batchYear}
+                    {profile.batchYear && profile.batchYear >= 1949
+                      ? `Notre Dame HSC Year: ${profile.batchYear}`
+                      : 'Notre Dame HSC Year: N/A'}
                   </span>
                   <span className="text-slate-700 dark:text-slate-200 font-semibold">{profile.profession}</span>
                   {profile.cadre && <span className="text-slate-500 dark:text-slate-400">· {profile.cadre}</span>}
@@ -1960,6 +1974,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             </div>
 
+            {editError && (
+              <div className="p-3 mb-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-bold">
+                {editError}
+              </div>
+            )}
+
             {/* Section 1: Basic Info */}
             <div>
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-3">
@@ -1989,9 +2009,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     type="number"
                     inputMode="numeric"
                     min={1949}
-                    max={new Date().getFullYear() + 2}
-                    placeholder="e.g. 2016"
-                    value={editBatch || ''}
+                    max={new Date().getFullYear() + 1}
+                    placeholder="e.g. 2024"
+                    value={editBatch && editBatch >= 1949 ? editBatch : ''}
                     onChange={(e) => {
                       const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
                       setEditBatch(digits ? Number(digits) : 0);
