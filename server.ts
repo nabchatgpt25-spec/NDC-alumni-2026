@@ -714,8 +714,9 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
     const timer = setTimeout(() => controller.abort(), 7000);
 
     const isFacebook = /(?:facebook\.com|fb\.watch|fb\.com)/i.test(cleanUrl);
+    const isInstagram = /(?:instagram\.com|instagr\.am)/i.test(cleanUrl);
     // Facebook and social networks serve rich public OpenGraph metadata to crawler UAs without login wall
-    const crawlerUa = isFacebook
+    const crawlerUa = isFacebook || isInstagram
       ? 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
       : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
@@ -798,6 +799,12 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
           // graceful fallback
         }
       }
+    } else if (isInstagram) {
+      if (title && /^(Instagram|Log in)/i.test(title)) {
+        const isReel = /(?:reel|reels)\/([a-zA-Z0-9_-]+)/i.test(finalResolvedUrl);
+        title = isReel ? 'Instagram Reel' : 'Instagram Post';
+      }
+      siteName = 'Instagram';
     }
 
     let mediaType: 'photo' | 'video' | 'post' | 'article' | 'website' = 'website';
@@ -820,20 +827,23 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
 
     res.json({
       resolvedUrl: finalResolvedUrl,
-      title,
+      title: title || (mediaType === 'video' ? 'Video' : undefined),
       description,
       imageUrl,
       videoUrl,
-      publisher: siteName || (isFacebook ? 'Facebook' : undefined),
+      publisher: siteName || (isFacebook ? 'Facebook' : isInstagram ? 'Instagram' : undefined),
       mediaType,
       ogType,
     });
   } catch (error: any) {
     const isFb = /(?:facebook\.com|fb\.watch|fb\.com)/i.test(cleanUrl);
+    const isIg = /(?:instagram\.com|instagr\.am)/i.test(cleanUrl);
+    const isVid = /(?:videos\/|reel\/|reels\/|watch|\/share\/v\/|\/share\/r\/|fb\.watch)/i.test(cleanUrl);
     res.json({
       resolvedUrl: cleanUrl,
-      publisher: isFb ? 'Facebook' : undefined,
-      mediaType: isFb ? 'post' : 'website',
+      publisher: isFb ? 'Facebook' : isIg ? 'Instagram' : undefined,
+      mediaType: isVid ? 'video' : isFb ? 'post' : 'website',
+      title: isVid ? (isIg ? 'Instagram Reel' : isFb ? 'Facebook Video' : 'Video') : undefined,
       error: error.message,
     });
   }

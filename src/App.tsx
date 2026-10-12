@@ -298,7 +298,7 @@ function AlumniAppContent() {
                   />
                 )}
 
-                {route === 'batches' && (
+                {(route === 'batches' || route === 'leaderboard') && (
                   <BatchesView
                     onSelectBatch={(batchYear) => {
                       setSelectedBatchFilter(batchYear);

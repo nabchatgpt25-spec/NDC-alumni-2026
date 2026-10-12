@@ -300,25 +300,83 @@ export async function fetchFeedPostsFromDb(
   const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
 
   // Fetch one stable page of posts so the feed does not hydrate the full history at startup.
-  const { data: postsData, error: postsError } = await supabase
-    .from('posts')
-    .select(`
-      id,
-      author_id,
-      content,
-      category,
-      images,
-      videos,
-      likes_count,
-      comments_count,
-      is_pinned,
-      is_edited,
-      created_at
-    `)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .range(safeOffset, safeOffset + safeLimit - 1);
+  // Defensively try selecting linked_url and link_metadata; fall back safely if schema doesn't have them.
+  let postsData: any[] | null = null;
+  let postsError: any = null;
+
+  try {
+    const res = await supabase
+      .from('posts')
+      .select(`
+        id,
+        author_id,
+        content,
+        category,
+        images,
+        videos,
+        linked_url,
+        link_metadata,
+        likes_count,
+        comments_count,
+        is_pinned,
+        is_edited,
+        created_at
+      `)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(safeOffset, safeOffset + safeLimit - 1);
+
+    if (res.error) {
+      const fallbackRes = await supabase
+        .from('posts')
+        .select(`
+          id,
+          author_id,
+          content,
+          category,
+          images,
+          videos,
+          likes_count,
+          comments_count,
+          is_pinned,
+          is_edited,
+          created_at
+        `)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(safeOffset, safeOffset + safeLimit - 1);
+
+      postsData = fallbackRes.data;
+      postsError = fallbackRes.error;
+    } else {
+      postsData = res.data;
+    }
+  } catch (err: any) {
+    const fallbackRes = await supabase
+      .from('posts')
+      .select(`
+        id,
+        author_id,
+        content,
+        category,
+        images,
+        videos,
+        likes_count,
+        comments_count,
+        is_pinned,
+        is_edited,
+        created_at
+      `)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(safeOffset, safeOffset + safeLimit - 1);
+
+    postsData = fallbackRes.data;
+    postsError = fallbackRes.error;
+  }
 
   if (postsError) {
     console.error('Supabase fetchFeedPosts error loading posts:', postsError);

@@ -49,6 +49,7 @@ import {
   renderTextWithClickableLinks,
   SharedEmbedCard
 } from './SmartPostMediaAndEmbeds';
+import { Video as FeedVideoPlayer } from './feed/Video';
 import { LinkPreview } from './feed/LinkPreview';
 import { fetchLinkPreview, type LinkMetadata } from '../services/linkPreviewService';
 import {
@@ -1576,19 +1577,35 @@ export const FeedView: React.FC<FeedViewProps> = ({
                     </div>
 
                     <div className="space-y-2.5">
-                      {attachedVideos.map((vidUrl, idx) => (
-                        <div key={idx} className="relative">
-                          <SharedEmbedCard url={vidUrl} autoPlayOnScroll={false} />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveAttachedVideo(idx)}
-                            className="absolute top-2.5 right-2.5 p-1.5 bg-black/80 hover:bg-rose-600 text-white rounded-full transition-colors cursor-pointer z-20"
-                            title="Remove attached video or link"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                      {attachedVideos.map((vidUrl, idx) => {
+                        const isDirect =
+                          vidUrl.startsWith('data:video/') ||
+                          vidUrl.startsWith('blob:') ||
+                          /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(vidUrl);
+
+                        return (
+                          <div key={idx} className="relative rounded-2xl overflow-hidden bg-black">
+                            {isDirect ? (
+                              <FeedVideoPlayer
+                                src={vidUrl}
+                                autoPlayOnScroll={false}
+                                controls={true}
+                                mutedDefault={true}
+                              />
+                            ) : (
+                              <LinkPreview url={vidUrl} autoPlayOnScroll={false} />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveAttachedVideo(idx)}
+                              className="absolute top-2.5 right-2.5 p-1.5 bg-black/80 hover:bg-rose-600 text-white rounded-full transition-colors cursor-pointer z-30 shadow-md"
+                              title="Remove attached video or link"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -2200,8 +2217,38 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   </div>
                 )}
 
-                {/* Universal Link Preview: link_metadata or detected URL */}
-                {(post.link_metadata || post.linked_url || firstPostUrl) && (
+                {/* Post Uploaded / Attached Videos */}
+                {post.videos && post.videos.length > 0 && (
+                  <div className="space-y-3 mb-4">
+                    {post.videos.map((vidUrl, vidIdx) => {
+                      const isDirect =
+                        vidUrl.startsWith('data:video/') ||
+                        vidUrl.startsWith('blob:') ||
+                        /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(vidUrl);
+                      if (isDirect) {
+                        return (
+                          <FeedVideoPlayer
+                            key={vidIdx}
+                            src={vidUrl}
+                            autoPlayOnScroll={autoPlayOnScroll}
+                            controls={true}
+                            className="w-full"
+                          />
+                        );
+                      }
+                      return (
+                        <LinkPreview
+                          key={vidIdx}
+                          url={vidUrl}
+                          autoPlayOnScroll={autoPlayOnScroll}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Universal Link Preview: link_metadata or detected URL (only if not already in post.videos) */}
+                {(post.link_metadata || post.linked_url || (firstPostUrl && (!post.videos || !post.videos.includes(firstPostUrl)))) && (
                   <div className="mb-4">
                     <LinkPreview
                       url={post.linked_url || firstPostUrl || undefined}
@@ -2226,21 +2273,31 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
                 {/* Action Buttons */}
                 <div className="flex items-center gap-1 sm:gap-2">
+                  {/* Like Button */}
                   <button
                     type="button"
                     onClick={() => handleToggleLike(post.id)}
-                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    title={post.likedByMe ? 'Unlike' : 'Like'}
+                    aria-label={post.likedByMe ? 'Unlike' : 'Like'}
+                    className={`group relative flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-2 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 ${
                       post.likedByMe
                         ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Heart
-                      className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${post.likedByMe ? 'fill-rose-500 text-rose-500' : ''}`}
+                      className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 group-active:scale-125 ${
+                        post.likedByMe ? 'fill-rose-500 text-rose-500' : ''
+                      }`}
                     />
-                    <span className="truncate">{post.likedByMe ? 'Liked' : 'Like'}</span>
+                    <span className="hidden sm:inline truncate">{post.likedByMe ? 'Liked' : 'Like'}</span>
+                    {/* Touch / Hover popover text on mobile */}
+                    <span className="sm:hidden pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 group-active:opacity-100 group-focus:opacity-100 transition-opacity duration-150 bg-slate-900/90 dark:bg-slate-800/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap z-30">
+                      {post.likedByMe ? 'Liked' : 'Like'}
+                    </span>
                   </button>
 
+                  {/* Comment Button */}
                   <button
                     type="button"
                     onClick={() =>
@@ -2248,35 +2305,49 @@ export const FeedView: React.FC<FeedViewProps> = ({
                         activeCommentPostId === post.id ? null : post.id
                       )
                     }
-                    className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Comment"
+                    aria-label="Comment"
+                    className="group relative flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer active:scale-95"
                   >
-                    <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                    <span className="truncate">Comment</span>
+                    <MessageCircle className="w-4 h-4 shrink-0 transition-transform group-hover:scale-110 group-active:scale-125" />
+                    <span className="hidden sm:inline truncate">Comment</span>
+                    {/* Touch / Hover popover text on mobile */}
+                    <span className="sm:hidden pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 group-active:opacity-100 group-focus:opacity-100 transition-opacity duration-150 bg-slate-900/90 dark:bg-slate-800/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap z-30">
+                      Comment
+                    </span>
                   </button>
 
+                  {/* Save Button */}
                   <button
                     type="button"
                     onClick={() => handleToggleSave(post)}
-                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    title={isPostSaved(post.id) || post.isSaved ? 'Saved to offline cache' : 'Save post for offline reading'}
+                    aria-label={isPostSaved(post.id) || post.isSaved ? 'Saved' : 'Save'}
+                    className={`group relative flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-2 sm:px-2 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 ${
                       isPostSaved(post.id) || post.isSaved
                         ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
-                    title={isPostSaved(post.id) || post.isSaved ? 'Saved to offline cache' : 'Save post for offline reading'}
                   >
                     {isPostSaved(post.id) || post.isSaved ? (
-                      <BookmarkCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 fill-current text-blue-600 dark:text-blue-400" />
+                      <BookmarkCheck className="w-4 h-4 shrink-0 fill-current text-blue-600 dark:text-blue-400 transition-transform group-hover:scale-110 group-active:scale-125" />
                     ) : (
-                      <Bookmark className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                      <Bookmark className="w-4 h-4 shrink-0 transition-transform group-hover:scale-110 group-active:scale-125" />
                     )}
-                    <span className="truncate">{isPostSaved(post.id) || post.isSaved ? 'Saved' : 'Save'}</span>
+                    <span className="hidden sm:inline truncate">{isPostSaved(post.id) || post.isSaved ? 'Saved' : 'Save'}</span>
+                    {/* Touch / Hover popover text on mobile */}
+                    <span className="sm:hidden pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 group-active:opacity-100 group-focus:opacity-100 transition-opacity duration-150 bg-slate-900/90 dark:bg-slate-800/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap z-30">
+                      {isPostSaved(post.id) || post.isSaved ? 'Saved' : 'Save'}
+                    </span>
                   </button>
 
+                  {/* Share Button */}
                   <button
                     type="button"
                     onClick={() => handleSharePost(post.id)}
                     title="Copy direct link to this post"
-                    className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    aria-label="Share Post"
+                    className={`group relative flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-2 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 ${
                       copiedPostId === post.id
                         ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -2284,13 +2355,21 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   >
                     {copiedPostId === post.id ? (
                       <>
-                        <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span className="truncate">Copied</span>
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400 transition-transform group-hover:scale-110 group-active:scale-125" />
+                        <span className="hidden sm:inline truncate">Copied</span>
+                        {/* Touch / Hover popover text on mobile */}
+                        <span className="sm:hidden pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 group-active:opacity-100 group-focus:opacity-100 transition-opacity duration-150 bg-slate-900/90 dark:bg-slate-800/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap z-30">
+                          Copied
+                        </span>
                       </>
                     ) : (
                       <>
-                        <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                        <span className="truncate">Share</span>
+                        <Share2 className="w-4 h-4 shrink-0 transition-transform group-hover:scale-110 group-active:scale-125" />
+                        <span className="hidden sm:inline truncate">Share</span>
+                        {/* Touch / Hover popover text on mobile */}
+                        <span className="sm:hidden pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 group-active:opacity-100 group-focus:opacity-100 transition-opacity duration-150 bg-slate-900/90 dark:bg-slate-800/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap z-30">
+                          Share
+                        </span>
                       </>
                     )}
                   </button>

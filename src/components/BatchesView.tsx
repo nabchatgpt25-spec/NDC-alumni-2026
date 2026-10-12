@@ -16,16 +16,18 @@ import {
   Mail,
   Trophy,
   LayoutGrid,
+  BarChart3,
 } from 'lucide-react';
 import { BATCH_LIST, loadStoredAlumniProfiles } from '../data/mockData';
-import { BatchSummary, AlumniProfile } from '../types';
+import { BatchSummary, AlumniProfile, PostItem } from '../types';
 import { NDCLogo } from './NDCLogo';
 import {
   fetchBatchesFromDb,
   fetchBatchAlumniProfilesFromDb,
   fetchAlumniProfilesFromDb,
+  fetchFeedPostsFromDb,
 } from '../services/supabaseService';
-import { BatchParticipationLeaderboard } from './BatchParticipationLeaderboard';
+import { BatchLeaderboard } from './BatchLeaderboard';
 
 interface BatchesViewProps {
   onSelectBatch: (batchYear: number) => void;
@@ -139,7 +141,14 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
   const [batchesList, setBatchesList] = useState<BatchSummary[]>(BATCH_LIST);
   const [batchAlumniProfiles, setBatchAlumniProfiles] = useState<AlumniProfile[]>([]);
   const [allDirectoryProfiles, setAllDirectoryProfiles] = useState<AlumniProfile[]>(() => loadStoredAlumniProfiles());
-  const [activeTabMode, setActiveTabMode] = useState<'directory' | 'leaderboard'>('directory');
+  const [feedPosts, setFeedPosts] = useState<PostItem[]>([]);
+  const [activeTabMode, setActiveTabMode] = useState<'directory' | 'leaderboard'>(() => {
+    if (typeof window !== 'undefined') {
+      const h = window.location.hash.replace('#', '');
+      if (h === 'leaderboard' || h === 'batch-leaderboard') return 'leaderboard';
+    }
+    return 'directory';
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [rangeFilter, setRangeFilter] = useState<'all' | '1-20' | '21-40' | '41-60' | '61-78'>('all');
   const [activeBatchYear, setActiveBatchYear] = useState<number | null>(null);
@@ -174,6 +183,16 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
       })
       .catch((err) => {
         console.warn('BatchesView: could not load directory profiles for leaderboard:', err);
+      });
+
+    fetchFeedPostsFromDb(100)
+      .then((posts) => {
+        if (isMounted && posts && posts.length > 0) {
+          setFeedPosts(posts);
+        }
+      })
+      .catch(() => {
+        // Fallback to profile post metrics
       });
 
     return () => {
@@ -320,7 +339,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
         </div>
       </div>
 
-      {/* View Switcher: Directory vs Participation Leaderboard */}
+      {/* View Switcher: Directory vs Batch Leaderboard */}
       <div className="flex items-center gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-2">
         <button
           type="button"
@@ -340,19 +359,20 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
           onClick={() => setActiveTabMode('leaderboard')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             activeTabMode === 'leaderboard'
-              ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+              ? 'bg-amber-500 text-slate-950 font-black shadow-xs ring-2 ring-amber-400/40'
               : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
           }`}
         >
-          <Trophy className="w-4 h-4 text-amber-500" />
-          <span>Batch Participation Leaderboard</span>
+          <BarChart3 className="w-4 h-4 text-amber-500" />
+          <span>Batch Leaderboard & Activity Charts</span>
         </button>
       </div>
 
       {activeTabMode === 'leaderboard' ? (
-        <BatchParticipationLeaderboard
+        <BatchLeaderboard
           batches={batchesList}
           profiles={allDirectoryProfiles}
+          posts={feedPosts}
           onSelectBatch={(selectedBatch) => {
             setActiveBatchYear(selectedBatch);
             setActiveTabMode('directory');

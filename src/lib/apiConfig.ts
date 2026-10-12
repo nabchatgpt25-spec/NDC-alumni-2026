@@ -20,11 +20,9 @@ export function apiUrl(path: string): string {
     return path;
   }
 
-  // 1. Unfurl OpenGraph crawler proxy -> Supabase 'unfurl' Edge Function
+  // 1. Unfurl OpenGraph crawler proxy: served by our Express server
   if (path.startsWith('/api/unfurl')) {
-    const query = path.includes('?') ? path.slice(path.indexOf('?') + 1) : '';
-    const keyParam = SUPABASE_ANON_KEY ? `&apikey=${encodeURIComponent(SUPABASE_ANON_KEY)}` : '';
-    return `${getEdgeFunctionUrl('unfurl')}?${query}${keyParam}`;
+    return path;
   }
 
   // 2. Unified phone login -> Supabase 'unified-phone-login' Edge Function

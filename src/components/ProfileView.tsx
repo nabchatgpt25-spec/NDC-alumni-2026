@@ -1665,8 +1665,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       </div>
                     )}
 
-                    {/* Smart Link Share V1: Detected from post text or attached video */}
-                    {firstProfilePostUrl && (
+                    {/* Post Uploaded / Attached Videos */}
+                    {post.videos && post.videos.length > 0 && (
+                      <div className="space-y-3 mb-3">
+                        {post.videos.map((vidUrl, vidIdx) => (
+                          <SharedEmbedCard key={vidIdx} url={vidUrl} autoPlayOnScroll={true} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Smart Link Share: Detected from post text (only if not already in post.videos) */}
+                    {firstProfilePostUrl && (!post.videos || !post.videos.includes(firstProfilePostUrl)) && (
                       <div className="mb-3">
                         <SharedEmbedCard
                           url={firstProfilePostUrl}
@@ -1677,22 +1686,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                     {/* Like, Comment & Share Bar */}
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
                         <button
                           type="button"
                           onClick={() => handleToggleLikeProfilePost(post.id)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                          title={post.likedByMe ? 'Unlike' : 'Like'}
+                          aria-label={post.likedByMe ? 'Unlike' : 'Like'}
+                          className={`group relative inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 sm:px-3 rounded-xl font-bold transition-all cursor-pointer active:scale-95 ${
                             post.likedByMe
                               ? 'text-rose-600 bg-rose-50 dark:bg-rose-950/30'
                               : 'hover:bg-slate-100 dark:hover:bg-slate-800'
                           }`}
                         >
                           <Heart
-                            className={`w-4 h-4 ${
+                            className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 group-active:scale-125 ${
                               post.likedByMe ? 'fill-rose-500 text-rose-500' : ''
                             }`}
                           />
-                          <span>
+                          <span className="hidden sm:inline">
+                            {post.likesCount} {post.likesCount === 1 ? 'Like' : 'Likes'}
+                          </span>
+                          {/* Mobile Touch / Hover popover text */}
+                          <span className="sm:hidden pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 group-active:opacity-100 group-focus:opacity-100 transition-opacity duration-150 bg-slate-900/90 dark:bg-slate-800/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap z-30">
                             {post.likesCount} {post.likesCount === 1 ? 'Like' : 'Likes'}
                           </span>
                         </button>
@@ -1701,7 +1716,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           type="button"
                           onClick={() => handleShareProfilePost(post.id)}
                           title="Copy direct link to this post"
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                          aria-label="Share Post"
+                          className={`group relative inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 sm:px-3 rounded-xl font-bold transition-all cursor-pointer active:scale-95 ${
                             copiedProfilePostId === post.id
                               ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
                               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1709,13 +1725,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         >
                           {copiedProfilePostId === post.id ? (
                             <>
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                              <span>Link Copied!</span>
+                              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400 transition-transform group-hover:scale-110 group-active:scale-125" />
+                              <span className="hidden sm:inline">Link Copied!</span>
+                              <span className="sm:hidden pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 group-active:opacity-100 group-focus:opacity-100 transition-opacity duration-150 bg-slate-900/90 dark:bg-slate-800/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap z-30">
+                                Copied!
+                              </span>
                             </>
                           ) : (
                             <>
-                              <Share2 className="w-4 h-4" />
-                              <span>Share</span>
+                              <Share2 className="w-4 h-4 shrink-0 transition-transform group-hover:scale-110 group-active:scale-125" />
+                              <span className="hidden sm:inline">Share</span>
+                              <span className="sm:hidden pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 group-active:opacity-100 group-focus:opacity-100 transition-opacity duration-150 bg-slate-900/90 dark:bg-slate-800/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap z-30">
+                                Share
+                              </span>
                             </>
                           )}
                         </button>

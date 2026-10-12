@@ -789,7 +789,7 @@ export const AutoPlayVideoPlayer: React.FC<{
           videoEl.pause();
         }
       } else if (ratio >= 0.5) {
-        // When visible again in viewport: resume with sound
+        // When visible again in viewport: resume WITH SOUND
         if (autoPlayOnScroll && videoEl.paused) {
           document.querySelectorAll('video').forEach((otherVid) => {
             if (otherVid !== videoEl && !otherVid.paused) {
@@ -798,9 +798,11 @@ export const AutoPlayVideoPlayer: React.FC<{
           });
 
           // Resume with sound
-          videoEl.muted = isMutedRef.current;
+          videoEl.muted = false;
+          setIsMuted(false);
+          isMutedRef.current = false;
           videoEl.play().catch(() => {
-            // If browser blocks unmuted playback before first gesture, fallback to muted temporarily
+            // If browser blocks unmuted autoplay before first gesture, fallback to muted temporarily
             videoEl.muted = true;
             videoEl.play().catch(() => {});
           });
@@ -821,7 +823,9 @@ export const AutoPlayVideoPlayer: React.FC<{
               });
 
               // Resume with sound
-              videoEl.muted = isMutedRef.current;
+              videoEl.muted = false;
+              setIsMuted(false);
+              isMutedRef.current = false;
               videoEl.play().catch(() => {
                 videoEl.muted = true;
                 videoEl.play().catch(() => {});
@@ -1691,19 +1695,56 @@ export const SharedEmbedCard: React.FC<{
   const trimmed = url.trim();
   const lower = trimmed.toLowerCase();
 
-  // Reject unsafe URLs (e.g. javascript:, vbscript:, data:, file:)
+  // Reject truly unsafe protocols (javascript:, vbscript:, file:)
   if (
     lower.startsWith('javascript:') ||
     lower.startsWith('vbscript:') ||
-    lower.startsWith('data:') ||
     lower.startsWith('file:')
   ) {
     return null;
   }
 
+  // 1. Direct uploaded or linked video (data:video/..., blob:..., .mp4, .webm, .mov)
+  const isDirectVideo =
+    lower.startsWith('data:video/') ||
+    lower.startsWith('blob:') ||
+    /\.(mp4|webm|mov|ogg)(\?.*)?$/i.test(lower);
+
+  if (isDirectVideo) {
+    return (
+      <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-black shadow-xs">
+        <div className="flex items-center justify-between px-3.5 py-2 bg-slate-900 text-white text-xs border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white font-bold text-[10px] uppercase tracking-wider">
+              Video
+            </span>
+            <span className="text-[11px] text-slate-300 truncate font-mono">
+              {lower.startsWith('data:') ? 'Uploaded Video File' : lower.startsWith('blob:') ? 'Local Video' : 'Video Stream'}
+            </span>
+          </div>
+          {!lower.startsWith('data:') && !lower.startsWith('blob:') && (
+            <a
+              href={trimmed}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer"
+            >
+              <span>View Original</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </div>
+        <div className="w-full aspect-video bg-black flex items-center justify-center">
+          <AutoPlayVideoPlayer src={trimmed} autoPlayOnScroll={autoPlayOnScroll} />
+        </div>
+      </div>
+    );
+  }
+
   let parsed: URL;
   try {
-    parsed = new URL(trimmed);
+    parsed = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return null;
     }
@@ -1713,7 +1754,7 @@ export const SharedEmbedCard: React.FC<{
 
   const safeUrl = parsed.toString();
 
-  // 1. YouTube: embed responsive video with autoplay and scroll-stop
+  // 2. YouTube: embed responsive video with autoplay and scroll-stop
   const yt = parseValidYouTubeUrl(safeUrl);
   if (yt.isValid && yt.embedUrl) {
     return (
@@ -1726,39 +1767,72 @@ export const SharedEmbedCard: React.FC<{
     );
   }
 
-  // 2. Direct Video files (mp4, webm, mov, ogg)
-  const isDirectVideo = /\.(mp4|webm|mov|ogg)(\?.*)?$/i.test(safeUrl);
-  if (isDirectVideo) {
+  // 3. Facebook URLs (Video, Reel, Post, Photo): use dedicated FacebookEmbedCard with preview & scroll-stop
+  if (
+    parsed.hostname.toLowerCase().includes('facebook.com') ||
+    parsed.hostname.toLowerCase() === 'fb.watch' ||
+    parsed.hostname.toLowerCase() === 'fb.com'
+  ) {
+    const fbInfo = buildFacebookPluginInfo(safeUrl, parsed);
+    return <FacebookEmbedCard info={fbInfo} autoPlayOnScroll={autoPlayOnScroll} />;
+  }
+
+  // 4. Instagram URLs (Reels / Posts): use parsed embed info or LinkPreview
+  if (parsed.hostname.toLowerCase().includes('instagram.com')) {
+    const igMatch = parsed.pathname.match(/\/(p|reel|reels|tv)\/([a-zA-Z0-9_-]+)/i);
+    const isReel = parsed.pathname.includes('/reel');
+    const igCode = igMatch ? igMatch[2] : '';
+    const igEmbedSrc = igCode ? `https://www.instagram.com/p/${igCode}/embed` : undefined;
+
     return (
-      <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-black shadow-xs">
-        <div className="flex items-center justify-between px-3.5 py-2 bg-slate-900 text-white text-xs border-b border-slate-800">
+      <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+        <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-900 text-white text-xs border-b border-slate-800">
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white font-bold text-[10px] uppercase tracking-wider">
-              Video
+            <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-pink-600 via-rose-500 to-amber-500 text-white font-extrabold text-[10px] uppercase tracking-wider">
+              {isReel ? 'Instagram Reel' : 'Instagram'}
             </span>
-            <span className="text-[11px] text-slate-300 truncate font-mono">{parsed.hostname}</span>
+            <span className="font-semibold text-slate-200 truncate">Instagram Post</span>
           </div>
           <a
             href={safeUrl}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 hover:underline cursor-pointer"
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-pink-400 hover:underline"
           >
-            <span>View Original</span>
+            <span>View on Instagram</span>
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
-        <div className="w-full aspect-video bg-black flex items-center justify-center">
-          <AutoPlayVideoPlayer src={safeUrl} autoPlayOnScroll={autoPlayOnScroll} />
-        </div>
+        {igEmbedSrc ? (
+          <div className="relative w-full max-w-md mx-auto aspect-[4/5] bg-black">
+            <iframe
+              src={igEmbedSrc}
+              className="w-full h-full border-0"
+              frameBorder="0"
+              allow="autoplay; encrypted-media; picture-in-picture"
+              allowFullScreen
+              title="Instagram embed"
+            />
+          </div>
+        ) : (
+          <div className="p-4 flex items-center justify-between">
+            <span className="text-xs text-slate-600 dark:text-slate-300 font-mono truncate">{safeUrl}</span>
+            <a
+              href={safeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-pink-600 dark:text-pink-400 hover:underline shrink-0"
+            >
+              Open on Instagram
+            </a>
+          </div>
+        )}
       </div>
     );
   }
 
-  // 3. For Facebook, Instagram, and other sites:
-  // Simple card with site name and URL. Do not pretend to have fetched metadata or embed these sites.
-  // Add "View Original" opening in a new tab with rel="noopener noreferrer".
+  // 5. Generic Website / Article Card
   const meta = getSiteMetadata(safeUrl);
 
   return (
@@ -1800,3 +1874,4 @@ export const SharedEmbedCard: React.FC<{
 
 export const SmartLinkCard = SharedEmbedCard;
 export const Video = AutoPlayVideoPlayer;
+
