@@ -45,9 +45,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT: number | string = process.env.PORT
-  ? (isNaN(Number(process.env.PORT)) ? process.env.PORT : Number(process.env.PORT))
-  : 3000;
+const portArgIdx = process.argv.indexOf('--port');
+const cliPort = portArgIdx !== -1 && process.argv[portArgIdx + 1] ? Number(process.argv[portArgIdx + 1]) : null;
+const PORT = cliPort || 3000;
 
 // 1. Security Headers & Custom Domain CORS Middleware (ndcbogura.alumniworld.xyz)
 const ALLOWED_ORIGINS = new Set([
@@ -1258,6 +1258,7 @@ async function startServer() {
       server: {
         middlewareMode: true,
         allowedHosts: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
       },
       appType: 'spa',
     });
@@ -1270,15 +1271,9 @@ async function startServer() {
     });
   }
 
-  if (typeof PORT === 'number') {
-    httpServer.listen(PORT, '0.0.0.0', () => {
-      console.log(`NDC Alumni Hardened Server running on http://0.0.0.0:${PORT}`);
-    });
-  } else {
-    httpServer.listen(PORT, () => {
-      console.log(`NDC Alumni Hardened Server running on cPanel socket ${PORT}`);
-    });
-  }
+  httpServer.listen(Number(PORT) || 3000, '0.0.0.0', () => {
+    console.log(`NDC Alumni Server running on http://0.0.0.0:${PORT}`);
+  });
 }
 
 startServer();
