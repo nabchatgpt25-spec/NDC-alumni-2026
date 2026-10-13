@@ -15,7 +15,7 @@ import {
   Layers,
   ArrowRight
 } from 'lucide-react';
-import { GalleryAlbum, GalleryPhoto } from '../types';
+import { GalleryAlbum, GalleryPhoto, PostComment } from '../types';
 import { INITIAL_ALBUMS } from '../data/galleryData';
 import { AlbumShowcaseView } from './gallery/AlbumShowcaseView';
 import { CreateAlbumModal } from './gallery/CreateAlbumModal';
@@ -26,10 +26,14 @@ import {
   createGalleryAlbumInDb,
   addPhotoToGalleryAlbumInDb,
 } from '../services/supabaseService';
+import { useAuth } from '../context/AuthContext';
+import { notifyPhotoLike, notifyPhotoComment } from '../utils/notificationService';
+import { playSound } from '../utils/audio';
 
 const STORAGE_KEY = 'ndc_alumni_gallery_albums';
 
 export const GalleryView: React.FC = () => {
+  const { currentUser } = useAuth();
   // Load albums from localStorage or fallback to INITIAL_ALBUMS
   const [albums, setAlbums] = useState<GalleryAlbum[]>(() => {
     try {
@@ -131,6 +135,32 @@ export const GalleryView: React.FC = () => {
     return () => clearInterval(timer);
   }, [isPlayingSlideshow, lightboxState.isOpen, activeLightboxPhotos.length]);
 
+  // Deep link to photo from notification (#photo-{photoId})
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const checkHash = () => {
+      const h = window.location.hash.replace('#', '');
+      if (h.startsWith('photo-')) {
+        const photoId = h.replace('photo-', '');
+        for (const alb of albums) {
+          const idx = alb.photos.findIndex((p) => p.id === photoId);
+          if (idx >= 0) {
+            setSelectedAlbumId(alb.id);
+            setLightboxState({
+              isOpen: true,
+              albumId: alb.id,
+              currentIndex: idx,
+            });
+            break;
+          }
+        }
+      }
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, [albums]);
+
   // Filtered albums for grid
   const filteredAlbums = useMemo(() => {
     return albums.filter((album) => {
@@ -204,6 +234,22 @@ export const GalleryView: React.FC = () => {
   };
 
   const handleToggleLike = (photoId: string) => {
+    let targetPhoto: GalleryPhoto | undefined;
+    let targetAlbum: GalleryAlbum | undefined;
+
+    for (const alb of albums) {
+      const p = alb.photos.find((x) => x.id === photoId);
+      if (p) {
+        targetPhoto = p;
+        targetAlbum = alb;
+        break;
+      }
+    }
+
+    if (targetPhoto && !targetPhoto.likedByMe && currentUser) {
+      notifyPhotoLike(targetPhoto, currentUser, targetAlbum?.title).catch(() => {});
+    }
+
     setAlbums((prev) =>
       prev.map((alb) => ({
         ...alb,
@@ -220,6 +266,53 @@ export const GalleryView: React.FC = () => {
         }),
       }))
     );
+  };
+
+  const handleAddPhotoComment = (photoId: string, text: string) => {
+    let targetPhoto: GalleryPhoto | undefined;
+    let targetAlbum: GalleryAlbum | undefined;
+
+    for (const alb of albums) {
+      const p = alb.photos.find((x) => x.id === photoId);
+      if (p) {
+        targetPhoto = p;
+        targetAlbum = alb;
+        break;
+      }
+    }
+
+    if (targetPhoto && currentUser) {
+      notifyPhotoComment(targetPhoto, text, currentUser, targetAlbum?.title).catch(() => {});
+    }
+
+    const newComment: PostComment = {
+      id: Date.now(),
+      postId: 0,
+      userId: currentUser.id,
+      fullName: currentUser.fullName,
+      avatarUrl: currentUser.avatarUrl,
+      content: text,
+      likesCount: 0,
+      likedByMe: false,
+      createdAt: 'Just now',
+    };
+
+    setAlbums((prev) =>
+      prev.map((alb) => ({
+        ...alb,
+        photos: alb.photos.map((p) => {
+          if (p.id === photoId) {
+            return {
+              ...p,
+              commentsCount: (p.commentsCount || p.comments?.length || 0) + 1,
+              comments: [...(p.comments || []), newComment],
+            };
+          }
+          return p;
+        }),
+      }))
+    );
+    playSound('comment');
   };
 
   const openUploadModalForAlbum = (albumId?: number) => {
@@ -269,6 +362,7 @@ export const GalleryView: React.FC = () => {
             setLightboxState((prev) => ({ ...prev, currentIndex: newIndex }))
           }
           onToggleLike={handleToggleLike}
+          onAddComment={handleAddPhotoComment}
           isPlayingSlideshow={isPlayingSlideshow}
           onToggleSlideshow={() => setIsPlayingSlideshow((prev) => !prev)}
         />

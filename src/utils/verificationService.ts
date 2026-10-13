@@ -16,6 +16,7 @@ import {
   submitAdminDocSubmissionInDb,
   fetchUserActiveVerificationRequestFromDb,
 } from '../services/supabaseService';
+import { sendSocialNotification } from './notificationService';
 
 export const VOUCH_STORAGE_KEY = 'ndc_vouch_requests';
 export const ADMIN_DOCS_STORAGE_KEY = 'ndc_admin_doc_submissions';
@@ -312,6 +313,36 @@ export const adminReviewDocumentSubmission = (
 
   syncProfileVerificationInStorage(sub.userId, updatedProfilePartial);
 
+  // Send Facebook-style notification to the alumnus
+  sendSocialNotification({
+    recipientId: sub.userId,
+    actor: {
+      id: 999999,
+      userId: 999999,
+      fullName: `Admin (${adminName})`,
+      avatarUrl: '/ndc-logo.png',
+      profession: 'College Administration',
+      position: 'Portal Admin',
+      institution: 'Notre Dame College',
+      city: 'Dhaka',
+      country: 'Bangladesh',
+      isPublic: true,
+      online: true,
+      specialty: ['Administration'],
+      degree: ['HSC'],
+    },
+    type: 'verification',
+    title:
+      decision === 'approved'
+        ? '✅ Identity Verified by Administration!'
+        : '⚠️ Verification Document Update',
+    message:
+      decision === 'approved'
+        ? 'Your document credentials have been approved. Your profile now carries the Verified badge.'
+        : `Document review notice: ${updatedSub.adminNote}`,
+    targetRoute: 'profile',
+  }).catch(() => {});
+
   return { submission: updatedSub, updatedProfilePartial };
 };
 
@@ -500,6 +531,20 @@ export const submitPeerVouch = async (
         }
       : {}),
   });
+
+  // Notify the requesting alumnus in their notification bar
+  sendSocialNotification({
+    recipientId: req.requesterId,
+    actor: voucher,
+    type: 'verification',
+    title: isNowVerified
+      ? '🎉 Congratulations! Your profile is officially Verified!'
+      : `${voucher.fullName} vouched for your profile!`,
+    message: isNowVerified
+      ? `${voucher.fullName} completed your 2nd vouch. Your Verified Notredamian badge is now active!`
+      : `${voucher.fullName} confirmed your identity (${req.vouches.length}/2 vouches needed).`,
+    targetRoute: 'profile',
+  }).catch(() => {});
 
   return { success: true, isNowVerified, request: req };
 };

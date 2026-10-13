@@ -74,6 +74,7 @@ import {
   isProfilePhotoPost,
 } from '../utils/profilePhotoPostService';
 import { formatFacebookTime, getFullFacebookTimestamp } from '../utils/facebookTime';
+import { notifyPostLike, notifyPostComment } from '../utils/notificationService';
 
 interface ProfileViewProps {
   profileId: number;
@@ -358,6 +359,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const handleToggleLikeProfilePost = async (postId: number) => {
+    const targetPost = allPosts.find((p) => p.id === postId);
+    if (targetPost && !targetPost.likedByMe) {
+      notifyPostLike(targetPost, currentUser).catch(() => {});
+    }
+
     setAllPosts((prev) =>
       prev.map((p) => {
         if (p.id === postId) {
@@ -387,6 +393,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (!text) return;
     setPostCommentInputs((prev) => ({ ...prev, [postId]: '' }));
 
+    const targetPost = allPosts.find((p) => p.id === postId);
+    if (targetPost) {
+      notifyPostComment(targetPost, text, currentUser).catch(() => {});
+    }
+
     if (currentUser.id > 0) {
       const ok = await addPostCommentInDb({
         postId,
@@ -397,7 +408,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         const newComment: PostComment = {
           id: Date.now(),
           postId,
-          userId: currentUser.userId,
+          userId: currentUser.id || currentUser.userId,
           fullName: currentUser.fullName,
           avatarUrl: currentUser.avatarUrl,
           content: text,
@@ -796,22 +807,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     });
   };
 
-  const handleSavePhoto = async (newUrl: string, caption?: string) => {
+  const handleSavePhoto = async (newUrl: string) => {
     if (photoModal.type === 'avatar') {
       updateProfile({ avatarUrl: newUrl });
       setProfile((prev) => ({ ...prev, avatarUrl: newUrl }));
-      try {
-        const createdPost = await publishProfilePhotoPost({
-          alumnus: { ...currentUser, ...profile, avatarUrl: newUrl },
-          photoUrl: newUrl,
-          caption,
-        });
-        if (createdPost) {
-          setAllPosts((prev) => [createdPost, ...prev.filter((p) => p.id !== createdPost.id)]);
-        }
-      } catch (err) {
-        console.warn('Failed to publish profile photo post to timeline:', err);
-      }
     } else {
       updateProfile({ coverUrl: newUrl });
       setProfile((prev) => ({ ...prev, coverUrl: newUrl }));
@@ -829,17 +828,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           if (type === 'avatar') {
             updateProfile({ avatarUrl: dataUrl });
             setProfile((prev) => ({ ...prev, avatarUrl: dataUrl }));
-            try {
-              const createdPost = await publishProfilePhotoPost({
-                alumnus: { ...currentUser, ...profile, avatarUrl: dataUrl },
-                photoUrl: dataUrl,
-              });
-              if (createdPost) {
-                setAllPosts((prev) => [createdPost, ...prev.filter((p) => p.id !== createdPost.id)]);
-              }
-            } catch (err) {
-              console.warn('Failed to publish direct avatar post:', err);
-            }
           } else {
             updateProfile({ coverUrl: dataUrl });
             setProfile((prev) => ({ ...prev, coverUrl: dataUrl }));
@@ -855,17 +843,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               if (type === 'avatar') {
                 updateProfile({ avatarUrl: dataUrl });
                 setProfile((prev) => ({ ...prev, avatarUrl: dataUrl }));
-                try {
-                  const createdPost = await publishProfilePhotoPost({
-                    alumnus: { ...currentUser, ...profile, avatarUrl: dataUrl },
-                    photoUrl: dataUrl,
-                  });
-                  if (createdPost) {
-                    setAllPosts((prev) => [createdPost, ...prev.filter((p) => p.id !== createdPost.id)]);
-                  }
-                } catch (err) {
-                  console.warn('Failed to publish direct avatar post:', err);
-                }
               } else {
                 updateProfile({ coverUrl: dataUrl });
                 setProfile((prev) => ({ ...prev, coverUrl: dataUrl }));

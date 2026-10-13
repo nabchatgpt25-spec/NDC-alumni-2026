@@ -272,28 +272,6 @@ export const PhotoChangeModal: React.FC<PhotoChangeModalProps> = ({
             </div>
           </div>
 
-          {isAvatar && (
-            <div className="space-y-1.5 p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/70 dark:border-blue-900/50">
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                Caption / Thought{' '}
-                <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
-                  (Optional · will appear on your feed post)
-                </span>
-              </label>
-              <textarea
-                rows={2}
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Say something about your profile picture..."
-                className="w-full p-2.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none shadow-2xs"
-              />
-              <div className="flex items-center gap-1.5 text-[11px] text-blue-700 dark:text-blue-300 font-medium pt-0.5">
-                <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 inline-block shrink-0 animate-pulse" />
-                <span>Like Facebook, this will automatically be published as a post to your profile & alumni feed.</span>
-              </div>
-            </div>
-          )}
-
           {fileError && (
             <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -491,7 +469,7 @@ export const PhotoChangeModal: React.FC<PhotoChangeModalProps> = ({
               className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-600/20 transition-all cursor-pointer flex items-center gap-1.5"
             >
               <Check className="w-4 h-4" />
-              <span>{isAvatar ? 'Save & Share to Feed' : 'Apply & Save'}</span>
+              <span>Apply & Save</span>
             </button>
           </div>
         </div>

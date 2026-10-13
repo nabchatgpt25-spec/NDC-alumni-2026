@@ -2004,11 +2004,17 @@ export async function fetchNotificationsFromDb(
       id: Number(n.id),
       title: n.title || 'Notification',
       message: n.message || '',
-      timeAgo: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timeAgo: n.created_at ? new Date(n.created_at).toISOString() : 'Just now',
       unread: Boolean(n.unread),
       type: n.type || 'system',
       targetRoute: n.target_route || undefined,
+      targetUserId: n.recipient_id ? Number(n.recipient_id) : undefined,
+      actorId: n.actor_id ? Number(n.actor_id) : (n.actor?.id ? Number(n.actor.id) : undefined),
+      actorName: n.actor?.full_name || undefined,
+      actorAvatar: n.actor?.avatar_url || undefined,
+      postId: n.post_id ? Number(n.post_id) : undefined,
       bloodRequestId: n.blood_request_id || undefined,
+      createdAt: n.created_at || new Date().toISOString(),
     }));
   } catch {
     return [];

@@ -297,11 +297,18 @@ export interface NotificationItem {
   message: string;
   timeAgo: string;
   unread: boolean;
-  type: 'like' | 'comment' | 'post' | 'system' | 'blood';
+  type: 'like' | 'comment' | 'post' | 'system' | 'blood' | 'verification';
   targetRoute?: string;
   bloodRequestId?: string;
   targetUserId?: number;
   isMatchedDonorAlert?: boolean;
+  actorId?: number;
+  actorName?: string;
+  actorAvatar?: string;
+  postId?: number;
+  photoId?: string;
+  photoUrl?: string;
+  createdAt?: string;
 }
 
 export interface BatchSummary {
@@ -318,10 +325,13 @@ export interface GalleryPhoto {
   caption?: string;
   uploaderName?: string;
   uploaderAvatar?: string;
+  uploaderId?: number;
   batchYear?: number;
   uploadedAt?: string;
   likesCount?: number;
   likedByMe?: boolean;
+  commentsCount?: number;
+  comments?: PostComment[];
   tags?: string[];
   mediaType?: 'image' | 'video';
   fileSize?: string;

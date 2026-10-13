@@ -150,6 +150,7 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
               id: p.id,
               url: p.url,
               caption: p.caption.trim() || (p.isVideo ? 'Notre Dame Video Memory' : 'Notre Dame Alumni Memory'),
+              uploaderId: currentUser?.id || currentUser?.userId,
               uploaderName: contributorName.trim() || currentUser?.fullName || 'Notre Dame Alumnus',
               uploaderAvatar:
                 currentUser?.avatarUrl ||

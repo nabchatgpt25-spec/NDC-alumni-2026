@@ -54,6 +54,8 @@ function AlumniAppContent() {
       if (window.location.hash) {
         const h = window.location.hash.replace('#', '');
         if (h.startsWith('post-') || h === 'dashboard' || h === 'feed') return 'feed';
+        if (h.startsWith('blood-req-')) return 'emergency';
+        if (h.startsWith('photo-')) return 'gallery';
         // When logged in, always prioritize social media feed over stale profile/directory hash
         if (isLoggedIn && (h === 'profile' || h === 'alumni' || h === 'directory')) {
           return 'feed';
@@ -132,6 +134,10 @@ function AlumniAppContent() {
       const h = window.location.hash.replace('#', '');
       if (h.startsWith('post-')) {
         setRoute('feed');
+      } else if (h.startsWith('blood-req-')) {
+        setRoute('emergency');
+      } else if (h.startsWith('photo-')) {
+        setRoute('gallery');
       } else if (h) {
         setRoute(h);
       }
@@ -174,9 +180,39 @@ function AlumniAppContent() {
 
   if (isAuthInitializing) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-600 gap-3" role="status" aria-live="polite">
-        <div className="w-9 h-9 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm font-medium tracking-wide text-slate-500">Restoring your session…</p>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-slate-950 via-blue-950 to-slate-900 text-white px-6 relative overflow-hidden"
+        role="status"
+        aria-live="polite"
+      >
+        {/* Subtle Ambient Collegiate Radiance */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 sm:w-96 sm:h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 sm:w-64 sm:h-64 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col items-center text-center max-w-md mx-auto space-y-5 animate-fade-in">
+          {/* Official NDC Emblem with Glowing Halo */}
+          <div className="relative flex items-center justify-center">
+            <div className="absolute -inset-3 rounded-full bg-gradient-to-r from-blue-500/30 to-amber-500/20 blur-lg animate-pulse" />
+            <div className="relative p-3.5 rounded-3xl bg-slate-900/70 border border-white/10 backdrop-blur-md shadow-2xl">
+              <NDCLogo className="w-20 h-20 sm:w-24 sm:h-24 object-contain filter drop-shadow-md" />
+            </div>
+          </div>
+
+          {/* Authentic College Motto */}
+          <div className="space-y-2">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-white tracking-wide leading-snug drop-shadow-sm">
+              &ldquo;Once a Notre Damian, Always a Notre Damian&rdquo;
+            </h2>
+            <p className="text-xs sm:text-sm font-medium text-blue-200/80 tracking-wider uppercase">
+              Notre Dame College, Dhaka
+            </p>
+          </div>
+
+          {/* Elegant Loading Pulse Line */}
+          <div className="w-40 h-1 bg-white/10 rounded-full overflow-hidden mt-2">
+            <div className="w-full h-full bg-gradient-to-r from-blue-500 via-amber-400 to-blue-500 animate-[pulse_1.5s_ease-in-out_infinite]" />
+          </div>
+        </div>
       </div>
     );
   }

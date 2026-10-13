@@ -120,6 +120,23 @@ export const BloodNetworkView: React.FC<BloodNetworkViewProps> = ({
     };
   }, []);
 
+  // Listen to deep link / notification target blood request hash
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const checkHash = () => {
+      const h = window.location.hash.replace('#', '');
+      if (h.startsWith('blood-req-')) {
+        const reqId = h.replace('blood-req-', '');
+        if (reqId) {
+          setSelectedRequestId(reqId);
+        }
+      }
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
+
   const myDonorProfile = useMemo(
     () => getDonorProfileByUserId(currentUser.id),
     [donors, currentUser.id]

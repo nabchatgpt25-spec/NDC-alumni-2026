@@ -284,6 +284,12 @@ export function pushPortalNotification(input: {
   type?: NotificationItem['type'];
   targetRoute?: string;
   bloodRequestId?: string;
+  targetUserId?: number;
+  isMatchedDonorAlert?: boolean;
+  actorId?: number;
+  actorName?: string;
+  actorAvatar?: string;
+  postId?: number;
 }): NotificationItem {
   const existing = loadPortalNotifications();
   const nextItem: NotificationItem = {
@@ -295,8 +301,15 @@ export function pushPortalNotification(input: {
     type: input.type || 'blood',
     targetRoute: input.targetRoute || 'emergency',
     bloodRequestId: input.bloodRequestId,
+    targetUserId: input.targetUserId,
+    isMatchedDonorAlert: input.isMatchedDonorAlert,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorAvatar: input.actorAvatar,
+    postId: input.postId,
+    createdAt: new Date().toISOString(),
   };
-  const updated = [nextItem, ...existing].slice(0, 35);
+  const updated = [nextItem, ...existing].slice(0, 50);
   savePortalNotifications(updated);
   return nextItem;
 }
@@ -422,13 +435,108 @@ export async function createEmergencyBloodRequest(
   const donors = loadBloodDonors();
   const matched = matchDonorsForRequest(newRequest, donors);
 
-  // Trigger notification through EXISTING notification system
+  // 1. Create a public post in the Notre Dame Alumni Feed
+  const publicPostContent = `🚨 EMERGENCY BLOOD REQUEST: ${newRequest.unitsRequired} unit(s) of ${newRequest.bloodGroup} urgently required at ${newRequest.hospitalName} (${newRequest.hospitalArea}).\n\nPatient Relation: ${newRequest.patientRelation}\nUrgency: ${newRequest.emergencyLevel.toUpperCase()}\nContact: ${newRequest.contactMethod}${newRequest.description ? `\n\nNotes: ${newRequest.description}` : ''}`;
+
+  const optimisticBloodPost: PostItem = {
+    id: -Date.now(),
+    userId: requester.id,
+    fullName: requester.fullName || 'Notredamian Alumnus',
+    avatarUrl: requester.avatarUrl || '/ndc-logo.png',
+    batchYear: requester.batchYear || 0,
+    content: publicPostContent,
+    images: [],
+    videos: [],
+    likesCount: 0,
+    commentsCount: 0,
+    createdAt: new Date().toISOString(),
+    likedByMe: false,
+    comments: [],
+    category: 'Blood Donation',
+    isEdited: false,
+    postType: 'blood_request',
+    link_metadata: {
+      postType: 'blood_request',
+      requestId: newRequest.id,
+      bloodGroup: newRequest.bloodGroup,
+      unitsRequired: newRequest.unitsRequired,
+      hospitalName: newRequest.hospitalName,
+      hospitalArea: newRequest.hospitalArea,
+      city: newRequest.city,
+      emergencyLevel: newRequest.emergencyLevel,
+      requiredDateTime: newRequest.requiredDateTime,
+      contactMethod: newRequest.contactMethod,
+      patientRelation: newRequest.patientRelation,
+      description: newRequest.description,
+      requesterName: requester.fullName,
+      requesterBatch: requester.batchYear,
+      requesterAvatar: requester.avatarUrl,
+    },
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('ndc_alumni_posts');
+      const posts: PostItem[] = stored ? JSON.parse(stored) : [];
+      localStorage.setItem('ndc_alumni_posts', JSON.stringify([optimisticBloodPost, ...posts]));
+    } catch {}
+
+    window.dispatchEvent(
+      new CustomEvent('ndc_post_created', {
+        detail: { post: optimisticBloodPost },
+      })
+    );
+  }
+
+  // Persist post to Supabase asynchronously
+  createFeedPostInDb({
+    authorId: requester.id,
+    content: publicPostContent,
+    category: 'Blood Donation',
+    link_metadata: optimisticBloodPost.link_metadata,
+  }).catch((err) => {
+    console.warn('createFeedPostInDb for blood request fallback:', err);
+  });
+
+  // 2. Specially send targeted notifications to matched alumni donors
+  matched.forEach((match) => {
+    const donorUserId = match.donor.userId;
+    if (donorUserId && donorUserId !== requester.id) {
+      createNotificationInDb({
+        recipientId: donorUserId,
+        actorId: requester.id,
+        type: 'blood',
+        title: `🚨 Emergency Match: ${newRequest.bloodGroup} Needed!`,
+        message: `${requester.fullName} urgently needs ${newRequest.unitsRequired} unit(s) of ${newRequest.bloodGroup} at ${newRequest.hospitalName} (${newRequest.hospitalArea}). You are a matched donor!`,
+        targetRoute: 'emergency',
+        bloodRequestId: newRequest.id,
+      }).catch(() => {});
+
+      pushPortalNotification({
+        title: `🚨 Emergency Match: ${newRequest.bloodGroup} Needed!`,
+        message: `${requester.fullName} urgently needs ${newRequest.unitsRequired} unit(s) of ${newRequest.bloodGroup} at ${newRequest.hospitalName} (${newRequest.hospitalArea}). You are a matched donor!`,
+        type: 'blood',
+        targetRoute: 'emergency',
+        bloodRequestId: newRequest.id,
+        targetUserId: donorUserId,
+        isMatchedDonorAlert: true,
+        actorId: requester.id,
+        actorName: requester.fullName,
+        actorAvatar: requester.avatarUrl,
+      });
+    }
+  });
+
+  // 3. Broadcast community portal notification
   pushPortalNotification({
     title: `🩸 Emergency ${newRequest.bloodGroup} Blood Request (${newRequest.emergencyLevel.toUpperCase()})`,
     message: `${newRequest.unitsRequired} unit(s) of ${newRequest.bloodGroup} needed at ${newRequest.hospitalName} (${newRequest.hospitalArea}). ${matched.length} matching alumni donors identified.`,
     type: 'blood',
     targetRoute: 'emergency',
     bloodRequestId: newRequest.id,
+    actorId: requester.id,
+    actorName: requester.fullName,
+    actorAvatar: requester.avatarUrl,
   });
 
   return { request: newRequest, matchedDonorsCount: matched.length };
@@ -506,13 +614,27 @@ export async function respondToBloodRequest(
   requests[idx] = updatedRequest;
   saveBloodRequests(requests);
 
-  // Send notification via the EXISTING notification system
+  // Send notification to the requester and broadcast
+  createNotificationInDb({
+    recipientId: target.requesterId,
+    actorId: donorUser.id,
+    type: 'blood',
+    title: `🩸 Donor Response: ${donorUser.fullName} Can Donate!`,
+    message: `${donorUser.fullName} (${donorBloodGroup}) responded "I Can Donate" for your ${target.bloodGroup} request at ${target.hospitalName}.`,
+    targetRoute: 'emergency',
+    bloodRequestId: target.id,
+  }).catch(() => {});
+
   pushPortalNotification({
-    title: `🩸 Donor Response: ${donorUser.fullName} (Batch ${donorUser.batchYear}) Can Donate!`,
+    title: `🩸 Donor Response: ${donorUser.fullName} Can Donate!`,
     message: `${donorUser.fullName} (${donorBloodGroup}) responded "I Can Donate" for your ${target.bloodGroup} request at ${target.hospitalName}.`,
     type: 'blood',
     targetRoute: 'emergency',
     bloodRequestId: target.id,
+    targetUserId: target.requesterId,
+    actorId: donorUser.id,
+    actorName: donorUser.fullName,
+    actorAvatar: donorUser.avatarUrl,
   });
 
   return updatedRequest;
@@ -591,6 +713,30 @@ export function confirmDonorDonationOnRequest(
     }
   }
 
+  if (confirmedDonorId && confirmedDonorId !== actor.id) {
+    createNotificationInDb({
+      recipientId: confirmedDonorId,
+      actorId: actor.id,
+      type: 'blood',
+      title: '✅ Blood Donation Confirmed!',
+      message: `${actor.fullName} confirmed your blood donation for ${target.bloodGroup} at ${target.hospitalName}. Thank you for saving a life!`,
+      targetRoute: 'emergency',
+      bloodRequestId: target.id,
+    }).catch(() => {});
+
+    pushPortalNotification({
+      title: '✅ Blood Donation Confirmed!',
+      message: `${actor.fullName} confirmed your blood donation for ${target.bloodGroup} at ${target.hospitalName}. Thank you for saving a life!`,
+      type: 'blood',
+      targetRoute: 'emergency',
+      bloodRequestId: target.id,
+      targetUserId: confirmedDonorId,
+      actorId: actor.id,
+      actorName: actor.fullName,
+      actorAvatar: actor.avatarUrl,
+    });
+  }
+
   pushPortalNotification({
     title:
       nextStatus === 'Fulfilled'
@@ -603,6 +749,9 @@ export function confirmDonorDonationOnRequest(
     type: 'blood',
     targetRoute: 'emergency',
     bloodRequestId: target.id,
+    actorId: actor.id,
+    actorName: actor.fullName,
+    actorAvatar: actor.avatarUrl,
   });
 
   return updatedRequest;

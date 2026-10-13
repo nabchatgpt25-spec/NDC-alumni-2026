@@ -93,6 +93,12 @@ import {
 } from '../services/supabaseService';
 import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
 import { formatFacebookTime, getFullFacebookTimestamp } from '../utils/facebookTime';
+import {
+  notifyPostLike,
+  notifyPostComment,
+  notifyCommentReply,
+} from '../utils/notificationService';
+import { DailyQuestion, recordStreakAnswer } from './DailyQuestion';
 
 interface FeedViewProps {
   onViewProfile?: (userId: number) => void;
@@ -340,12 +346,18 @@ export const FeedView: React.FC<FeedViewProps> = ({
     fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, 0)
       .then((dbPosts) => {
         if (!isMounted) return;
-        const loadedPosts = dbPosts || [];
+        const loadedPosts = (dbPosts || []).filter((p) => !isProfilePhotoPost(p));
         try {
           const local = localStorage.getItem('ndc_alumni_posts');
           if (local) {
             const parsed: PostItem[] = JSON.parse(local);
-            const merged = [...parsed.filter((p) => !loadedPosts.some((lp) => lp.id === p.id)), ...loadedPosts];
+            const cleanedLocal = parsed.filter((p) => !isProfilePhotoPost(p));
+            if (cleanedLocal.length !== parsed.length) {
+              try {
+                localStorage.setItem('ndc_alumni_posts', JSON.stringify(cleanedLocal));
+              } catch {}
+            }
+            const merged = [...cleanedLocal.filter((p) => !loadedPosts.some((lp) => lp.id === p.id)), ...loadedPosts];
             nextFeedOffsetRef.current = merged.length;
             setPosts(merged);
             setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
@@ -363,7 +375,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
             const local = localStorage.getItem('ndc_alumni_posts');
             if (local) {
               const parsed: PostItem[] = JSON.parse(local);
-              setPosts(parsed);
+              const cleanedLocal = parsed.filter((p) => !isProfilePhotoPost(p));
+              setPosts(cleanedLocal);
               return;
             }
           } catch {}
@@ -378,11 +391,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
         if (isMounted) setIsLoadingPosts(false);
       });
 
-    // Listen for new posts created anywhere in the app (including Facebook-style profile photo updates)
+    // Listen for new posts created anywhere in the app
     const handlePostCreated = (e: Event) => {
       const custom = e as CustomEvent<{ post: PostItem; replaceTempId?: number }>;
       if (!custom.detail?.post) return;
       const newPost = custom.detail.post;
+      if (isProfilePhotoPost(newPost)) return;
       setPosts((prev) => {
         if (custom.detail.replaceTempId) {
           return prev.map((p) => (p.id === custom.detail.replaceTempId ? newPost : p));
@@ -458,6 +472,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
   // Facebook-style "New Post" Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDailyQuestionAnswer, setIsDailyQuestionAnswer] = useState(false);
   const [postBackground, setPostBackground] = useState<string>('default');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [postFeeling, setPostFeeling] = useState<string | null>(null);
@@ -926,16 +941,10 @@ export const FeedView: React.FC<FeedViewProps> = ({
     });
 
     const targetPost = posts.find((p) => p.id === postId);
-    if (targetPost && !targetPost.likedByMe && targetPost.userId !== currentUser.id) {
-      createNotificationInDb({
-        recipientId: targetPost.userId,
-        actorId: currentUser.id,
-        type: 'like',
-        title: `${currentUser.fullName} liked your post`,
-        message: targetPost.content.slice(0, 80),
-        postId: targetPost.id,
-        targetRoute: 'feed',
-      }).catch(() => {});
+    if (targetPost && !targetPost.likedByMe) {
+      notifyPostLike(targetPost, currentUser).catch((err) => {
+        console.warn('notifyPostLike fallback:', err);
+      });
     }
 
     setPosts((prev) =>
@@ -1048,6 +1057,10 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
       // Prepend the real database-persisted post with its assigned ID and clear temp
       setPosts((prev) => [res.post!, ...prev.filter((p) => p.id !== tempPostId && p.id !== res.post!.id)]);
+      if (finalContent.includes('আজকের প্রশ্ন:') || isDailyQuestionAnswer) {
+        recordStreakAnswer(currentUser.id);
+        setIsDailyQuestionAnswer(false);
+      }
       setPostContent('');
       setAttachedImages([]);
       setAttachedVideos([]);
@@ -1226,22 +1239,16 @@ export const FeedView: React.FC<FeedViewProps> = ({
     });
 
     const targetPost = posts.find((p) => p.id === postId);
-    if (targetPost && targetPost.userId !== currentUser.id) {
-      createNotificationInDb({
-        recipientId: targetPost.userId,
-        actorId: currentUser.id,
-        type: 'comment',
-        title: `${currentUser.fullName} commented on your post`,
-        message: text.slice(0, 100),
-        postId: targetPost.id,
-        targetRoute: 'feed',
-      }).catch(() => {});
+    if (targetPost) {
+      notifyPostComment(targetPost, text, currentUser).catch((err) => {
+        console.warn('notifyPostComment fallback:', err);
+      });
     }
 
     const newComment: PostComment = {
       id: Date.now(),
       postId,
-      userId: currentUser.userId,
+      userId: currentUser.id || currentUser.userId,
       fullName: currentUser.fullName,
       avatarUrl: currentUser.avatarUrl,
       content: text,
@@ -1279,10 +1286,18 @@ export const FeedView: React.FC<FeedViewProps> = ({
       content: text,
     }).catch(() => {});
 
+    const targetPost = posts.find((p) => p.id === postId);
+    const parentComment = targetPost?.comments?.find((c) => c.id === parentCommentId);
+    if (targetPost && parentComment) {
+      notifyCommentReply(targetPost, parentComment, text, currentUser).catch((err) => {
+        console.warn('notifyCommentReply fallback:', err);
+      });
+    }
+
     const newReply: PostComment = {
       id: Date.now(),
       postId,
-      userId: currentUser.userId,
+      userId: currentUser.id || currentUser.userId,
       fullName: currentUser.fullName,
       avatarUrl: currentUser.avatarUrl,
       content: text,
@@ -1315,6 +1330,19 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
     setReplyInputs({ ...replyInputs, [parentCommentId]: '' });
     setActiveReplyId(null);
+  };
+
+  const handleAnswerDailyQuestion = (questionText: string) => {
+    setIsDailyQuestionAnswer(true);
+    setPostContent(`আজকের প্রশ্ন: ${questionText}\n\nআমার উত্তর: `);
+    setIsCreateModalOpen(true);
+    setTimeout(() => {
+      if (composerTextareaRef.current) {
+        composerTextareaRef.current.focus();
+        const len = composerTextareaRef.current.value.length;
+        composerTextareaRef.current.setSelectionRange(len, len);
+      }
+    }, 120);
   };
 
   return (
@@ -1358,6 +1386,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
         variant="feed"
         onNavigateToBloodNetwork={() => onNavigate && onNavigate('emergency')}
       />
+
+      {/* Daily Nostalgia Question & Duolingo-style Streak */}
+      <DailyQuestion onAnswerQuestion={handleAnswerDailyQuestion} />
 
       {/* Create Post Card (Facebook-Style Trigger Bar -> Opens "New Post" Modal on Click) */}
       <div
@@ -2605,6 +2636,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
                               : 'updated their profile picture.'}
                           </span>
                         )}
+                        {(post.postType === 'blood_request' || post.link_metadata?.postType === 'blood_request') && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping shrink-0" />
+                            Emergency Blood Request
+                          </span>
+                        )}
                         {post.isEdited && (
                           <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
                             (edited)
@@ -2733,6 +2770,64 @@ export const FeedView: React.FC<FeedViewProps> = ({
                         {isExpanded ? 'Show less' : 'Read more'}
                       </button>
                     )}
+                  </div>
+                )}
+
+                {/* Emergency Blood Request Dedicated Card */}
+                {(post.postType === 'blood_request' || post.link_metadata?.postType === 'blood_request') && (
+                  <div className="mb-4 rounded-2xl bg-gradient-to-br from-rose-50 via-red-50/60 to-rose-100/50 dark:from-rose-950/40 dark:via-slate-900/90 dark:to-slate-900 border-2 border-rose-200 dark:border-rose-900/60 p-4 sm:p-5 shadow-xs overflow-hidden relative">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-rose-200/70 dark:border-rose-900/50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center font-black shadow-md shadow-rose-600/30 shrink-0 ring-4 ring-rose-200 dark:ring-rose-950">
+                          <Droplet className="w-3.5 h-3.5 fill-current -mb-0.5" />
+                          <span className="text-base tracking-tight">{post.link_metadata?.bloodGroup || 'A+'}</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-400">
+                              Emergency Blood Request
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-600 text-white shadow-xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                              {post.link_metadata?.emergencyLevel || 'Urgent'}
+                            </span>
+                          </div>
+                          <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                            {post.link_metadata?.unitsRequired || 1} Unit(s) Needed · {post.link_metadata?.patientRelation || 'Notredamian Patient'}
+                          </h4>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onNavigate) {
+                            onNavigate('emergency');
+                          } else {
+                            window.dispatchEvent(new CustomEvent('ndc_navigate_route', { detail: { route: 'emergency' } }));
+                          }
+                        }}
+                        className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/25 hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                      >
+                        <Heart className="w-4 h-4 fill-current" />
+                        <span>I Can Donate / Respond</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700 dark:text-slate-300 mt-3">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+                        <span className="truncate font-medium">
+                          {post.link_metadata?.hospitalName || 'Hospital'}{post.link_metadata?.hospitalArea ? ` (${post.link_metadata.hospitalArea})` : ''}
+                        </span>
+                      </div>
+                      {post.link_metadata?.contactMethod && (
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="w-4 h-4 text-rose-500 shrink-0" />
+                          <span className="truncate font-medium">Contact: {post.link_metadata.contactMethod}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

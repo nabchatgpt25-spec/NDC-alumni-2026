@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   ChevronLeft,
@@ -13,7 +13,9 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  Film
+  Film,
+  MessageCircle,
+  Send,
 } from 'lucide-react';
 import { GalleryPhoto } from '../../types';
 import { isVideoUrl } from '../../utils/mediaStorage';
@@ -25,6 +27,7 @@ interface PhotoLightboxProps {
   onClose: () => void;
   onNavigate: (newIndex: number) => void;
   onToggleLike: (photoId: string) => void;
+  onAddComment?: (photoId: string, text: string) => void;
   isPlayingSlideshow: boolean;
   onToggleSlideshow: () => void;
 }
@@ -36,10 +39,21 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
   onClose,
   onNavigate,
   onToggleLike,
+  onAddComment,
   isPlayingSlideshow,
   onToggleSlideshow,
 }) => {
   const currentPhoto = photos[currentIndex];
+  const [showComments, setShowComments] = useState(false);
+  const [commentInput, setCommentInput] = useState('');
+
+  const handleSendComment = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const text = commentInput.trim();
+    if (!text || !currentPhoto || !onAddComment) return;
+    onAddComment(currentPhoto.id, text);
+    setCommentInput('');
+  };
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -237,7 +251,7 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
             </div>
           </div>
 
-          {/* Interaction Counter */}
+          {/* Interaction Buttons (Like & Comment) */}
           <div className="flex items-center gap-2 self-start sm:self-center">
             <button
               type="button"
@@ -253,8 +267,75 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
               />
               <span>{currentPhoto.likesCount || 0}</span>
             </button>
+
+            {onAddComment && (
+              <button
+                type="button"
+                onClick={() => setShowComments((prev) => !prev)}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  showComments
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-blue-600/30'
+                    : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                }`}
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>{currentPhoto.commentsCount || currentPhoto.comments?.length || 0}</span>
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Expandable Comments Drawer */}
+        {showComments && onAddComment && (
+          <div className="max-w-4xl mx-auto mt-3 pt-3 border-t border-white/15 animate-fade-in">
+            {/* Existing Comments */}
+            <div className="max-h-36 overflow-y-auto space-y-2 mb-3 pr-1">
+              {currentPhoto.comments && currentPhoto.comments.length > 0 ? (
+                currentPhoto.comments.map((c) => (
+                  <div key={c.id} className="flex items-start gap-2.5 text-xs bg-white/5 p-2 rounded-xl border border-white/10">
+                    {c.avatarUrl ? (
+                      <img src={c.avatarUrl} alt={c.fullName} className="w-6 h-6 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-blue-500/30 text-white flex items-center justify-center font-bold text-[10px]">
+                        {c.fullName?.charAt(0) || 'A'}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-[11px]">{c.fullName}</span>
+                        <span className="text-[10px] text-slate-400">{c.createdAt}</span>
+                      </div>
+                      <p className="text-slate-200 text-xs mt-0.5">{c.content}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-slate-400 text-xs italic py-1 text-center">
+                  No comments on this photo yet. Be the first to comment!
+                </p>
+              )}
+            </div>
+
+            {/* Comment Form */}
+            <form onSubmit={handleSendComment} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={commentInput}
+                onChange={(e) => setCommentInput(e.target.value)}
+                placeholder="Write a comment on this photo..."
+                className="flex-1 px-3.5 py-2 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-md"
+              />
+              <button
+                type="submit"
+                disabled={!commentInput.trim()}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Send</span>
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
