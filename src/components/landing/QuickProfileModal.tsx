@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   X,
   MapPin,
@@ -10,7 +10,8 @@ import {
   Globe,
   Share2,
   ArrowRight,
-  ExternalLink
+  ExternalLink,
+  Check
 } from 'lucide-react';
 import { AlumniProfile } from '../../types';
 import { WhatsAppIcon, FacebookIcon } from '../SocialIcons';
@@ -28,6 +29,8 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
 }) => {
   if (!profile) return null;
 
+  const [copied, setCopied] = useState(false);
+
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
@@ -36,8 +39,9 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
         url: window.location.href,
       }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      alert('Profile link copied to clipboard!');
+      navigator.clipboard.writeText(window.location.href).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 
@@ -75,10 +79,21 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
           <button
             type="button"
             onClick={handleShare}
-            className="absolute top-4 right-15 w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer z-10"
-            title="Share profile"
+            className={`absolute top-4 right-15 h-9 rounded-full px-2.5 flex items-center gap-1.5 backdrop-blur-md transition-all cursor-pointer z-10 ${
+              copied
+                ? 'bg-emerald-600 text-white'
+                : 'bg-black/40 hover:bg-black/60 text-white'
+            }`}
+            title={copied ? 'Link copied!' : 'Share profile'}
           >
-            <Share2 className="w-4 h-4" />
+            {copied ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-200" />
+                <span className="text-[11px] font-semibold pr-1">Copied</span>
+              </>
+            ) : (
+              <Share2 className="w-4 h-4" />
+            )}
           </button>
 
           {/* Batch Pill in Cover */}

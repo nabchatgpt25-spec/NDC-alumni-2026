@@ -26,8 +26,11 @@ export function mapSupabaseRowToAlumniProfile(row: any): AlumniProfile {
     role: resolvedRole,
     fullName: row.full_name || 'Notredamian Alumnus',
     avatarUrl:
-      row.avatar_url ||
-      '/ndc-logo.png',
+      row.avatar_url &&
+      !row.avatar_url.includes('1507003211169-0a1dd7228f2d') &&
+      !row.avatar_url.includes('1535713875002-d1d0cf377fde')
+        ? row.avatar_url
+        : '/ndc-logo.png',
     coverUrl: row.cover_url || undefined,
     batchYear:
       row.batch_year !== null && row.batch_year !== undefined && Number(row.batch_year) >= 1949

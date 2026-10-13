@@ -32,6 +32,7 @@ const SavedPostsView = React.lazy(() => import('./components/SavedPostsView').th
 const BloodNetworkView = React.lazy(() => import('./components/BloodNetworkView').then(m => ({ default: m.BloodNetworkView })));
 const VerificationCenterModal = React.lazy(() => import('./components/verification/VerificationCenterModal').then(m => ({ default: m.VerificationCenterModal })));
 const SettingsView = React.lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
+const AdminHubView = React.lazy(() => import('./components/admin/AdminHubView').then(m => ({ default: m.AdminHubView })));
 
 const ViewLoadingFallback = () => (
   <div className="w-full py-20 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
@@ -47,12 +48,17 @@ function AlumniAppContent() {
   // Route state: 'landing' | 'feed' | 'alumni' | 'directory' | 'find' | 'batches' | 'map' | 'gallery' | 'profile' | `batch:${number}` | `post-${number}`
   const [route, setRoute] = useState<string>(() => {
     if (typeof window !== 'undefined') {
+      const pathname = window.location.pathname.toLowerCase();
+      if (pathname === '/admin' || pathname === '/dashboard/admin') {
+        return 'admin';
+      }
       const params = new URLSearchParams(window.location.search);
       if (params.get('post') || params.get('vouch_for')) {
         return 'feed';
       }
       if (window.location.hash) {
-        const h = window.location.hash.replace('#', '');
+        const h = window.location.hash.replace('#', '').toLowerCase();
+        if (h === 'admin' || h === 'dashboard/admin' || h === 'dashboard-admin') return 'admin';
         if (h.startsWith('post-') || h === 'dashboard' || h === 'feed') return 'feed';
         if (h.startsWith('blood-req-')) return 'emergency';
         if (h.startsWith('photo-')) return 'gallery';
@@ -77,6 +83,32 @@ function AlumniAppContent() {
     }
     wasLoggedInRef.current = isLoggedIn;
   }, [isLoggedIn]);
+
+  // STRICT SECURITY RULES 1 & 2: Access to Admin Hub is restricted strictly to users
+  // where alumni_profiles.role IN ('admin', 'moderator').
+  // If a non-admin tries to access /dashboard/admin (or /admin), redirect them immediately to /dashboard.
+  useEffect(() => {
+    if (!isAuthInitializing) {
+      const isAdminOrMod = currentUser.role === 'admin' || currentUser.role === 'moderator';
+      const isTryingAdmin =
+        route === 'admin' ||
+        route === 'dashboard/admin' ||
+        route === 'dashboard-admin';
+
+      if (isTryingAdmin && (!isLoggedIn || !isAdminOrMod)) {
+        setRoute('feed');
+        if (typeof window !== 'undefined') {
+          window.location.hash = 'dashboard';
+          if (
+            window.location.pathname.toLowerCase() === '/admin' ||
+            window.location.pathname.toLowerCase() === '/dashboard/admin'
+          ) {
+            window.history.replaceState({}, '', '/#dashboard');
+          }
+        }
+      }
+    }
+  }, [route, isLoggedIn, isAuthInitializing, currentUser.role]);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<number>(currentUser.id);
@@ -132,7 +164,15 @@ function AlumniAppContent() {
   useEffect(() => {
     const handleHashChange = () => {
       const h = window.location.hash.replace('#', '');
-      if (h.startsWith('post-')) {
+      if (h === 'admin' || h === 'dashboard/admin' || h === 'dashboard-admin') {
+        const isAdminOrMod = currentUser.role === 'admin' || currentUser.role === 'moderator';
+        if (isAdminOrMod) {
+          setRoute('admin');
+        } else {
+          setRoute('feed');
+          window.location.hash = 'dashboard';
+        }
+      } else if (h.startsWith('post-')) {
         setRoute('feed');
       } else if (h.startsWith('blood-req-')) {
         setRoute('emergency');
@@ -144,14 +184,33 @@ function AlumniAppContent() {
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [currentUser.role]);
+
+  // Strict Security Route Guard: Immediate redirection if non-admin lands on admin route
+  useEffect(() => {
+    const isAdminRoute = route === 'admin' || route === 'dashboard/admin' || route === 'dashboard-admin';
+    if (isAdminRoute && !isAuthInitializing && isLoggedIn) {
+      const hasPrivileges = currentUser.role === 'admin' || currentUser.role === 'moderator';
+      if (!hasPrivileges) {
+        setRoute('feed');
+        window.location.hash = 'dashboard';
+      }
+    }
+  }, [route, currentUser.role, isAuthInitializing, isLoggedIn]);
 
   const navigateTo = (newRoute: string, keepSelectedProfile = false) => {
-    if (newRoute === 'profile' && !keepSelectedProfile) {
+    let target = newRoute;
+    if (target === 'admin' || target === 'dashboard/admin' || target === 'dashboard-admin') {
+      const hasPrivileges = currentUser.role === 'admin' || currentUser.role === 'moderator';
+      if (!hasPrivileges) {
+        target = 'feed';
+      }
+    }
+    if (target === 'profile' && !keepSelectedProfile) {
       setSelectedProfileId(currentUser.id);
     }
-    setRoute(newRoute);
-    window.location.hash = newRoute;
+    setRoute(target);
+    window.location.hash = target === 'feed' ? 'dashboard' : target;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -162,6 +221,7 @@ function AlumniAppContent() {
   };
 
   const getBackLabel = () => {
+    if (previousRoute === 'admin' || previousRoute === 'dashboard/admin') return 'Back to Admin Hub';
     if (previousRoute === 'map' || previousRoute === 'map-directory') return 'Back to Map';
     if (previousRoute === 'batches') return 'Back to Batches';
     if (previousRoute === 'feed' || previousRoute === 'dashboard') return 'Back to Feed';
@@ -403,6 +463,15 @@ function AlumniAppContent() {
                     onOpenVerificationCenter={openVerificationCenter}
                     onNavigate={navigateTo}
                   />
+                )}
+
+                {(route === 'admin' || route === 'dashboard/admin' || route === 'dashboard-admin') && (
+                  currentUser.role === 'admin' || currentUser.role === 'moderator' ? (
+                    <AdminHubView
+                      onNavigate={navigateTo}
+                      onViewProfile={handleViewProfile}
+                    />
+                  ) : null
                 )}
               </React.Suspense>
             </motion.div>

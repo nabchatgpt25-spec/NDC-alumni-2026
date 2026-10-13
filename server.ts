@@ -165,7 +165,7 @@ function formatAlumniRowToProfile(row: any) {
     fullName: row.fullName || 'Notredamian Alumnus',
     avatarUrl:
       row.avatarUrl ||
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+      '/ndc-logo.png',
     coverUrl: row.coverUrl || undefined,
     batchYear: (() => {
       const b = row.batchYear ?? row.batch_year;
@@ -780,19 +780,26 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
         description = undefined;
       }
 
-      // If Facebook direct scrape was thin on metadata, enrich via public oEmbed endpoint
+      // If direct scrape was thin on metadata, enrich via Microlink OpenGraph API or public endpoints
       if (!imageUrl || !title) {
         try {
-          const oembedResp = await fetch(
-            `https://noembed.com/embed?url=${encodeURIComponent(finalResolvedUrl)}`,
-            { signal: AbortSignal.timeout(3000) }
+          const mlResp = await fetch(
+            `https://api.microlink.io/?url=${encodeURIComponent(finalResolvedUrl.includes('/login') ? cleanUrl : finalResolvedUrl)}`,
+            { signal: AbortSignal.timeout(4500) }
           );
-          if (oembedResp.ok) {
-            const oeJson = await oembedResp.json();
-            if (oeJson && !oeJson.error) {
-              if (!title && oeJson.title) title = oeJson.title;
-              if (!imageUrl && oeJson.thumbnail_url) imageUrl = oeJson.thumbnail_url;
-              if (!siteName && oeJson.author_name) siteName = oeJson.author_name;
+          if (mlResp.ok) {
+            const mlJson = await mlResp.json();
+            if (mlJson && mlJson.status === 'success' && mlJson.data) {
+              const d = mlJson.data;
+              if (!title && d.title && !/^(Log into Facebook|Facebook|Log in)/i.test(d.title)) {
+                title = decodeHtmlEntities(d.title);
+              }
+              if (!description && d.description && !/^(Log into Facebook|Facebook helps)/i.test(d.description)) {
+                description = decodeHtmlEntities(d.description);
+              }
+              if (!imageUrl) imageUrl = d.image?.url || d.screenshot?.url || d.logo?.url;
+              if (!videoUrl && d.video?.url) videoUrl = d.video.url;
+              if (!siteName && (d.publisher || d.author)) siteName = d.publisher || d.author;
             }
           }
         } catch {
@@ -805,6 +812,52 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
         title = isReel ? 'Instagram Reel' : 'Instagram Post';
       }
       siteName = 'Instagram';
+
+      if (!imageUrl) {
+        try {
+          const mlResp = await fetch(
+            `https://api.microlink.io/?url=${encodeURIComponent(cleanUrl)}`,
+            { signal: AbortSignal.timeout(4000) }
+          );
+          if (mlResp.ok) {
+            const mlJson = await mlResp.json();
+            if (mlJson && mlJson.status === 'success' && mlJson.data) {
+              const d = mlJson.data;
+              if (!title && d.title) title = decodeHtmlEntities(d.title);
+              if (!description && d.description) description = decodeHtmlEntities(d.description);
+              if (!imageUrl) imageUrl = d.image?.url || d.screenshot?.url;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Generic site enrichment if metadata is still missing
+    if (!imageUrl && !isFacebook && !isInstagram) {
+      try {
+        const mlResp = await fetch(
+          `https://api.microlink.io/?url=${encodeURIComponent(cleanUrl)}`,
+          { signal: AbortSignal.timeout(3500) }
+        );
+        if (mlResp.ok) {
+          const mlJson = await mlResp.json();
+          if (mlJson && mlJson.status === 'success' && mlJson.data) {
+            const d = mlJson.data;
+            if (!title && d.title) title = decodeHtmlEntities(d.title);
+            if (!description && d.description) description = decodeHtmlEntities(d.description);
+            if (!imageUrl) imageUrl = d.image?.url || d.screenshot?.url || d.logo?.url;
+            if (!siteName && (d.publisher || d.author)) siteName = d.publisher || d.author;
+          }
+        }
+      } catch {}
+    }
+
+    // Safe fallback image for any link if image is still missing
+    if (!imageUrl) {
+      try {
+        const domain = new URL(cleanUrl).hostname;
+        imageUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+      } catch {}
     }
 
     let mediaType: 'photo' | 'video' | 'post' | 'article' | 'website' = 'website';
@@ -825,8 +878,10 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
       mediaType = 'post';
     }
 
+    const safeFinalUrl = finalResolvedUrl.includes('/login') ? cleanUrl : finalResolvedUrl;
+
     res.json({
-      resolvedUrl: finalResolvedUrl,
+      resolvedUrl: safeFinalUrl,
       title: title || (mediaType === 'video' ? 'Video' : undefined),
       description,
       imageUrl,
@@ -839,11 +894,41 @@ app.get('/api/unfurl', rateLimitGuard(120, 60_000), async (req: Request, res: Re
     const isFb = /(?:facebook\.com|fb\.watch|fb\.com)/i.test(cleanUrl);
     const isIg = /(?:instagram\.com|instagr\.am)/i.test(cleanUrl);
     const isVid = /(?:videos\/|reel\/|reels\/|watch|\/share\/v\/|\/share\/r\/|fb\.watch)/i.test(cleanUrl);
+
+    // Fallback via Microlink on error
+    try {
+      const mlResp = await fetch(
+        `https://api.microlink.io/?url=${encodeURIComponent(cleanUrl)}`,
+        { signal: AbortSignal.timeout(4000) }
+      );
+      if (mlResp.ok) {
+        const mlJson = await mlResp.json();
+        if (mlJson && mlJson.status === 'success' && mlJson.data) {
+          const d = mlJson.data;
+          let fallbackDomain = '';
+          try { fallbackDomain = new URL(cleanUrl).hostname; } catch {}
+          return res.json({
+            resolvedUrl: cleanUrl,
+            title: d.title || (isVid ? (isIg ? 'Instagram Reel' : isFb ? 'Facebook Video' : 'Video') : undefined),
+            description: d.description || undefined,
+            imageUrl: d.image?.url || d.screenshot?.url || (fallbackDomain ? `https://www.google.com/s2/favicons?domain=${fallbackDomain}&sz=128` : undefined),
+            videoUrl: d.video?.url || undefined,
+            publisher: d.publisher || d.author || (isFb ? 'Facebook' : isIg ? 'Instagram' : fallbackDomain || undefined),
+            mediaType: isVid ? 'video' : isFb ? 'post' : 'website',
+          });
+        }
+      }
+    } catch {}
+
+    let fallbackDomain = '';
+    try { fallbackDomain = new URL(cleanUrl).hostname; } catch {}
+
     res.json({
       resolvedUrl: cleanUrl,
-      publisher: isFb ? 'Facebook' : isIg ? 'Instagram' : undefined,
+      publisher: isFb ? 'Facebook' : isIg ? 'Instagram' : fallbackDomain || undefined,
       mediaType: isVid ? 'video' : isFb ? 'post' : 'website',
       title: isVid ? (isIg ? 'Instagram Reel' : isFb ? 'Facebook Video' : 'Video') : undefined,
+      imageUrl: fallbackDomain ? `https://www.google.com/s2/favicons?domain=${fallbackDomain}&sz=128` : undefined,
       error: error.message,
     });
   }

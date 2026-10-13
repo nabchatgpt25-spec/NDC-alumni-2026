@@ -131,6 +131,7 @@ export function generateClientFallbackMetadata(url: string): LinkMetadata {
         title: isVideo ? (isReel ? 'Facebook Reel' : 'Facebook Video') : 'Facebook Post',
         description: 'View post on Facebook',
         site_name: 'Facebook',
+        image: 'https://www.google.com/s2/favicons?domain=facebook.com&sz=128',
         video_id: numericId,
         is_reel: isReel,
       };
@@ -148,6 +149,7 @@ export function generateClientFallbackMetadata(url: string): LinkMetadata {
         title: isReel ? 'Instagram Reel' : 'Instagram Post',
         description: 'View on Instagram',
         site_name: 'Instagram',
+        image: 'https://www.google.com/s2/favicons?domain=instagram.com&sz=128',
         code: match ? match[2] : undefined,
         is_reel: isReel,
       };
@@ -163,6 +165,7 @@ export function generateClientFallbackMetadata(url: string): LinkMetadata {
         title: 'TikTok Video',
         description: 'Watch video on TikTok',
         site_name: 'TikTok',
+        image: 'https://www.google.com/s2/favicons?domain=tiktok.com&sz=128',
         video_id: match ? match[1] : undefined,
         is_reel: true,
       };
@@ -178,6 +181,7 @@ export function generateClientFallbackMetadata(url: string): LinkMetadata {
         title: 'Vimeo Video',
         description: 'Watch video on Vimeo',
         site_name: 'Vimeo',
+        image: 'https://www.google.com/s2/favicons?domain=vimeo.com&sz=128',
         video_id: match ? match[1] : undefined,
       };
     }
@@ -191,6 +195,7 @@ export function generateClientFallbackMetadata(url: string): LinkMetadata {
         title: 'Post on X',
         description: 'View discussion on X',
         site_name: 'X (Twitter)',
+        image: 'https://www.google.com/s2/favicons?domain=x.com&sz=128',
       };
     }
 
@@ -202,6 +207,7 @@ export function generateClientFallbackMetadata(url: string): LinkMetadata {
       title: host,
       description: url,
       site_name: host,
+      image: `https://www.google.com/s2/favicons?domain=${host}&sz=128`,
     };
   } catch {
     return {
@@ -221,7 +227,8 @@ export function generateClientFallbackMetadata(url: string): LinkMetadata {
  *  1. In-memory cache
  *  2. Direct video/blob instant detector
  *  3. Backend OpenGraph crawler (/api/unfurl) with crawler User-Agent
- *  4. Client-side heuristic fallback with platform-specific thumbnail & IDs
+ *  4. Client-side Microlink secondary crawler fallback
+ *  5. Client-side heuristic fallback with platform-specific thumbnail & IDs
  */
 export async function fetchLinkPreview(url: string): Promise<LinkMetadata> {
   if (!url || typeof url !== 'string') {
@@ -260,8 +267,13 @@ export async function fetchLinkPreview(url: string): Promise<LinkMetadata> {
 
     if (resp.ok) {
       const data = await resp.json();
-      if (data && (data.imageUrl || data.videoUrl || data.title || data.description || data.resolvedUrl)) {
-        const canonical = data.resolvedUrl || cleanUrl;
+      if (
+        data &&
+        !data.error &&
+        (data.imageUrl || data.videoUrl || data.title || data.description)
+      ) {
+        const rawResolved = data.resolvedUrl || cleanUrl;
+        const canonical = rawResolved.includes('/login') ? cleanUrl : rawResolved;
         const lowerUrl = canonical.toLowerCase();
 
         // Determine specific platform type
@@ -336,10 +348,42 @@ export async function fetchLinkPreview(url: string): Promise<LinkMetadata> {
       }
     }
   } catch {
-    // Backend crawler error or offline - proceed to fallback
+    // Backend crawler error or offline - proceed to client fallbacks
   }
 
-  // 2. Client-side heuristic fallback
+  // 2. Client-side Microlink secondary fallback
+  try {
+    const mlResp = await fetch(
+      `https://api.microlink.io/?url=${encodeURIComponent(cleanUrl)}&screenshot=true`,
+      { signal: AbortSignal.timeout(4500) }
+    );
+    if (mlResp.ok) {
+      const mlJson = await mlResp.json();
+      if (mlJson && mlJson.status === 'success' && mlJson.data) {
+        const d = mlJson.data;
+        const lowerUrl = cleanUrl.toLowerCase();
+        let type: LinkMetadata['type'] = 'generic';
+        if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) type = 'youtube';
+        else if (lowerUrl.includes('facebook.com') || lowerUrl.includes('fb.watch')) type = d.video?.url ? 'facebook_video' : 'facebook_post';
+        else if (lowerUrl.includes('instagram.com')) type = 'instagram';
+
+        const result: LinkMetadata = {
+          ok: true,
+          type,
+          canonical_url: d.url || cleanUrl,
+          title: d.title || (type.startsWith('facebook') ? 'Facebook Post' : 'Shared Link'),
+          description: d.description || '',
+          image: d.image?.url || d.screenshot?.url,
+          video_url: d.video?.url,
+          site_name: d.publisher || d.author || undefined,
+        };
+        previewMemoryCache.set(cleanUrl, result);
+        return result;
+      }
+    }
+  } catch {}
+
+  // 3. Client-side heuristic fallback
   const fallback = generateClientFallbackMetadata(cleanUrl);
   previewMemoryCache.set(cleanUrl, fallback);
   return fallback;

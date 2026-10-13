@@ -18,6 +18,7 @@ import {
   BATCH_LIST,
   loadStoredAlumniProfiles,
 } from '../data/mockData';
+import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
 
 export { loadStoredAlumniProfiles };
 
@@ -299,36 +300,17 @@ export async function fetchFeedPostsFromDb(
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 12;
   const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
 
-  // Fetch one stable page of posts so the feed does not hydrate the full history at startup.
-  // Defensively try selecting linked_url and link_metadata; fall back safely if schema doesn't have them.
-  let postsData: any[] | null = null;
-  let postsError: any = null;
-
   try {
-    const res = await supabase
-      .from('posts')
-      .select(`
-        id,
-        author_id,
-        content,
-        category,
-        images,
-        videos,
-        linked_url,
-        link_metadata,
-        likes_count,
-        comments_count,
-        is_pinned,
-        is_edited,
-        created_at
-      `)
-      .eq('is_deleted', false)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .range(safeOffset, safeOffset + safeLimit - 1);
+    // Defensively query posts with tiered column fallbacks:
+    // Tier 1: Full schema (is_pinned, is_edited, linked_url, link_metadata)
+    // Tier 2: Without link columns (if migration 012 not present)
+    // Tier 3: Without pin/edit columns (if legacy schema)
+    // Tier 4: Core base columns
+    let postsData: any[] | null = null;
+    let postsError: any = null;
 
-    if (res.error) {
-      const fallbackRes = await supabase
+    try {
+      const res = await supabase
         .from('posts')
         .select(`
           id,
@@ -337,6 +319,8 @@ export async function fetchFeedPostsFromDb(
           category,
           images,
           videos,
+          linked_url,
+          link_metadata,
           likes_count,
           comments_count,
           is_pinned,
@@ -348,44 +332,112 @@ export async function fetchFeedPostsFromDb(
         .order('id', { ascending: false })
         .range(safeOffset, safeOffset + safeLimit - 1);
 
-      postsData = fallbackRes.data;
-      postsError = fallbackRes.error;
-    } else {
-      postsData = res.data;
+      if (!res.error && res.data) {
+        postsData = res.data;
+      } else {
+        postsError = res.error;
+      }
+    } catch (e: any) {
+      postsError = e;
     }
-  } catch (err: any) {
-    const fallbackRes = await supabase
-      .from('posts')
-      .select(`
-        id,
-        author_id,
-        content,
-        category,
-        images,
-        videos,
-        likes_count,
-        comments_count,
-        is_pinned,
-        is_edited,
-        created_at
-      `)
-      .eq('is_deleted', false)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .range(safeOffset, safeOffset + safeLimit - 1);
 
-    postsData = fallbackRes.data;
-    postsError = fallbackRes.error;
-  }
+    // Fallback Tier 2: if linked_url or link_metadata column is not in DB table
+    if (postsError) {
+      try {
+        const res2 = await supabase
+          .from('posts')
+          .select(`
+            id,
+            author_id,
+            content,
+            category,
+            images,
+            videos,
+            likes_count,
+            comments_count,
+            is_pinned,
+            is_edited,
+            created_at
+          `)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(safeOffset, safeOffset + safeLimit - 1);
 
-  if (postsError) {
-    console.error('Supabase fetchFeedPosts error loading posts:', postsError);
-    throw new Error(`Failed to load posts from Supabase: ${postsError.message || postsError.code}`);
-  }
+        if (!res2.error && res2.data) {
+          postsData = res2.data;
+          postsError = null;
+        } else {
+          postsError = res2.error;
+        }
+      } catch (e: any) {
+        postsError = e;
+      }
+    }
 
-  if (!postsData || postsData.length === 0) {
-    return [];
-  }
+    // Fallback Tier 3: if is_pinned or is_edited column is missing
+    if (postsError) {
+      try {
+        const res3 = await supabase
+          .from('posts')
+          .select(`
+            id,
+            author_id,
+            content,
+            category,
+            images,
+            videos,
+            likes_count,
+            comments_count,
+            created_at
+          `)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(safeOffset, safeOffset + safeLimit - 1);
+
+        if (!res3.error && res3.data) {
+          postsData = res3.data;
+          postsError = null;
+        } else {
+          postsError = res3.error;
+        }
+      } catch (e: any) {
+        postsError = e;
+      }
+    }
+
+    // Fallback Tier 4: Core columns only
+    if (postsError) {
+      try {
+        const res4 = await supabase
+          .from('posts')
+          .select(`
+            id,
+            author_id,
+            content,
+            category,
+            images,
+            created_at
+          `)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+          .range(safeOffset, safeOffset + safeLimit - 1);
+
+        if (!res4.error && res4.data) {
+          postsData = res4.data;
+          postsError = null;
+        }
+      } catch {}
+    }
+
+    // If query failed completely, catch silently and return empty array without crashing the feed
+    if (postsError || !postsData || postsData.length === 0) {
+      if (postsError) {
+        console.warn('Silently caught fetchFeedPostsFromDb error (returning []):', postsError?.message || postsError);
+      }
+      return [];
+    }
 
   const postIds = postsData.map((post) => Number(post.id));
   const authorIds = Array.from(
@@ -477,22 +529,28 @@ export async function fetchFeedPostsFromDb(
     likesResult.data.forEach((like: any) => userLikesSet.add(Number(like.post_id)));
   }
 
-  return postsData.map((row: any) => {
-    const postId = Number(row.id);
-    const author = authorMap.get(Number(row.author_id)) || {};
-    const postComments = commentsByPost.get(postId) || [];
-    const isLiked = userLikesSet.has(postId);
+    return postsData
+      .map((row: any) => {
+        const postId = Number(row.id);
+        const author = authorMap.get(Number(row.author_id)) || {};
+        const postComments = commentsByPost.get(postId) || [];
+        const isLiked = userLikesSet.has(postId);
 
-    return mapRowToFeedPost(
-      {
-        ...row,
-        author,
-        post_comments: postComments,
-        post_likes: isLiked ? [{ user_id: currentUserId }] : [],
-      },
-      currentUserId
-    );
-  });
+        return mapRowToFeedPost(
+          {
+            ...row,
+            author,
+            post_comments: postComments,
+            post_likes: isLiked ? [{ user_id: currentUserId }] : [],
+          },
+          currentUserId
+        );
+      })
+      .filter((p) => !isProfilePhotoPost(p));
+  } catch (outerErr: any) {
+    console.warn('Silently caught fetchFeedPostsFromDb error (returning []):', outerErr?.message || outerErr);
+    return [];
+  }
 }
 
 export async function fetchAlumniPostsFromDb(
@@ -504,27 +562,104 @@ export async function fetchAlumniPostsFromDb(
   }
 
   try {
-    const { data: postsData, error: postsError } = await supabase
-      .from('posts')
-      .select(`
-        id,
-        author_id,
-        content,
-        category,
-        images,
-        videos,
-        likes_count,
-        comments_count,
-        is_pinned,
-        is_edited,
-        created_at
-      `)
-      .eq('author_id', authorId)
-      .eq('is_deleted', false)
-      .order('created_at', { ascending: false });
+    let postsData: any[] | null = null;
+    let postsError: any = null;
 
-    if (postsError || !postsData) {
-      console.warn('Error fetching alumni posts from Supabase:', postsError?.message);
+    // Tier 1: Full columns (including linked_url, link_metadata, is_pinned, is_edited)
+    try {
+      const res = await supabase
+        .from('posts')
+        .select(`
+          id,
+          author_id,
+          content,
+          category,
+          images,
+          videos,
+          linked_url,
+          link_metadata,
+          likes_count,
+          comments_count,
+          is_pinned,
+          is_edited,
+          created_at
+        `)
+        .eq('author_id', authorId)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false });
+
+      if (!res.error && res.data) {
+        postsData = res.data;
+      } else {
+        postsError = res.error;
+      }
+    } catch (e: any) {
+      postsError = e;
+    }
+
+    // Tier 2: Without link columns
+    if (postsError) {
+      try {
+        const res2 = await supabase
+          .from('posts')
+          .select(`
+            id,
+            author_id,
+            content,
+            category,
+            images,
+            videos,
+            likes_count,
+            comments_count,
+            is_pinned,
+            is_edited,
+            created_at
+          `)
+          .eq('author_id', authorId)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false });
+
+        if (!res2.error && res2.data) {
+          postsData = res2.data;
+          postsError = null;
+        } else {
+          postsError = res2.error;
+        }
+      } catch (e: any) {
+        postsError = e;
+      }
+    }
+
+    // Tier 3: Core columns
+    if (postsError) {
+      try {
+        const res3 = await supabase
+          .from('posts')
+          .select(`
+            id,
+            author_id,
+            content,
+            category,
+            images,
+            likes_count,
+            comments_count,
+            created_at
+          `)
+          .eq('author_id', authorId)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false });
+
+        if (!res3.error && res3.data) {
+          postsData = res3.data;
+          postsError = null;
+        }
+      } catch {}
+    }
+
+    if (postsError || !postsData || postsData.length === 0) {
+      if (postsError) {
+        console.warn('Silently caught fetchAlumniPostsFromDb error (returning []):', postsError?.message || postsError);
+      }
       return [];
     }
 
@@ -578,20 +713,22 @@ export async function fetchAlumniPostsFromDb(
       ((likesResult.data as any[]) || []).map((l) => Number(l.post_id))
     );
 
-    return postsData.map((row) => {
-      const pid = Number(row.id);
-      return mapRowToFeedPost(
-        {
-          ...row,
-          author,
-          post_comments: commentsByPostId.get(pid) || [],
-          post_likes: myLikedPostIds.has(pid) ? [{ user_id: currentUserId }] : [],
-        },
-        currentUserId
-      );
-    });
-  } catch (err) {
-    console.warn('Exception in fetchAlumniPostsFromDb:', err);
+    return postsData
+      .map((row) => {
+        const pid = Number(row.id);
+        return mapRowToFeedPost(
+          {
+            ...row,
+            author,
+            post_comments: commentsByPostId.get(pid) || [],
+            post_likes: myLikedPostIds.has(pid) ? [{ user_id: currentUserId }] : [],
+          },
+          currentUserId
+        );
+      })
+      .filter((p) => !isProfilePhotoPost(p));
+  } catch (err: any) {
+    console.warn('Silently caught fetchAlumniPostsFromDb error (returning []):', err?.message || err);
     return [];
   }
 }

@@ -12,7 +12,17 @@ export const OfficialNoticeModal: React.FC<OfficialNoticeModalProps> = ({
   notice,
   onClose,
 }) => {
-  if (!notice) return null;
+  const [isDownloading, setIsDownloading] = React.useState(false);
+  const [downloaded, setDownloaded] = React.useState(false);
+
+  const handleDownload = () => {
+    setIsDownloading(true);
+    setTimeout(() => {
+      setIsDownloading(false);
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 2500);
+    }, 600);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -115,11 +125,26 @@ export const OfficialNoticeModal: React.FC<OfficialNoticeModalProps> = ({
 
           <button
             type="button"
-            onClick={() => alert(`Downloading circular ${notice.refNo} (PDF)...`)}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-blue-600/20"
+            onClick={handleDownload}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md ${
+              downloaded
+                ? 'bg-emerald-600 text-white shadow-emerald-600/20'
+                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20'
+            }`}
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download Official Circular PDF</span>
+            {downloaded ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Downloaded Circular</span>
+              </>
+            ) : isDownloading ? (
+              <span>Preparing PDF...</span>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Official Circular PDF</span>
+              </>
+            )}
           </button>
         </div>
       </div>

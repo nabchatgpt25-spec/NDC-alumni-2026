@@ -64,6 +64,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isVerified = (currentUser.verificationStatus || 'verified') === 'verified';
   const pendingCount = loadVouchRequests().filter((r) => r.status === 'pending').length;
 
+  const isAdminOrMod = currentUser.role === 'admin' || currentUser.role === 'moderator';
+
   // Segment 1: MAIN Navigation
   const mainNavItems: NavItemConfig[] = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
@@ -71,6 +73,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'find', label: 'Find Alumni', icon: Search },
     { id: 'map', label: 'Alumni Map', icon: MapPin },
   ];
+
+  // Segment 1.5: ADMINISTRATION (Strictly for Admins & Moderators)
+  const adminNavItems: NavItemConfig[] = isAdminOrMod
+    ? [
+        {
+          id: 'admin',
+          label: 'Admin Hub',
+          icon: ShieldCheck,
+          badge: currentUser.role === 'admin' ? 'ADMIN' : 'MOD',
+          badgeType: 'hot',
+        },
+      ]
+    : [];
 
   // Segment 2: COMMUNITY Navigation
   const communityNavItems: NavItemConfig[] = [
@@ -93,6 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ? [{ id: 'custom', title: 'MAIN', items: customNavItems }]
     : [
         { id: 'main', title: 'MAIN', items: mainNavItems },
+        ...(isAdminOrMod ? [{ id: 'admin', title: 'ADMINISTRATION', items: adminNavItems }] : []),
         { id: 'community', title: 'COMMUNITY', items: communityNavItems },
         { id: 'services', title: 'SERVICES', items: servicesNavItems },
       ];
@@ -100,6 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isItemActive = (id: string) => {
     if (activeTab === id) return true;
     if (id === 'dashboard' && activeTab === 'feed') return true;
+    if (id === 'admin' && (activeTab === 'admin' || activeTab === 'dashboard/admin' || activeTab === 'dashboard-admin')) return true;
     if (id === 'alumni' && activeTab === 'directory') return true;
     if (id === 'batches' && activeTab.startsWith('batch:')) return true;
     if (id === 'emergency' && (activeTab === 'blood' || activeTab === 'blood-network')) return true;

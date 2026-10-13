@@ -98,7 +98,8 @@ import {
   notifyPostComment,
   notifyCommentReply,
 } from '../utils/notificationService';
-import { DailyQuestion, recordStreakAnswer } from './DailyQuestion';
+import { DailyQuestion } from './DailyQuestion';
+import { recordStreakAnswerInDb } from '../services/streakService';
 
 interface FeedViewProps {
   onViewProfile?: (userId: number) => void;
@@ -1058,7 +1059,17 @@ export const FeedView: React.FC<FeedViewProps> = ({
       // Prepend the real database-persisted post with its assigned ID and clear temp
       setPosts((prev) => [res.post!, ...prev.filter((p) => p.id !== tempPostId && p.id !== res.post!.id)]);
       if (finalContent.includes('আজকের প্রশ্ন:') || isDailyQuestionAnswer) {
-        recordStreakAnswer(currentUser.id);
+        const match = finalContent.match(/আজকের প্রশ্ন:\s*([^\n]+)(?:\n+আমার উত্তর:\s*([\s\S]+))?/);
+        const qText = match && match[1] ? match[1].trim() : 'আজকের প্রশ্ন';
+        const aText = match && match[2] ? match[2].trim() : finalContent.replace(/^আজকের প্রশ্ন:[^\n]+/, '').trim();
+
+        recordStreakAnswerInDb({
+          userId: currentUser.id,
+          authUserId: currentUser.authUserId,
+          questionText: qText,
+          answerText: aText || finalContent,
+          postId: res.post.id,
+        });
         setIsDailyQuestionAnswer(false);
       }
       setPostContent('');
@@ -1183,7 +1194,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
     setIsLoadingPosts(true);
     try {
       const dbPosts = await fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, 0);
-      const loadedPosts = dbPosts || [];
+      const loadedPosts = (dbPosts || []).filter((p) => !isProfilePhotoPost(p));
       nextFeedOffsetRef.current = loadedPosts.length;
       setPosts(loadedPosts);
       setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
@@ -1209,7 +1220,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
     const offset = nextFeedOffsetRef.current;
 
     try {
-      const nextPage = await fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, offset);
+      const rawNextPage = await fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, offset);
+      const nextPage = (rawNextPage || []).filter((p) => !isProfilePhotoPost(p));
       nextFeedOffsetRef.current = offset + nextPage.length;
       setPosts((previousPosts) => {
         const existingIds = new Set(previousPosts.map((post) => post.id));
@@ -1388,7 +1400,10 @@ export const FeedView: React.FC<FeedViewProps> = ({
       />
 
       {/* Daily Nostalgia Question & Duolingo-style Streak */}
-      <DailyQuestion onAnswerQuestion={handleAnswerDailyQuestion} />
+      <DailyQuestion
+        onAnswerQuestion={handleAnswerDailyQuestion}
+        onViewProfile={onViewProfile}
+      />
 
       {/* Create Post Card (Facebook-Style Trigger Bar -> Opens "New Post" Modal on Click) */}
       <div
@@ -2933,16 +2948,25 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   </div>
                 )}
 
-                {/* Universal Link Preview: link_metadata or detected URL (only if not already in post.videos) */}
-                {(post.link_metadata || post.linked_url || (firstPostUrl && (!post.videos || !post.videos.includes(firstPostUrl)))) && (
-                  <div className="mb-4">
-                    <LinkPreview
-                      url={post.linked_url || firstPostUrl || undefined}
-                      data={post.link_metadata}
-                      autoPlayOnScroll={autoPlayOnScroll}
-                    />
-                  </div>
-                )}
+                {/* Universal Link Preview: link_metadata or detected URL (only if not already shown in post.videos) */}
+                {(() => {
+                  const hasVideos = Boolean(post.videos && post.videos.length > 0);
+                  const extraUrl = post.linked_url || firstPostUrl;
+                  const alreadyShownInVideos = hasVideos && Boolean(
+                    extraUrl && post.videos?.some((v) => v === extraUrl || (v && extraUrl && (v.includes(extraUrl) || extraUrl.includes(v))))
+                  );
+                  if (alreadyShownInVideos) return null;
+                  if (!post.link_metadata && !extraUrl) return null;
+                  return (
+                    <div className="mb-4">
+                      <LinkPreview
+                        url={post.linked_url || firstPostUrl || undefined}
+                        data={post.link_metadata}
+                        autoPlayOnScroll={autoPlayOnScroll}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* Stats Row */}
                 <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 py-2 border-t border-b border-slate-100 dark:border-slate-800/80 mb-2">

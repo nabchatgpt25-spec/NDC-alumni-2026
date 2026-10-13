@@ -10,7 +10,8 @@ import {
   Award,
   GraduationCap,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Check
 } from 'lucide-react';
 import { NDCLogo } from '../NDCLogo';
 import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../../data/mockData';
@@ -31,6 +32,7 @@ export const MembershipVerifyModal: React.FC<MembershipVerifyModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [verifiedMember, setVerifiedMember] = useState<AlumniProfile | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
 
   if (!isOpen) return null;
 
@@ -217,11 +219,29 @@ export const MembershipVerifyModal: React.FC<MembershipVerifyModalProps> = ({
               <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => alert(`Certificate verification token: NDCAA-${verifiedMember.batchYear}-${verifiedMember.id}`)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5"
+                  onClick={() => {
+                    const token = `NDCAA-${verifiedMember.batchYear}-${verifiedMember.id}`;
+                    navigator.clipboard.writeText(token).catch(() => {});
+                    setCopiedToken(true);
+                    setTimeout(() => setCopiedToken(false), 2500);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    copiedToken
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+                      : 'border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Digital Card</span>
+                  {copiedToken ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Token Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Digital Card</span>
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"

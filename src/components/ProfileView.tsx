@@ -33,6 +33,7 @@ import {
   ChevronDown,
   AlertCircle,
   Globe,
+  Flame,
 } from 'lucide-react';
 import { AlumniProfile, PostItem, PostComment, SPECIALTIES_LIST, DEGREES_LIST } from '../types';
 import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
@@ -40,6 +41,9 @@ import { UNIVERSAL_DIRECTORY_PROFILES } from './DirectoryView';
 import { fetchAlumniProfileByIdFromDb } from '../services/supabaseService';
 import { useAuth } from '../context/AuthContext';
 import { AchievementBadgeChip, BADGE_CONFIGS } from './AchievementBadge';
+import { fetchUserStreak, type UserStreakData } from '../services/streakService';
+import { banglaDigits } from './DailyQuestion';
+import { DailyStreakCard } from './profile/DailyStreakCard';
 import { PhotoChangeModal, PhotoType } from './PhotoChangeModal';
 import { WhatsAppIcon, FacebookIcon } from './SocialIcons';
 import { calculateProfileCompletion } from '../utils/profileCompletion';
@@ -105,7 +109,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     fetchAlumniPostsFromDb(profileId, currentUser.id)
       .then((dbPosts) => {
         if (!mounted) return;
-        const fetched = dbPosts || [];
+        const fetched = (dbPosts || []).filter((p) => !isProfilePhotoPost(p));
         try {
           const local = localStorage.getItem('ndc_alumni_posts');
           if (local) {
@@ -113,6 +117,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             const localForAuthor = parsed.filter(
               (p) =>
                 (p.userId === profileId || p.userId === currentUser.id) &&
+                !isProfilePhotoPost(p) &&
                 !fetched.some((f) => f.id === p.id)
             );
             setAllPosts([...localForAuthor, ...fetched]);
@@ -128,11 +133,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         if (mounted) setIsLoadingPosts(false);
       });
 
-    // Listen for new posts created anywhere in the app (including profile photo posts)
+    // Listen for new posts created anywhere in the app
     const handlePostCreated = (e: Event) => {
       const custom = e as CustomEvent<{ post: PostItem; replaceTempId?: number }>;
       if (!custom.detail?.post) return;
       const newPost = custom.detail.post;
+      if (isProfilePhotoPost(newPost)) return;
       if (newPost.userId === profileId || newPost.userId === currentUser.id) {
         setAllPosts((prev) => {
           if (custom.detail.replaceTempId) {
@@ -231,6 +237,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   }, [profileId]);
 
   const [isVerificationCardClosed, setIsVerificationCardClosed] = useState(false);
+  const [profileStreak, setProfileStreak] = useState<UserStreakData | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (profile?.id) {
+      fetchUserStreak(profile.id).then((st) => {
+        if (isMounted) setProfileStreak(st);
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [profile?.id]);
+
   const donorRecord = getDonorProfileByUserId(profile.id);
 
   const syncAllPosts = (updated: PostItem[]) => {
@@ -819,6 +839,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
+  const handleRemoveAvatar = async () => {
+    updateProfile({ avatarUrl: '/ndc-logo.png' });
+    setProfile((prev) => ({ ...prev, avatarUrl: '/ndc-logo.png' }));
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  };
+
   const handleDirectFileInput = (e: React.ChangeEvent<HTMLInputElement>, type: PhotoType) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -1052,6 +1079,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     >
                       <Camera className="w-3.5 h-3.5" />
                     </button>
+                    {profile.avatarUrl && profile.avatarUrl !== '/ndc-logo.png' && (
+                      <button
+                        type="button"
+                        id="remove-avatar-badge-btn"
+                        onClick={handleRemoveAvatar}
+                        className="absolute top-0 right-0 p-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white ring-2 ring-white dark:ring-slate-900 shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer z-10"
+                        title="Remove Profile Picture"
+                        aria-label="Remove Profile Picture"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1086,6 +1125,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           · {donorRecord.availability === 'available' ? 'Donor Ready' : 'On Cooldown'}
                         </span>
                       )}
+                    </span>
+                  )}
+                  {profileStreak && profileStreak.currentStreak > 0 && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-700 dark:text-amber-300 text-xs font-extrabold backdrop-blur-md">
+                      <Flame className="w-3.5 h-3.5 fill-current text-amber-500 animate-pulse" />
+                      <span>{banglaDigits(profileStreak.currentStreak)} Days Streak</span>
                     </span>
                   )}
                 </div>
@@ -1328,6 +1373,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
+      {/* Prominent Daily Streak Component with Recharts 30-Day Activity History */}
+      <DailyStreakCard
+        userId={profile.id}
+        authUserId={currentUser?.authUserId}
+        isOwnProfile={isMine}
+        onNavigateToDailyQuestion={() => onNavigate?.('feed')}
+        className="my-5"
+      />
+
       {/* Tab 1: ABOUT (Combined About & Credentials + Career & Education Timeline) */}
       {activeTab === 'about' && (
         <div className="space-y-5">
@@ -1382,6 +1436,47 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 ) : (
                   <span className="text-xs text-slate-400">No specialties listed yet.</span>
                 )}
+              </div>
+            </div>
+
+            {/* Daily Nostalgia Streak Card (Cross-Device Synced) */}
+            <div className="liquid-glass-card p-5 rounded-3xl md:col-span-2 border border-amber-500/20 bg-gradient-to-br from-amber-500/5 via-transparent to-orange-500/5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/25 shrink-0">
+                    <Flame className="w-7 h-7 fill-white" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                        দৈনিক নস্টালজিয়া স্ট্রিক (Daily Streak)
+                      </h4>
+                      {profileStreak && profileStreak.currentStreak >= 7 && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-400/40 text-[10px] font-extrabold">
+                          🔥 ৭ দিনের স্ট্রিক ব্যাজ
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      নটর ডেম স্মৃতিচারণ প্রশ্ন নিয়মিত উত্তর দিয়ে স্ট্রিক বজায় রাখুন
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-amber-400/30 text-center shadow-xs">
+                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">বর্তমান স্ট্রিক</div>
+                    <div className="text-base font-black text-amber-600 dark:text-amber-400 font-mono">
+                      {banglaDigits(profileStreak?.currentStreak || 0)} দিন
+                    </div>
+                  </div>
+                  <div className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center shadow-xs">
+                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">সর্বোচ্চ স্ট্রিক</div>
+                    <div className="text-base font-black text-slate-800 dark:text-slate-200 font-mono">
+                      {banglaDigits(profileStreak?.maxStreak || 0)} দিন
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

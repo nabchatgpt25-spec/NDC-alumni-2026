@@ -23,6 +23,7 @@ import {
   renderTextWithClickableLinks,
   SharedEmbedCard
 } from './SmartPostMediaAndEmbeds';
+import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
 
 interface SavedPostsViewProps {
   onViewProfile?: (userId: number) => void;
@@ -34,14 +35,16 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
   onNavigateToFeed,
 }) => {
   const isOnline = useOnlineStatus();
-  const [savedPosts, setSavedPostsState] = useState<PostItem[]>(() => getSavedPosts());
+  const [savedPosts, setSavedPostsState] = useState<PostItem[]>(() =>
+    getSavedPosts().filter((p) => !isProfilePhotoPost(p))
+  );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedSavedPostId, setCopiedSavedPostId] = useState<number | null>(null);
 
   // Sync state if saved posts change in background
   useEffect(() => {
     const handleSync = () => {
-      setSavedPostsState(getSavedPosts());
+      setSavedPostsState(getSavedPosts().filter((p) => !isProfilePhotoPost(p)));
     };
     window.addEventListener('ndc_saved_posts_updated', handleSync);
     window.addEventListener('storage', handleSync);

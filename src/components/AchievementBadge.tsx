@@ -68,6 +68,38 @@ export const BADGE_CONFIGS: Record<string, BadgeConfig> = {
     textClass: 'text-sky-700 dark:text-sky-300',
     description: 'Pioneer admission batch 1949 of Notre Dame College Dhaka',
   },
+  '🔥 7-Day Streak': {
+    icon: Flame,
+    label: '🔥 7-Day Streak',
+    bgClass: 'bg-amber-50 dark:bg-amber-950/40',
+    borderClass: 'border-amber-300 dark:border-amber-500/70',
+    textClass: 'text-amber-700 dark:text-amber-300',
+    description: 'Maintained a 7-day consecutive streak answering daily Notre Dame nostalgia questions',
+  },
+  '7_day_streak': {
+    icon: Flame,
+    label: '🔥 7-Day Streak',
+    bgClass: 'bg-amber-50 dark:bg-amber-950/40',
+    borderClass: 'border-amber-300 dark:border-amber-500/70',
+    textClass: 'text-amber-700 dark:text-amber-300',
+    description: 'Maintained a 7-day consecutive streak answering daily Notre Dame nostalgia questions',
+  },
+  '🔥 14-Day Streak': {
+    icon: Flame,
+    label: '🔥 14-Day Streak',
+    bgClass: 'bg-orange-50 dark:bg-orange-950/40',
+    borderClass: 'border-orange-300 dark:border-orange-500/70',
+    textClass: 'text-orange-700 dark:text-orange-300',
+    description: 'Maintained a 14-day consecutive streak answering daily Notre Dame nostalgia questions',
+  },
+  '🔥 30-Day Streak': {
+    icon: Flame,
+    label: '🔥 30-Day Streak',
+    bgClass: 'bg-rose-50 dark:bg-rose-950/40',
+    borderClass: 'border-rose-300 dark:border-rose-500/70',
+    textClass: 'text-rose-700 dark:text-rose-300',
+    description: 'Maintained a 30-day consecutive streak answering daily Notre Dame nostalgia questions',
+  },
 };
 
 interface AchievementBadgeChipProps {

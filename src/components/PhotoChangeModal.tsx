@@ -85,7 +85,7 @@ const COVER_PRESETS = [
   },
 ];
 
-const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80';
+const DEFAULT_AVATAR = '/ndc-logo.png';
 const DEFAULT_COVER = 'https://images.unsplash.com/photo-1587351021759-3e566b6af7cc?w=1200&auto=format&fit=crop&q=80';
 
 export const PhotoChangeModal: React.FC<PhotoChangeModalProps> = ({
@@ -447,10 +447,10 @@ export const PhotoChangeModal: React.FC<PhotoChangeModalProps> = ({
             type="button"
             id="reset-photo-default-btn"
             onClick={handleResetDefault}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 rounded-xl transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset to Default</span>
+            <span>{isAvatar ? 'Remove Photo (Use College Logo)' : 'Reset to Default Banner'}</span>
           </button>
 
           <div className="flex items-center gap-2">

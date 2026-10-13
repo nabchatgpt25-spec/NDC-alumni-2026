@@ -191,7 +191,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const [academicGroup, setAcademicGroup] = useState<string>(initialDraft.academicGroup || '');
   const [bmdcNumber, setBmdcNumber] = useState(initialDraft.collegeRoll || initialDraft.bmdcNumber || '');
-  const [selectedAvatar] = useState(AVATAR_PRESETS[0]);
+  const [selectedAvatar] = useState<string>('/ndc-logo.png');
   const [position, setPosition] = useState(initialDraft.position || '');
   const [institution, setInstitution] = useState(initialDraft.institution || '');
   const [specialtyInput, setSpecialtyInput] = useState(initialDraft.specialtyInput || '');

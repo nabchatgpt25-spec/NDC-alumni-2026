@@ -44,6 +44,7 @@ export const AlbumShowcaseView: React.FC<AlbumShowcaseViewProps> = ({
   const [filmstripIndex, setFilmstripIndex] = useState<number>(0);
   const [copiedLink, setCopiedLink] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadedAll, setDownloadedAll] = useState(false);
 
   // Extract all unique tags in this album's photos
   const availableTags = useMemo(() => {
@@ -70,7 +71,8 @@ export const AlbumShowcaseView: React.FC<AlbumShowcaseViewProps> = ({
     setDownloading(true);
     setTimeout(() => {
       setDownloading(false);
-      alert(`Downloading ${album.photos.length} high-resolution photographs from "${album.title}"`);
+      setDownloadedAll(true);
+      setTimeout(() => setDownloadedAll(false), 2500);
     }, 1200);
   };
 
@@ -197,12 +199,23 @@ export const AlbumShowcaseView: React.FC<AlbumShowcaseViewProps> = ({
               className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-2xl transition-colors cursor-pointer border border-white/10"
               title="Download album zip"
             >
-              <Download className="w-4 h-4" />
+              {downloadedAll ? (
+                <Check className="w-4 h-4 text-emerald-400" />
+              ) : downloading ? (
+                <span className="inline-block w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
             </button>
 
             {copiedLink && (
               <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-xl border border-emerald-800">
                 Link copied to clipboard!
+              </span>
+            )}
+            {downloadedAll && (
+              <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-xl border border-emerald-800">
+                Download started!
               </span>
             )}
           </div>

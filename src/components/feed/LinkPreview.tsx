@@ -9,7 +9,7 @@ import {
   X,
   Share2,
 } from 'lucide-react';
-import { LinkMetadata, fetchLinkPreview } from '../../services/linkPreviewService';
+import { LinkMetadata, fetchLinkPreview, generateClientFallbackMetadata } from '../../services/linkPreviewService';
 import { Video } from './Video';
 
 export interface LinkPreviewProps {
@@ -27,6 +27,8 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
 }) => {
   const [metadata, setMetadata] = useState<LinkMetadata | null>(initialData || null);
   const [loading, setLoading] = useState<boolean>(!initialData && Boolean(directUrl));
+  const [embedError, setEmbedError] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const ytIframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -35,9 +37,9 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
 
   const effectiveUrl = metadata?.canonical_url || directUrl || '';
 
-  // Hydrate metadata if only url was provided
+  // Hydrate metadata if only url was provided, or re-fetch if initialData was empty/thin
   useEffect(() => {
-    if (initialData) {
+    if (initialData && (initialData.image || initialData.description || (initialData.title && initialData.title !== 'Shared Link'))) {
       setMetadata(initialData);
       setLoading(false);
       return;
@@ -57,6 +59,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
       })
       .catch(() => {
         if (isMounted) {
+          setMetadata(generateClientFallbackMetadata(directUrl));
           setLoading(false);
         }
       });
@@ -336,7 +339,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     );
   }
 
-  // 3. Facebook Video / Reel: Cinematic Preview Card with Stop-on-Scroll Embed
+  // 3. Facebook Video / Reel: Cinematic Preview Card with Stop-on-Scroll Embed & Fallback
   if (type === 'facebook_video') {
     const encodedUrl = encodeURIComponent(effectiveUrl);
     const videoEmbedSrc = `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&autoplay=1`;
@@ -372,41 +375,85 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
           </a>
         </div>
 
-        {/* Media Player / Preview Body */}
+        {/* Media Player / Preview Body with Embed Fallback */}
         {showEmbedPlayer ? (
-          <div
-            className={`relative w-full bg-black flex items-center justify-center ${
-              isReel ? 'aspect-[9/16] max-w-sm mx-auto' : 'aspect-video'
-            }`}
-          >
-            <iframe
-              src={videoEmbedSrc}
-              className="w-full h-full border-0"
-              scrolling="no"
-              allow="autoplay; encrypted-media; picture-in-picture"
-              allowFullScreen
-              title="Facebook video"
-            />
-            <button
-              type="button"
-              onClick={() => setShowEmbedPlayer(false)}
-              className="absolute top-2.5 right-2.5 px-2.5 py-1 bg-black/80 hover:bg-black text-white text-[10px] font-bold rounded-lg backdrop-blur-xs transition-colors cursor-pointer z-20 shadow-md"
+          embedError ? (
+            <div
+              className={`relative w-full bg-slate-950 p-6 flex flex-col items-center justify-center text-center text-white space-y-3 ${
+                isReel ? 'aspect-[9/16] max-w-sm mx-auto' : 'aspect-video'
+              }`}
             >
-              Close Player
-            </button>
-          </div>
+              <div className="w-12 h-12 rounded-full bg-[#1877F2]/20 text-[#1877F2] flex items-center justify-center font-black text-xl">
+                f
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm font-bold">This Facebook video cannot be embedded</div>
+                <p className="text-xs text-slate-400 max-w-xs">
+                  Facebook requires viewing this video directly on their platform due to privacy or browser cookie settings.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <a
+                  href={effectiveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1877F2] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <span>Watch on Facebook</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEmbedPlayer(false);
+                    setEmbedError(false);
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Return to Preview
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className={`relative w-full bg-black flex items-center justify-center ${
+                isReel ? 'aspect-[9/16] max-w-sm mx-auto' : 'aspect-video'
+              }`}
+            >
+              <iframe
+                src={videoEmbedSrc}
+                className="w-full h-full border-0"
+                scrolling="no"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
+                title="Facebook video"
+                onError={() => setEmbedError(true)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowEmbedPlayer(false)}
+                className="absolute top-2.5 right-2.5 px-2.5 py-1 bg-black/80 hover:bg-black text-white text-[10px] font-bold rounded-lg backdrop-blur-xs transition-colors cursor-pointer z-20 shadow-md"
+              >
+                Close Player
+              </button>
+            </div>
+          )
         ) : (
           <div
-            onClick={() => setShowEmbedPlayer(true)}
+            onClick={() => {
+              setEmbedError(false);
+              setShowEmbedPlayer(true);
+            }}
             className="relative group cursor-pointer bg-slate-950 aspect-video flex items-center justify-center overflow-hidden"
           >
-            {previewThumbnail ? (
+            {previewThumbnail && !imageError ? (
               <img
                 src={previewThumbnail}
                 alt={postTitle}
                 className="absolute inset-0 w-full h-full object-cover group-hover:scale-103 transition-transform duration-500 opacity-90 group-hover:opacity-100"
                 loading="lazy"
                 referrerPolicy="no-referrer"
+                onError={() => setImageError(true)}
               />
             ) : (
               <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-black" />
@@ -441,7 +488,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     );
   }
 
-  // 4. Instagram: Reel / Post with Preview Card & Stop-on-Scroll Embed
+  // 4. Instagram: Reel / Post with Preview Card & Stop-on-Scroll Embed & Fallback
   if (type === 'instagram') {
     const rawCode = metadata?.code || effectiveUrl.match(/\/(?:p|reel|reels|tv)\/([a-zA-Z0-9_-]+)/i)?.[1];
     const igEmbedSrc = rawCode ? `https://www.instagram.com/p/${rawCode}/embed` : undefined;
@@ -473,43 +520,85 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
           </a>
         </div>
 
-        {/* Media Player / Preview Body */}
+        {/* Media Player / Preview Body with Fallback */}
         {showEmbedPlayer && igEmbedSrc ? (
-          <div className="relative w-full max-w-md mx-auto aspect-[4/5] bg-black">
-            <iframe
-              src={igEmbedSrc}
-              className="w-full h-full border-0"
-              frameBorder="0"
-              allow="autoplay; encrypted-media; picture-in-picture"
-              allowFullScreen
-              title="Instagram embed"
-            />
-            <button
-              type="button"
-              onClick={() => setShowEmbedPlayer(false)}
-              className="absolute top-2.5 right-2.5 px-2.5 py-1 bg-black/80 hover:bg-black text-white text-[10px] font-bold rounded-lg backdrop-blur-xs transition-colors cursor-pointer z-20 shadow-md"
-            >
-              Close Embed
-            </button>
-          </div>
+          embedError ? (
+            <div className="relative w-full max-w-md mx-auto aspect-[4/5] bg-slate-950 p-6 flex flex-col items-center justify-center text-center text-white space-y-3">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-pink-600 to-amber-500 flex items-center justify-center font-black text-xl">
+                IG
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm font-bold">This post cannot be embedded</div>
+                <p className="text-xs text-slate-400 max-w-xs">
+                  Instagram requires viewing this content directly on their platform.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <a
+                  href={effectiveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <span>Open on Instagram</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEmbedPlayer(false);
+                    setEmbedError(false);
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Return to Preview
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="relative w-full max-w-md mx-auto aspect-[4/5] bg-black">
+              <iframe
+                src={igEmbedSrc}
+                className="w-full h-full border-0"
+                frameBorder="0"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
+                title="Instagram embed"
+                onError={() => setEmbedError(true)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowEmbedPlayer(false)}
+                className="absolute top-2.5 right-2.5 px-2.5 py-1 bg-black/80 hover:bg-black text-white text-[10px] font-bold rounded-lg backdrop-blur-xs transition-colors cursor-pointer z-20 shadow-md"
+              >
+                Close Embed
+              </button>
+            </div>
+          )
         ) : (
           <div
             onClick={() => {
               if (igEmbedSrc) {
+                setEmbedError(false);
                 setShowEmbedPlayer(true);
               } else {
-                window.open(effectiveUrl, '_blank', 'noopener,noreferrer');
+                const link = document.createElement('a');
+                link.href = effectiveUrl;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.click();
               }
             }}
             className="relative group cursor-pointer bg-slate-950 aspect-video flex items-center justify-center overflow-hidden"
           >
-            {metadata?.image ? (
+            {metadata?.image && !imageError ? (
               <img
                 src={metadata.image}
                 alt={postTitle}
                 className="absolute inset-0 w-full h-full object-cover group-hover:scale-103 transition-transform duration-500 opacity-90 group-hover:opacity-100"
                 loading="lazy"
                 referrerPolicy="no-referrer"
+                onError={() => setImageError(true)}
               />
             ) : (
               <div className="absolute inset-0 bg-gradient-to-br from-purple-950 via-slate-900 to-pink-950" />
@@ -536,28 +625,35 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     );
   }
 
-  // 5. Facebook Post: 500px embed or clean rich card
+  // 5. Facebook Post: 500px embed or clean rich card with reliable image fallback
   if (type === 'facebook_post') {
-    const postEmbedSrc = `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(
-      effectiveUrl
-    )}`;
-
     return (
       <div className={`w-full my-3 ${className}`}>
         <div className="w-full overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
-          {metadata?.image ? (
+          {metadata?.image && !imageError ? (
             <div className="relative aspect-video bg-slate-950 overflow-hidden">
               <img
                 src={metadata.image}
                 alt={metadata.title || 'Facebook Post'}
                 className="w-full h-full object-cover"
                 loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={() => setImageError(true)}
               />
               <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-[#1877F2] text-white text-[10px] font-bold">
                 Facebook
               </div>
             </div>
-          ) : null}
+          ) : (
+            <div className="p-3 bg-slate-900 text-white flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-[#1877F2] text-white flex items-center justify-center font-bold text-xs">
+                f
+              </span>
+              <span className="text-xs font-bold text-slate-200 truncate">
+                {metadata?.site_name || 'Facebook Post'}
+              </span>
+            </div>
+          )}
           <div className="p-3.5 space-y-1.5">
             <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 line-clamp-2">
               {metadata?.title || 'Facebook Post'}
@@ -575,7 +671,14 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
   }
 
   // 6. Generic Rich Card: image left, title+desc right, "View on {site_name}"
-  const siteName = metadata?.site_name || new URL(effectiveUrl).hostname.replace(/^www\./, '');
+  let siteName = metadata?.site_name;
+  if (!siteName) {
+    try {
+      siteName = new URL(effectiveUrl).hostname.replace(/^www\./, '');
+    } catch {
+      siteName = 'Website';
+    }
+  }
   const title = metadata?.title || siteName;
   const description = metadata?.description || effectiveUrl;
 
@@ -588,13 +691,15 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         onClick={(e) => e.stopPropagation()}
         className="group flex flex-col sm:flex-row overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 hover:bg-blue-50/40 dark:hover:bg-slate-800/80 transition-all shadow-xs"
       >
-        {metadata?.image ? (
+        {metadata?.image && !imageError ? (
           <div className="sm:w-44 h-36 sm:h-auto bg-slate-950 shrink-0 overflow-hidden relative">
             <img
               src={metadata.image}
               alt={title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={() => setImageError(true)}
             />
           </div>
         ) : (

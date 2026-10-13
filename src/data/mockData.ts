@@ -52,7 +52,7 @@ export const DEFAULT_BLANK_USER: AlumniProfile = {
   id: 0,
   userId: 0,
   fullName: 'Notredamian Alumnus',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+  avatarUrl: '/ndc-logo.png',
   coverUrl: campusHeroImg,
   batchYear: undefined,
   session: undefined,

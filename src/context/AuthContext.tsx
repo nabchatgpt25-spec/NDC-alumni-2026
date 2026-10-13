@@ -53,6 +53,22 @@ function normalizePhoneDigits(phone?: string): string {
   return digits.length >= 10 ? digits.slice(-10) : digits;
 }
 
+function sanitizeUserProfile(profile: AlumniProfile): AlumniProfile {
+  let avatar = profile.avatarUrl;
+  if (
+    !avatar ||
+    avatar.includes('1507003211169-0a1dd7228f2d') ||
+    avatar.includes('1535713875002-d1d0cf377fde') ||
+    avatar.includes('1534528741775-53994a69daeb')
+  ) {
+    avatar = '/ndc-logo.png';
+  }
+  return {
+    ...profile,
+    avatarUrl: avatar,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supabaseToken, setSupabaseToken] = useState<string | null>(null);
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
@@ -122,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         resolvedAuthUserIdRef.current = session.user.id;
-        setCurrentUser(profile);
+        setCurrentUser(sanitizeUserProfile(profile));
         setIsAdminUser(profile.role === 'admin');
         setIsLoggedIn(true);
       } catch (err) {
@@ -203,7 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const handleAdminUserUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<AlumniProfile>;
       if (customEvent.detail && customEvent.detail.id === currentUser.id) {
-        setCurrentUser(customEvent.detail);
+        setCurrentUser(sanitizeUserProfile(customEvent.detail));
       }
     };
     window.addEventListener('ndc_current_user_updated', handleAdminUserUpdate);
@@ -403,7 +419,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (profile) {
       resolvedAuthUserIdRef.current = authData.user.id;
-      setCurrentUser(profile);
+      setCurrentUser(sanitizeUserProfile(profile));
       setIsAdminUser(profile.role === 'admin');
       setAuthInitializationError(null);
       setIsLoggedIn(true);

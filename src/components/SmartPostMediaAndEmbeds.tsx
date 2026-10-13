@@ -1456,7 +1456,11 @@ const FacebookEmbedCard: React.FC<{
             <div
               className="relative w-full h-full flex flex-col justify-between p-4 sm:p-6 cursor-pointer"
               onClick={() => {
-                window.open(effectiveInfo.normalizedUrl, '_blank', 'noopener,noreferrer');
+                const link = document.createElement('a');
+                link.href = effectiveInfo.normalizedUrl;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.click();
               }}
             >
               {previewImage ? (
@@ -1832,18 +1836,48 @@ export const SharedEmbedCard: React.FC<{
     );
   }
 
-  // 5. Generic Website / Article Card
-  const meta = getSiteMetadata(safeUrl);
+  // 5. Generic Website / Article Card with Rich Unfurl & Fallback
+  return <GenericRichArticleEmbedCard url={safeUrl} />;
+};
+
+const GenericRichArticleEmbedCard: React.FC<{ url: string }> = ({ url }) => {
+  const { data: unfurled } = useLinkUnfurl(url, true);
+  const meta = getSiteMetadata(url);
+  const [imageError, setImageError] = useState(false);
+
+  const displayTitle = decodeHtmlEntities(unfurled?.title) || meta.siteName;
+  const displayDescription = decodeHtmlEntities(unfurled?.description) || url;
+  const displayImage = unfurled?.imageUrl;
 
   return (
-    <div className="rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition-colors shadow-xs">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600/60 flex items-center justify-center shrink-0 shadow-2xs">
-            <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+    <div className="rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/60 transition-all shadow-xs hover:shadow-sm">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="group flex flex-col sm:flex-row"
+      >
+        {displayImage && !imageError ? (
+          <div className="sm:w-44 h-36 sm:h-auto bg-slate-950 shrink-0 overflow-hidden relative">
+            <img
+              src={displayImage}
+              alt={displayTitle}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={() => setImageError(true)}
+            />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+        ) : (
+          <div className="hidden sm:flex w-20 bg-slate-100 dark:bg-slate-800 items-center justify-center shrink-0 text-slate-400">
+            <Globe className="w-6 h-6 text-blue-500" />
+          </div>
+        )}
+
+        <div className="p-3.5 sm:p-4 flex flex-col justify-between flex-1 min-w-0">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
               <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${meta.colorClass}`}>
                 {meta.siteName}
               </span>
@@ -1851,23 +1885,25 @@ export const SharedEmbedCard: React.FC<{
                 {meta.hostname}
               </span>
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-xs sm:max-w-md mt-0.5 font-mono">
-              {safeUrl}
-            </div>
+            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
+              {displayTitle}
+            </h4>
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
+              {displayDescription}
+            </p>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-200/50 dark:border-slate-800">
+            <span className="truncate max-w-[200px] sm:max-w-xs font-mono text-[11px]">
+              {url}
+            </span>
+            <span className="inline-flex items-center gap-1 font-bold text-blue-600 dark:text-blue-400 group-hover:underline shrink-0 ml-2">
+              <span>View on {meta.siteName}</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </span>
           </div>
         </div>
-
-        <a
-          href={safeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer self-start sm:self-auto"
-        >
-          <span>View Original</span>
-          <ExternalLink className="w-3.5 h-3.5" />
-        </a>
-      </div>
+      </a>
     </div>
   );
 };
