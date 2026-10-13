@@ -162,6 +162,7 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
   const [batchFilter, setBatchFilter] = useState(initialBatch ? initialBatch.toString() : '');
   const [specialtyFilter, setSpecialtyFilter] = useState('');
   const [countryFilter, setCountryFilter] = useState('');
+  const [customLocationFilter, setCustomLocationFilter] = useState('');
   const [badgeFilter, setBadgeFilter] = useState('');
   const [onlineOnly, setOnlineOnly] = useState(false);
 
@@ -266,13 +267,24 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
           return false;
         }
       }
-      if (countryFilter && p.country !== countryFilter) return false;
+      if (countryFilter) {
+        if (countryFilter === 'OTHERS') {
+          if (customLocationFilter.trim()) {
+            const clf = customLocationFilter.trim().toLowerCase();
+            const matchC = p.country && p.country.toLowerCase().includes(clf);
+            const matchCity = p.city && p.city.toLowerCase().includes(clf);
+            if (!matchC && !matchCity) return false;
+          }
+        } else if (p.country !== countryFilter) {
+          return false;
+        }
+      }
       if (specialtyFilter && !p.specialty.some((s) => s.toLowerCase().includes(specialtyFilter.toLowerCase()))) return false;
       if (badgeFilter && !p.badges?.includes(badgeFilter)) return false;
       if (onlineOnly && !p.online) return false;
       return true;
     });
-  }, [profiles, search, batchFilter, countryFilter, specialtyFilter, badgeFilter, onlineOnly]);
+  }, [profiles, search, batchFilter, countryFilter, customLocationFilter, specialtyFilter, badgeFilter, onlineOnly]);
 
   const handleExportCSV = () => {
     const headers = ['Full Name', 'Batch', 'Profession', 'Position', 'Institution', 'Specialty', 'Location', 'WhatsApp', 'Email'];
@@ -306,6 +318,7 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
     setBatchFilter('');
     setSpecialtyFilter('');
     setCountryFilter('');
+    setCustomLocationFilter('');
     setBadgeFilter('');
     setOnlineOnly(false);
   };
@@ -461,19 +474,50 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
             ))}
           </select>
 
-          {/* Country Filter */}
-          <select
-            value={countryFilter}
-            onChange={(e) => setCountryFilter(e.target.value)}
-            className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-          >
-            <option value="">All Locations</option>
-            {countries.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          {/* Country / Location Filter */}
+          <div className="space-y-1.5">
+            <select
+              value={countryFilter}
+              onChange={(e) => {
+                const val = e.target.value;
+                setCountryFilter(val);
+                if (val !== 'OTHERS') {
+                  setCustomLocationFilter('');
+                }
+              }}
+              className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            >
+              <option value="">All Locations</option>
+              {countries.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+              <option value="OTHERS">Others (Type any location...)</option>
+            </select>
+
+            {countryFilter === 'OTHERS' && (
+              <div className="relative animate-in fade-in duration-150">
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Type any location or city..."
+                  value={customLocationFilter}
+                  onChange={(e) => setCustomLocationFilter(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-blue-400 dark:border-blue-500 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+                />
+                {customLocationFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomLocationFilter('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Bottom row: Online filter + Clear */}

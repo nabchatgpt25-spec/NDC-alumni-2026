@@ -10,8 +10,10 @@ import {
   WifiOff,
   Sparkles,
   ArrowLeft,
-  CheckCircle2
+  CheckCircle2,
+  Globe,
 } from 'lucide-react';
+import { formatFacebookTime, getFullFacebookTimestamp } from '../utils/facebookTime';
 import { PostItem } from '../types';
 import { getSavedPosts, toggleSavePost, setSavedPosts } from '../utils/offlineStorage';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -269,7 +271,14 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
-                      <span>{post.createdAt}</span>
+                      <span
+                        className="hover:underline cursor-pointer inline-flex items-center gap-1 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                        title={getFullFacebookTimestamp(post.createdAt || (post as any).timestamp)}
+                      >
+                        {formatFacebookTime(post.createdAt || (post as any).timestamp)}
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">·</span>
+                        <Globe className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0 inline-block" aria-hidden="true" />
+                      </span>
                     </div>
                   </div>
                 </div>

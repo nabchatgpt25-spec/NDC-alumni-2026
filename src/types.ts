@@ -265,6 +265,8 @@ export interface PostItem {
   likesCount: number;
   commentsCount: number;
   createdAt: string;
+  likedByMe?: boolean;
+  comments?: PostComment[];
   category?:
     | 'Blood Donation'
     | 'Emergency & Medical Aid'
@@ -284,6 +286,7 @@ export interface PostItem {
     | string;
   isEdited?: boolean;
   isSaved?: boolean;
+  postType?: 'standard' | 'profile_photo_update' | 'cover_photo_update' | 'blood_request';
   linked_url?: string;
   link_metadata?: any;
 }
@@ -297,6 +300,8 @@ export interface NotificationItem {
   type: 'like' | 'comment' | 'post' | 'system' | 'blood';
   targetRoute?: string;
   bloodRequestId?: string;
+  targetUserId?: number;
+  isMatchedDonorAlert?: boolean;
 }
 
 export interface BatchSummary {

@@ -32,6 +32,7 @@ import {
   AlertTriangle,
   ChevronDown,
   AlertCircle,
+  Globe,
 } from 'lucide-react';
 import { AlumniProfile, PostItem, PostComment, SPECIALTIES_LIST, DEGREES_LIST } from '../types';
 import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
@@ -68,6 +69,11 @@ import {
   togglePostLikeInDb,
   addPostCommentInDb,
 } from '../services/supabaseService';
+import {
+  publishProfilePhotoPost,
+  isProfilePhotoPost,
+} from '../utils/profilePhotoPostService';
+import { formatFacebookTime, getFullFacebookTimestamp } from '../utils/facebookTime';
 
 interface ProfileViewProps {
   profileId: number;
@@ -98,7 +104,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     fetchAlumniPostsFromDb(profileId, currentUser.id)
       .then((dbPosts) => {
         if (!mounted) return;
-        setAllPosts(dbPosts || []);
+        const fetched = dbPosts || [];
+        try {
+          const local = localStorage.getItem('ndc_alumni_posts');
+          if (local) {
+            const parsed: PostItem[] = JSON.parse(local);
+            const localForAuthor = parsed.filter(
+              (p) =>
+                (p.userId === profileId || p.userId === currentUser.id) &&
+                !fetched.some((f) => f.id === p.id)
+            );
+            setAllPosts([...localForAuthor, ...fetched]);
+            return;
+          }
+        } catch {}
+        setAllPosts(fetched);
       })
       .catch((err) => {
         console.warn('Error fetching posts for profile:', err);
@@ -106,8 +126,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       .finally(() => {
         if (mounted) setIsLoadingPosts(false);
       });
+
+    // Listen for new posts created anywhere in the app (including profile photo posts)
+    const handlePostCreated = (e: Event) => {
+      const custom = e as CustomEvent<{ post: PostItem; replaceTempId?: number }>;
+      if (!custom.detail?.post) return;
+      const newPost = custom.detail.post;
+      if (newPost.userId === profileId || newPost.userId === currentUser.id) {
+        setAllPosts((prev) => {
+          if (custom.detail.replaceTempId) {
+            return prev.map((p) =>
+              p.id === custom.detail.replaceTempId ? newPost : p
+            );
+          }
+          if (prev.some((p) => p.id === newPost.id)) return prev;
+          return [newPost, ...prev];
+        });
+      }
+    };
+    window.addEventListener('ndc_post_created', handlePostCreated);
+
     return () => {
       mounted = false;
+      window.removeEventListener('ndc_post_created', handlePostCreated);
     };
   }, [profileId, currentUser.id]);
 
@@ -755,10 +796,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     });
   };
 
-  const handleSavePhoto = (newUrl: string) => {
+  const handleSavePhoto = async (newUrl: string, caption?: string) => {
     if (photoModal.type === 'avatar') {
       updateProfile({ avatarUrl: newUrl });
       setProfile((prev) => ({ ...prev, avatarUrl: newUrl }));
+      try {
+        const createdPost = await publishProfilePhotoPost({
+          alumnus: { ...currentUser, ...profile, avatarUrl: newUrl },
+          photoUrl: newUrl,
+          caption,
+        });
+        if (createdPost) {
+          setAllPosts((prev) => [createdPost, ...prev.filter((p) => p.id !== createdPost.id)]);
+        }
+      } catch (err) {
+        console.warn('Failed to publish profile photo post to timeline:', err);
+      }
     } else {
       updateProfile({ coverUrl: newUrl });
       setProfile((prev) => ({ ...prev, coverUrl: newUrl }));
@@ -772,10 +825,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const file = e.target.files[0];
       if (!file.type.startsWith('image/')) return;
       compressImageFileToDataUrl(file)
-        .then((dataUrl) => {
+        .then(async (dataUrl) => {
           if (type === 'avatar') {
             updateProfile({ avatarUrl: dataUrl });
             setProfile((prev) => ({ ...prev, avatarUrl: dataUrl }));
+            try {
+              const createdPost = await publishProfilePhotoPost({
+                alumnus: { ...currentUser, ...profile, avatarUrl: dataUrl },
+                photoUrl: dataUrl,
+              });
+              if (createdPost) {
+                setAllPosts((prev) => [createdPost, ...prev.filter((p) => p.id !== createdPost.id)]);
+              }
+            } catch (err) {
+              console.warn('Failed to publish direct avatar post:', err);
+            }
           } else {
             updateProfile({ coverUrl: dataUrl });
             setProfile((prev) => ({ ...prev, coverUrl: dataUrl }));
@@ -785,12 +849,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         })
         .catch(() => {
           const reader = new FileReader();
-          reader.onload = (event) => {
+          reader.onload = async (event) => {
             if (event.target?.result && typeof event.target.result === 'string') {
               const dataUrl = event.target.result;
               if (type === 'avatar') {
                 updateProfile({ avatarUrl: dataUrl });
                 setProfile((prev) => ({ ...prev, avatarUrl: dataUrl }));
+                try {
+                  const createdPost = await publishProfilePhotoPost({
+                    alumnus: { ...currentUser, ...profile, avatarUrl: dataUrl },
+                    photoUrl: dataUrl,
+                  });
+                  if (createdPost) {
+                    setAllPosts((prev) => [createdPost, ...prev.filter((p) => p.id !== createdPost.id)]);
+                  }
+                } catch (err) {
+                  console.warn('Failed to publish direct avatar post:', err);
+                }
               } else {
                 updateProfile({ coverUrl: dataUrl });
                 setProfile((prev) => ({ ...prev, coverUrl: dataUrl }));
@@ -1539,11 +1614,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100 dark:ring-slate-800"
                         />
                         <div>
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
                               {post.fullName}
                             </span>
-                            <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                            {isProfilePhotoPost(post) && (
+                              <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+                                {post.link_metadata?.isFirstUpload
+                                  ? 'added a profile picture.'
+                                  : 'updated their profile picture.'}
+                              </span>
+                            )}
                             {post.isEdited && (
                               <span className="text-[10px] text-slate-400 font-medium">
                                 (edited)
@@ -1553,7 +1635,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
                             <span>Batch {post.batchYear}</span>
                             <span>·</span>
-                            <span>{post.createdAt}</span>
+                            <span
+                              className="hover:underline cursor-pointer inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                              title={getFullFacebookTimestamp(post.createdAt || (post as any).timestamp)}
+                            >
+                              {formatFacebookTime(post.createdAt || (post as any).timestamp)}
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">·</span>
+                              <Globe className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0 inline-block" aria-hidden="true" />
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1619,21 +1708,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       )
                     )}
 
-                    {/* Post Images */}
+                    {/* Facebook-style Profile Picture Showcase OR Regular Image Grid */}
                     {post.images && post.images.length > 0 && (
-                      <div
-                        className={`grid gap-2 rounded-2xl overflow-hidden ${
-                          post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                        }`}
-                      >
-                        {post.images.map((imgUrl, idx) => (
+                      isProfilePhotoPost(post) ? (
+                        <div className="rounded-2xl sm:rounded-3xl p-6 sm:p-8 bg-gradient-to-b from-slate-100/90 to-slate-50/60 dark:from-slate-800/60 dark:to-slate-900/40 border border-slate-200/70 dark:border-slate-800 flex flex-col items-center justify-center relative overflow-hidden group">
                           <div
-                            key={idx}
+                            className="relative cursor-pointer"
                             onClick={() =>
                               setLightboxState({
                                 isOpen: true,
                                 images: post.images,
-                                initialIndex: idx,
+                                initialIndex: 0,
                                 postAuthor: {
                                   fullName: post.fullName,
                                   avatarUrl: post.avatarUrl,
@@ -1643,18 +1728,63 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                                 postCaption: post.content,
                               })
                             }
-                            className="cursor-pointer rounded-xl overflow-hidden bg-slate-950"
                           >
-                            <img
-                              src={imgUrl}
-                              alt=""
-                              className={`w-full object-cover ${
-                                post.images.length === 1 ? 'max-h-[420px]' : 'h-48'
-                              }`}
-                            />
+                            <div className="w-44 h-44 sm:w-56 sm:h-56 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-2xl relative transition-transform duration-300 group-hover:scale-105 bg-white dark:bg-slate-800">
+                              <img
+                                src={post.images[0]}
+                                alt={post.fullName}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div
+                              className="absolute bottom-1 right-1 p-2 rounded-full bg-blue-600 text-white ring-3 ring-white dark:ring-slate-800 shadow-md flex items-center justify-center"
+                              title="Profile Picture"
+                            >
+                              <Camera className="w-4 h-4" />
+                            </div>
                           </div>
-                        ))}
-                      </div>
+                          <div className="mt-3.5 text-center">
+                            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
+                              <Camera className="w-3 h-3" /> Profile Picture
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className={`grid gap-2 rounded-2xl overflow-hidden ${
+                            post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                          }`}
+                        >
+                          {post.images.map((imgUrl, idx) => (
+                            <div
+                              key={idx}
+                              onClick={() =>
+                                setLightboxState({
+                                  isOpen: true,
+                                  images: post.images,
+                                  initialIndex: idx,
+                                  postAuthor: {
+                                    fullName: post.fullName,
+                                    avatarUrl: post.avatarUrl,
+                                    batchYear: post.batchYear,
+                                    createdAt: post.createdAt,
+                                  },
+                                  postCaption: post.content,
+                                })
+                              }
+                              className="cursor-pointer rounded-xl overflow-hidden bg-slate-950"
+                            >
+                              <img
+                                src={imgUrl}
+                                alt=""
+                                className={`w-full object-cover ${
+                                  post.images.length === 1 ? 'max-h-[420px]' : 'h-48'
+                                }`}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )
                     )}
 
                     {/* Post Uploaded / Attached Videos */}

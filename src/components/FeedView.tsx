@@ -91,6 +91,8 @@ import {
   deleteFeedPostInDb,
   createNotificationInDb,
 } from '../services/supabaseService';
+import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
+import { formatFacebookTime, getFullFacebookTimestamp } from '../utils/facebookTime';
 
 interface FeedViewProps {
   onViewProfile?: (userId: number) => void;
@@ -339,6 +341,17 @@ export const FeedView: React.FC<FeedViewProps> = ({
       .then((dbPosts) => {
         if (!isMounted) return;
         const loadedPosts = dbPosts || [];
+        try {
+          const local = localStorage.getItem('ndc_alumni_posts');
+          if (local) {
+            const parsed: PostItem[] = JSON.parse(local);
+            const merged = [...parsed.filter((p) => !loadedPosts.some((lp) => lp.id === p.id)), ...loadedPosts];
+            nextFeedOffsetRef.current = merged.length;
+            setPosts(merged);
+            setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
+            return;
+          }
+        } catch {}
         nextFeedOffsetRef.current = loadedPosts.length;
         setPosts(loadedPosts);
         setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
@@ -346,6 +359,14 @@ export const FeedView: React.FC<FeedViewProps> = ({
       .catch((err) => {
         console.error('FeedView: failed to fetch Supabase posts:', err);
         if (isMounted) {
+          try {
+            const local = localStorage.getItem('ndc_alumni_posts');
+            if (local) {
+              const parsed: PostItem[] = JSON.parse(local);
+              setPosts(parsed);
+              return;
+            }
+          } catch {}
           if (!currentUser.id || currentUser.id === 0) {
             setFeedError('Sign in to your alumni account to view Quad posts and connect with batchmates.');
           } else {
@@ -357,8 +378,24 @@ export const FeedView: React.FC<FeedViewProps> = ({
         if (isMounted) setIsLoadingPosts(false);
       });
 
+    // Listen for new posts created anywhere in the app (including Facebook-style profile photo updates)
+    const handlePostCreated = (e: Event) => {
+      const custom = e as CustomEvent<{ post: PostItem; replaceTempId?: number }>;
+      if (!custom.detail?.post) return;
+      const newPost = custom.detail.post;
+      setPosts((prev) => {
+        if (custom.detail.replaceTempId) {
+          return prev.map((p) => (p.id === custom.detail.replaceTempId ? newPost : p));
+        }
+        if (prev.some((p) => p.id === newPost.id)) return prev;
+        return [newPost, ...prev];
+      });
+    };
+    window.addEventListener('ndc_post_created', handlePostCreated);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('ndc_post_created', handlePostCreated);
     };
   }, [currentUser.id]);
 
@@ -1698,44 +1735,120 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
               {/* Optional Location Check-in Picker Drawer */}
               {showLocationPicker && (
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/90 dark:border-slate-700/80 space-y-3 animate-in fade-in duration-150">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                      Check in at a location
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowLocationPicker(false)}
-                      className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      Done
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      'Notre Dame College, Motijheel',
-                      'Dhaka Medical College (DMC)',
-                      'BUET Campus, Dhaka',
-                      'Dhaka University',
-                      'Silicon Valley Alumni Chapter',
-                      'London UK Notredamians',
-                    ].map((loc) => (
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                        <MapPin className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                        Check in at a location
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {postLocation && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPostLocation(null);
+                          }}
+                          className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
                       <button
-                        key={loc}
                         type="button"
-                        onClick={() => {
-                          setPostLocation(postLocation === loc ? null : loc);
-                          setShowLocationPicker(false);
-                        }}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
-                          postLocation === loc
-                            ? 'bg-rose-600 text-white'
-                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                        }`}
+                        onClick={() => setShowLocationPicker(false)}
+                        className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer px-2 py-0.5 rounded-md hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
                       >
-                        📍 {loc}
+                        Done
                       </button>
-                    ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {/* Free-form Location Input where anyone can type any location */}
+                    <div className="relative">
+                      <MapPin className="w-4 h-4 text-rose-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Type any location, city, campus, or workplace..."
+                        value={postLocation || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPostLocation(val.trim() ? val : null);
+                        }}
+                        className="w-full pl-9 pr-8 py-2.5 text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/25 focus:border-rose-500 shadow-2xs"
+                      />
+                      {postLocation && (
+                        <button
+                          type="button"
+                          onClick={() => setPostLocation(null)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Quick suggestion tags for 1-tap selection */}
+                    <div className="pt-0.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">
+                        Suggested Locations:
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          'Notre Dame College, Motijheel',
+                          'Dhaka Medical College (DMC)',
+                          'BUET Campus, Dhaka',
+                          'Dhaka University',
+                          'Silicon Valley Chapter',
+                          'London UK Chapter',
+                          'Toronto Canada Chapter',
+                          'Chattogram',
+                          'Sylhet',
+                        ].map((loc) => {
+                          const isSelected = postLocation === loc;
+                          return (
+                            <button
+                              key={loc}
+                              type="button"
+                              onClick={() => {
+                                setPostLocation(isSelected ? null : loc);
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-all border ${
+                                isSelected
+                                  ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-rose-400'
+                              }`}
+                            >
+                              📍 {loc}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Current check-in badge */}
+                    {postLocation && (
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <span>📍</span>
+                          <span className="font-bold">Checking in at:</span>
+                          <span className="truncate">{postLocation}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPostLocation(null)}
+                          className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 ml-2 cursor-pointer shrink-0"
+                          title="Remove location"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2480,11 +2593,18 @@ export const FeedView: React.FC<FeedViewProps> = ({
                       className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100 dark:ring-slate-800 group-hover:ring-blue-500 transition-all"
                     />
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                           {post.fullName}
                         </span>
-                        <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                        {isProfilePhotoPost(post) && (
+                          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+                            {post.link_metadata?.isFirstUpload
+                              ? 'added a profile picture.'
+                              : 'updated their profile picture.'}
+                          </span>
+                        )}
                         {post.isEdited && (
                           <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
                             (edited)
@@ -2494,7 +2614,14 @@ export const FeedView: React.FC<FeedViewProps> = ({
                       <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-2">
                         <span>Batch {post.batchYear}</span>
                         <span>·</span>
-                        <span>{post.createdAt}</span>
+                        <span
+                          className="hover:underline cursor-pointer inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                          title={getFullFacebookTimestamp(post.createdAt || (post as any).timestamp)}
+                        >
+                          {formatFacebookTime(post.createdAt || (post as any).timestamp)}
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">·</span>
+                          <Globe className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0 inline-block" aria-hidden="true" />
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -2609,42 +2736,76 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   </div>
                 )}
 
-                {/* Post Images Grid with Full-screen Lightbox trigger */}
+                {/* Facebook-style Profile Picture Showcase OR Regular Image Grid */}
                 {post.images && post.images.length > 0 && (
-                  <div
-                    className={`grid gap-2 mb-4 rounded-2xl overflow-hidden ${
-                      post.images.length === 1
-                        ? 'grid-cols-1'
-                        : post.images.length === 2
-                        ? 'grid-cols-2'
-                        : post.images.length === 3
-                        ? 'grid-cols-3'
-                        : 'grid-cols-2 sm:grid-cols-3'
-                    }`}
-                  >
-                    {post.images.map((imgUrl, idx) => (
+                  isProfilePhotoPost(post) ? (
+                    <div className="mb-4 rounded-2xl sm:rounded-3xl p-6 sm:p-8 bg-gradient-to-b from-slate-100/90 to-slate-50/60 dark:from-slate-800/60 dark:to-slate-900/40 border border-slate-200/70 dark:border-slate-800 flex flex-col items-center justify-center relative overflow-hidden group">
                       <div
-                        key={idx}
-                        className="relative group cursor-pointer overflow-hidden rounded-xl bg-slate-950"
-                        onClick={() => handleOpenLightbox(post, idx)}
+                        className="relative cursor-pointer"
+                        onClick={() => handleOpenLightbox(post, 0)}
                       >
-                        <img
-                          src={imgUrl}
-                          alt={`Attached media ${idx + 1}`}
-                          className={`w-full object-cover group-hover:scale-103 transition-transform duration-300 ${
-                            post.images.length === 1 ? 'max-h-[440px]' : 'h-48 sm:h-56'
-                          }`}
-                          loading="lazy"
-                        />
-                        <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
-                          <span className="p-2 rounded-full bg-black/60 backdrop-blur-xs">
-                            <ZoomIn className="w-5 h-5 text-white" />
-                          </span>
-                          <span className="text-xs font-bold hidden sm:inline">View full screen</span>
+                        <div className="w-48 h-48 sm:w-60 sm:h-60 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-2xl relative transition-transform duration-300 group-hover:scale-105 bg-white dark:bg-slate-800">
+                          <img
+                            src={post.images[0]}
+                            alt={post.fullName}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                            <span className="p-2 rounded-full bg-black/60 backdrop-blur-xs">
+                              <ZoomIn className="w-5 h-5 text-white" />
+                            </span>
+                          </div>
+                        </div>
+                        <div
+                          className="absolute bottom-1.5 right-1.5 p-2 rounded-full bg-blue-600 text-white ring-3 ring-white dark:ring-slate-800 shadow-md flex items-center justify-center"
+                          title="Profile Picture"
+                        >
+                          <Camera className="w-4 h-4" />
                         </div>
                       </div>
-                    ))}
-                  </div>
+                      <div className="mt-3.5 text-center">
+                        <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
+                          <Camera className="w-3 h-3" /> Profile Picture
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className={`grid gap-2 mb-4 rounded-2xl overflow-hidden ${
+                        post.images.length === 1
+                          ? 'grid-cols-1'
+                          : post.images.length === 2
+                          ? 'grid-cols-2'
+                          : post.images.length === 3
+                          ? 'grid-cols-3'
+                          : 'grid-cols-2 sm:grid-cols-3'
+                      }`}
+                    >
+                      {post.images.map((imgUrl, idx) => (
+                        <div
+                          key={idx}
+                          className="relative group cursor-pointer overflow-hidden rounded-xl bg-slate-950"
+                          onClick={() => handleOpenLightbox(post, idx)}
+                        >
+                          <img
+                            src={imgUrl}
+                            alt={`Attached media ${idx + 1}`}
+                            className={`w-full object-cover group-hover:scale-103 transition-transform duration-300 ${
+                              post.images.length === 1 ? 'max-h-[440px]' : 'h-48 sm:h-56'
+                            }`}
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
+                            <span className="p-2 rounded-full bg-black/60 backdrop-blur-xs">
+                              <ZoomIn className="w-5 h-5 text-white" />
+                            </span>
+                            <span className="text-xs font-bold hidden sm:inline">View full screen</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
                 )}
 
                 {/* Post Uploaded / Attached Videos */}
@@ -2826,7 +2987,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
                           </div>
 
                           <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-slate-500 mt-1 pl-2">
-                            <span>{comment.createdAt}</span>
+                            <span
+                              className="hover:underline cursor-pointer transition-colors hover:text-slate-600 dark:hover:text-slate-300"
+                              title={getFullFacebookTimestamp(comment.createdAt)}
+                            >
+                              {formatFacebookTime(comment.createdAt)}
+                            </span>
                             <button
                               type="button"
                               onClick={() =>

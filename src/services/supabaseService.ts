@@ -243,10 +243,10 @@ function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
     content: c.content,
     likesCount: Number(c.likes_count) || 0,
     likedByMe: false,
-    createdAt: new Date(c.created_at).toLocaleDateString(),
+    createdAt: c.created_at || new Date().toISOString(),
     author: c.author?.full_name || 'Alumnus',
     authorAvatar: c.author?.avatar_url || '/ndc-logo.png',
-    timestamp: new Date(c.created_at).toLocaleDateString(),
+    timestamp: c.created_at || new Date().toISOString(),
   }));
 
   const isLiked = Boolean(
@@ -268,7 +268,7 @@ function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
     link_metadata: row.link_metadata || undefined,
     likesCount: Number(row.likes_count) || (row.post_likes?.length ?? 0),
     commentsCount: comments.length,
-    createdAt: new Date(row.created_at).toLocaleDateString(),
+    createdAt: row.created_at || new Date().toISOString(),
     likedByMe: isLiked,
     comments: comments,
     category: row.category || 'General Update',
@@ -279,7 +279,7 @@ function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
     authorBatch: author.batch_year || 0,
     authorRole: 'Alumnus',
     verified: author.verification_status === 'verified',
-    timestamp: new Date(row.created_at).toLocaleDateString(),
+    timestamp: row.created_at || new Date().toISOString(),
     likes: Number(row.likes_count) || (row.post_likes?.length ?? 0),
     liked: isLiked,
     commentsList: comments,

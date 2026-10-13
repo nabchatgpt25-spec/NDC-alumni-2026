@@ -14,6 +14,7 @@ import {
   User,
   ShieldCheck
 } from 'lucide-react';
+import { formatFacebookTime, getFullFacebookTimestamp } from '../utils/facebookTime';
 
 export interface PostLightboxProps {
   isOpen: boolean;
@@ -175,7 +176,12 @@ export const PostLightboxModal: React.FC<PostLightboxProps> = ({
                     <span className="font-semibold text-blue-300 shrink-0">Batch {postAuthor.batchYear}</span>
                   )}
                   {postAuthor.createdAt && (
-                    <span className="truncate">· {postAuthor.createdAt}</span>
+                    <span
+                      className="truncate hover:underline cursor-pointer"
+                      title={getFullFacebookTimestamp(postAuthor.createdAt)}
+                    >
+                      · {formatFacebookTime(postAuthor.createdAt)}
+                    </span>
                   )}
                 </div>
               </div>

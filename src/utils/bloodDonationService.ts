@@ -12,12 +12,15 @@ import {
   BloodRequestStatus,
   BLOOD_GROUPS_LIST,
   NotificationItem,
+  PostItem,
 } from '../types';
 import { matchDonorsForRequest } from './bloodMatching';
 import {
   createBloodRequestInDb,
   registerBloodDonorInDb,
   respondToBloodRequestInDb,
+  createFeedPostInDb,
+  createNotificationInDb,
 } from '../services/supabaseService';
 
 export const BLOOD_REQUESTS_STORAGE_KEY = 'ndc_blood_requests_v1';

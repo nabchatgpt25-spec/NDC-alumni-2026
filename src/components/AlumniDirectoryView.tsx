@@ -49,6 +49,8 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBatch, setSelectedBatch] = useState<string>('');
+  const [selectedLocation, setSelectedLocation] = useState<string>('');
+  const [customLocation, setCustomLocation] = useState<string>('');
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [visibleCount, setVisibleCount] = useState(12);
 
@@ -97,18 +99,31 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
           return false;
         }
       }
+      if (selectedLocation) {
+        const locTarget =
+          selectedLocation === 'OTHERS'
+            ? customLocation.trim().toLowerCase()
+            : selectedLocation.toLowerCase();
+        if (locTarget) {
+          const matchCity = profile.city?.toLowerCase().includes(locTarget);
+          const matchCountry = profile.country?.toLowerCase().includes(locTarget);
+          if (!matchCity && !matchCountry) return false;
+        }
+      }
       if (onlineOnly && !profile.online) {
         return false;
       }
       return true;
     });
-  }, [profiles, searchTerm, selectedBatch, onlineOnly]);
+  }, [profiles, searchTerm, selectedBatch, selectedLocation, customLocation, onlineOnly]);
 
   const displayed = filteredProfiles.slice(0, visibleCount);
 
   const handleClearFilters = () => {
     setSearchTerm('');
     setSelectedBatch('');
+    setSelectedLocation('');
+    setCustomLocation('');
     setOnlineOnly(false);
   };
 
@@ -183,13 +198,13 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
       {/* Universal Search and Filter Bar */}
       <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-3.5">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-          <div className="relative sm:col-span-6 lg:col-span-7">
+          <div className="relative sm:col-span-12 lg:col-span-4">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-600 dark:text-blue-400" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Universal Search: Doctors, Cardiology, Nephrology, Software Engineer, BUET, DMC, Police, Lawyer, Batch 2026, Name, Country..."
+              placeholder="Universal Search: Doctors, BUET, DMC, Name..."
               className="w-full pl-10 pr-8 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
             />
             {searchTerm && (
@@ -203,7 +218,7 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
             )}
           </div>
 
-          <div className="sm:col-span-4 lg:col-span-3">
+          <div className="sm:col-span-6 lg:col-span-3">
             <select
               value={selectedBatch}
               onChange={(e) => setSelectedBatch(e.target.value)}
@@ -219,7 +234,46 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
             </select>
           </div>
 
-          <div className="sm:col-span-2 lg:col-span-2 flex items-center">
+          <div className="sm:col-span-6 lg:col-span-3">
+            <select
+              value={selectedLocation}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedLocation(val);
+                if (val !== 'OTHERS') {
+                  setCustomLocation('');
+                }
+              }}
+              aria-label="Filter by Location"
+              className="w-full px-3 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            >
+              <option value="">All Locations</option>
+              <optgroup label="Bangladesh Hubs">
+                <option value="Dhaka">Dhaka</option>
+                <option value="Chattogram">Chattogram</option>
+                <option value="Sylhet">Sylhet</option>
+                <option value="Rajshahi">Rajshahi</option>
+                <option value="Bogura">Bogura</option>
+                <option value="Khulna">Khulna</option>
+                <option value="Barisal">Barisal</option>
+                <option value="Rangpur">Rangpur</option>
+                <option value="Mymensingh">Mymensingh</option>
+              </optgroup>
+              <optgroup label="Global Regions">
+                <option value="United States">United States (USA)</option>
+                <option value="United Kingdom">United Kingdom (UK)</option>
+                <option value="Canada">Canada</option>
+                <option value="Australia">Australia</option>
+                <option value="Germany">Germany</option>
+                <option value="Singapore">Singapore</option>
+              </optgroup>
+              <optgroup label="Custom Location">
+                <option value="OTHERS">Others (Type any location...)</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <div className="sm:col-span-12 lg:col-span-2 flex items-center">
             <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-700 dark:text-slate-300">
               <input
                 type="checkbox"
@@ -227,13 +281,48 @@ export const AlumniDirectoryView: React.FC<AlumniDirectoryViewProps> = ({
                 onChange={(e) => setOnlineOnly(e.target.checked)}
                 className="rounded-sm border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 w-4 h-4"
               />
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 whitespace-nowrap">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
                 Online
               </span>
             </label>
           </div>
         </div>
+
+        {selectedLocation === 'OTHERS' && (
+          <div className="pt-1 flex items-center gap-2 animate-in fade-in duration-150">
+            <div className="relative flex-1">
+              <MapPin className="w-3.5 h-3.5 text-blue-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                autoFocus
+                value={customLocation}
+                onChange={(e) => setCustomLocation(e.target.value)}
+                placeholder="Type any location, city, or country to filter..."
+                className="w-full pl-8.5 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-blue-400 dark:border-blue-500 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+              />
+              {customLocation && (
+                <button
+                  type="button"
+                  onClick={() => setCustomLocation('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedLocation('');
+                setCustomLocation('');
+              }}
+              className="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700"
+            >
+              Reset
+            </button>
+          </div>
+        )}
 
         {/* Quick Universal Search Tags */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
