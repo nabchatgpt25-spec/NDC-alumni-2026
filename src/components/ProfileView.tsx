@@ -221,6 +221,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   useEffect(() => {
     let isMounted = true;
     if (profileId) {
+      setProfile(resolveProfileById(profileId));
       fetchAlumniProfileByIdFromDb(profileId)
         .then((liveProfile) => {
           if (isMounted && liveProfile) {

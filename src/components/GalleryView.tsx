@@ -465,7 +465,7 @@ export const GalleryView: React.FC = () => {
             Batches Covered
           </div>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-            Batch 01–38
+            Batch 01–76+
           </div>
           <div className="text-[10px] text-slate-500 font-semibold">
             All Generations
@@ -477,7 +477,7 @@ export const GalleryView: React.FC = () => {
             Latest Archive
           </div>
           <div className="text-sm font-black text-slate-900 dark:text-slate-50 truncate pt-1">
-            Reunion 2025
+            Grand Reunion 2026
           </div>
           <div className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">
             Updated recently
@@ -494,7 +494,7 @@ export const GalleryView: React.FC = () => {
           {[
             { id: 'all', label: 'All Albums' },
             { id: 'reunion', label: 'Reunions' },
-            { id: 'academic', label: 'Conferences & CME' },
+            { id: 'academic', label: 'Academic & Clubs' },
             { id: 'campus', label: 'Campus Life' },
             { id: 'convocation', label: 'Convocations' },
             { id: 'sports', label: 'Sports & Cultural' },
@@ -625,6 +625,29 @@ export const GalleryView: React.FC = () => {
             </div>
           );
         })}
+
+        {filteredAlbums.length === 0 && (
+          <div className="col-span-full py-16 px-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 text-center shadow-xs">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center mb-3">
+              <Camera className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+              No photo albums found
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              {searchQuery
+                ? `No albums matched "${searchQuery}". Try a different keyword.`
+                : 'No albums in this category yet. Be the first to share memorable moments!'}
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsCreateAlbumOpen(true)}
+              className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+            >
+              Create New Album
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ------------------------------------------------------------- */}

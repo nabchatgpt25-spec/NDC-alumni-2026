@@ -553,21 +553,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         onOpenRegister={onOpenRegister}
       />
 
-      <QuickProfileModal
-        profile={previewAlumnus}
-        onClose={() => setPreviewAlumnus(null)}
-        onLoginPrompt={onOpenLogin}
-      />
+      {previewAlumnus && (
+        <QuickProfileModal
+          profile={previewAlumnus}
+          onClose={() => setPreviewAlumnus(null)}
+          onLoginPrompt={onOpenLogin}
+        />
+      )}
 
-      <BatchMembersModal
-        batch={previewBatch}
-        members={batchMembers}
-        onClose={() => setPreviewBatch(null)}
-        onSelectMember={(alumnus) => {
-          setPreviewAlumnus(alumnus);
-        }}
-        onRegisterPrompt={onOpenRegister}
-      />
+      {previewBatch && (
+        <BatchMembersModal
+          batch={previewBatch}
+          members={batchMembers}
+          onClose={() => setPreviewBatch(null)}
+          onSelectMember={(alumnus) => {
+            setPreviewAlumnus(alumnus);
+          }}
+          onRegisterPrompt={onOpenRegister}
+        />
+      )}
     </div>
   );
 };

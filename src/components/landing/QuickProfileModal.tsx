@@ -27,9 +27,9 @@ export const QuickProfileModal: React.FC<QuickProfileModalProps> = ({
   onClose,
   onLoginPrompt,
 }) => {
-  if (!profile) return null;
-
   const [copied, setCopied] = useState(false);
+
+  if (!profile) return null;
 
   const handleShare = () => {
     if (navigator.share) {

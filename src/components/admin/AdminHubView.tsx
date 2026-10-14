@@ -51,13 +51,14 @@ import {
 } from '../../services/adminService';
 import { AdminDocSubmission, UserRole } from '../../types';
 import { NDCLogo } from '../NDCLogo';
+import { AdminCommandCenterView } from './AdminCommandCenterView';
 
 interface AdminHubViewProps {
   onNavigate: (route: string) => void;
   onViewProfile?: (userId: number) => void;
 }
 
-type AdminTab = 'overview' | 'verifications' | 'users' | 'moderation' | 'audit';
+type AdminTab = 'overview' | 'verifications' | 'users' | 'moderation' | 'audit' | 'command_center';
 
 export const AdminHubView: React.FC<AdminHubViewProps> = ({
   onNavigate,
@@ -537,6 +538,19 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
           >
             <History className="w-4 h-4" />
             <span>System Audit Logs</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('command_center')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'command_center'
+                ? 'bg-amber-400 text-slate-950 shadow-md font-black'
+                : 'text-amber-300 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>⚡ 100k Command Center</span>
           </button>
         </div>
       </div>
@@ -1792,6 +1806,15 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 6: 100K COMMAND CENTER                                           */}
+      {/* ===================================================================== */}
+      {activeTab === 'command_center' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <AdminCommandCenterView onViewProfile={onViewProfile} />
         </div>
       )}
 

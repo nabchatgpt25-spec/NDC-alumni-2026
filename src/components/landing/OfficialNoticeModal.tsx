@@ -15,6 +15,8 @@ export const OfficialNoticeModal: React.FC<OfficialNoticeModalProps> = ({
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [downloaded, setDownloaded] = React.useState(false);
 
+  if (!notice) return null;
+
   const handleDownload = () => {
     setIsDownloading(true);
     setTimeout(() => {

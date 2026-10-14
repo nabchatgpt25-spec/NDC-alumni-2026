@@ -285,6 +285,65 @@ function AlumniAppContent() {
     );
   }
 
+  // If user is logged out and visiting Contact Us, render ContactUsView with guest header
+  if (!isLoggedIn && route === 'contact') {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans">
+        <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 flex items-center justify-between">
+          <div
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => navigateTo('landing')}
+          >
+            <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-xs">
+              <NDCLogo className="w-full h-full" />
+            </div>
+            <div>
+              <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white font-serif">
+                নটর ডেম কলেজ অ্যালামনাই
+              </div>
+              <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">
+                NDC Alumni Association
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigateTo('landing')}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            >
+              Back to Home
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthModalMode('login')}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-[#c81e1e] hover:bg-[#b01818] text-white cursor-pointer shadow-xs"
+            >
+              Sign In
+            </button>
+          </div>
+        </header>
+
+        <main className="flex-1 px-4 sm:px-6 py-8 max-w-5xl w-full mx-auto">
+          <React.Suspense fallback={<ViewLoadingFallback />}>
+            <ContactUsView onBack={() => navigateTo('landing')} />
+          </React.Suspense>
+        </main>
+
+        {authModalMode && (
+          <AuthModal
+            initialMode={authModalMode}
+            onClose={() => setAuthModalMode(null)}
+            onSuccess={() => {
+              setAuthModalMode(null);
+              navigateTo('feed');
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   // If user is logged out and on the landing page, display the full Public Landing Page
   if (!isLoggedIn || route === 'landing') {
     return (
@@ -293,7 +352,7 @@ function AlumniAppContent() {
           onOpenLogin={() => setAuthModalMode('login')}
           onOpenRegister={() => setAuthModalMode('register')}
           onNavigate={(target) => {
-            if (target === 'landing') {
+            if (target === 'landing' || target === 'contact') {
               navigateTo(target);
             } else if (!isLoggedIn) {
               // Guest browsing prompt to log in/register to access portal
@@ -441,7 +500,7 @@ function AlumniAppContent() {
                 )}
 
                 {route === 'contact' && (
-                  <ContactUsView />
+                  <ContactUsView onBack={() => navigateTo('feed')} />
                 )}
 
                 {(route === 'saved' || route === 'saved-posts') && (
