@@ -37,6 +37,7 @@ import { supabase } from '../lib/supabase';
 
 interface AuthModalProps {
   initialMode: 'login' | 'register' | 'forgot';
+  initialSuccessMessage?: string;
   onClose: () => void;
   onSuccess?: (mode?: 'login' | 'register') => void;
 }
@@ -129,6 +130,7 @@ const loadRegistrationDraft = (): RegistrationFormDraft => {
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode,
+  initialSuccessMessage,
   onClose,
   onSuccess,
 }) => {
@@ -338,7 +340,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState(initialSuccessMessage || '');
   const [isRegistrationSuccess, setIsRegistrationSuccess] = useState(false);
 
   // Handle Google OAuth Sign-In (Task 1)

@@ -35,6 +35,7 @@ const BloodNetworkView = React.lazy(() => import('./components/BloodNetworkView'
 const VerificationCenterModal = React.lazy(() => import('./components/verification/VerificationCenterModal').then(m => ({ default: m.VerificationCenterModal })));
 const SettingsView = React.lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
 const AdminHubView = React.lazy(() => import('./components/admin/AdminHubView').then(m => ({ default: m.AdminHubView })));
+const ResetPasswordView = React.lazy(() => import('./components/ResetPasswordView').then(m => ({ default: m.ResetPasswordView })));
 
 const ViewLoadingFallback = () => (
   <div className="w-full py-20 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
@@ -44,13 +45,26 @@ const ViewLoadingFallback = () => (
 );
 
 function AlumniAppContent() {
-  const { isLoggedIn, currentUser, isAuthInitializing, authInitializationError } = useAuth();
+  const {
+    isLoggedIn,
+    currentUser,
+    isAuthInitializing,
+    authInitializationError,
+    isPasswordRecovery,
+    recoveryError,
+    recoveryEmail,
+    cancelPasswordRecovery,
+  } = useAuth();
   const prefersReducedMotion = useReducedMotion();
+  const [loginSuccessNotice, setLoginSuccessNotice] = useState<string | null>(null);
 
-  // Route state: 'landing' | 'feed' | 'alumni' | 'directory' | 'find' | 'batches' | 'map' | 'gallery' | 'profile' | `batch:${number}` | `post-${number}`
+  // Route state: 'landing' | 'feed' | 'alumni' | 'directory' | 'find' | 'batches' | 'map' | 'gallery' | 'profile' | 'reset-password' | `batch:${number}` | `post-${number}`
   const [route, setRoute] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const pathname = window.location.pathname.toLowerCase();
+      if (pathname === '/reset-password' || pathname === '/recovery') {
+        return 'reset-password';
+      }
       if (pathname === '/admin' || pathname === '/dashboard/admin') {
         return 'admin';
       }
@@ -60,6 +74,7 @@ function AlumniAppContent() {
       }
       if (window.location.hash) {
         const h = window.location.hash.replace('#', '').toLowerCase();
+        if (h === 'reset-password' || h === 'recovery') return 'reset-password';
         if (h === 'admin' || h === 'dashboard/admin' || h === 'dashboard-admin') return 'admin';
         if (h.startsWith('post-') || h === 'dashboard' || h === 'feed') return 'feed';
         if (h.startsWith('blood-req-')) return 'emergency';
@@ -75,16 +90,17 @@ function AlumniAppContent() {
   });
 
   // Whenever user logs in, ALWAYS take them to the central social media feed / dashboard
+  // (unless currently in password recovery flow)
   const wasLoggedInRef = useRef(isLoggedIn);
   useEffect(() => {
-    if (!wasLoggedInRef.current && isLoggedIn) {
-      // User just logged in — clear any stale #profile/#alumni hash and always default to feed/dashboard
+    if (!wasLoggedInRef.current && isLoggedIn && !isPasswordRecovery) {
+      // User just logged in — clear any stale #profile/#alumni hash and default to feed/dashboard
       setRoute('feed');
       window.location.hash = 'feed';
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     wasLoggedInRef.current = isLoggedIn;
-  }, [isLoggedIn]);
+  }, [isLoggedIn, isPasswordRecovery]);
 
   // STRICT SECURITY RULES 1 & 2: Access to Admin Hub is restricted strictly to users
   // where alumni_profiles.role IN ('admin', 'moderator').
@@ -119,11 +135,7 @@ function AlumniAppContent() {
   const [selectedBatchFilter, setSelectedBatchFilter] = useState<number | null>(null);
 
   // Auth modal state
-  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot' | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    return params.get('recovery') === '1' ? 'forgot' : null;
-  });
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot' | null>(null);
 
   // Verification Center Modal state
   const [verificationModalState, setVerificationModalState] = useState<{
@@ -280,11 +292,54 @@ function AlumniAppContent() {
     );
   }
 
-  if (authInitializationError && !isLoggedIn) {
+  if (authInitializationError && !isLoggedIn && !isPasswordRecovery) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 text-center" role="alert">
         {authInitializationError}
       </div>
+    );
+  }
+
+  // STRICT SECURITY GUARD: If in password recovery mode, immediately render the dedicated
+  // ResetPasswordView. NEVER render the dashboard, and BLOCK all other routes until saved.
+  if (isPasswordRecovery || route === 'reset-password') {
+    return (
+      <React.Suspense fallback={<ViewLoadingFallback />}>
+        <ResetPasswordView
+          errorMessage={recoveryError}
+          userEmail={recoveryEmail}
+          onSuccess={() => {
+            cancelPasswordRecovery();
+            setLoginSuccessNotice(
+              'Your password has been reset successfully. Please sign in with your new password.'
+            );
+            setAuthModalMode('login');
+          }}
+          onCancel={() => {
+            cancelPasswordRecovery();
+            setAuthModalMode('login');
+          }}
+          onRequestNewLink={() => {
+            cancelPasswordRecovery();
+            setAuthModalMode('forgot');
+          }}
+        />
+        {authModalMode && (
+          <AuthModal
+            initialMode={authModalMode}
+            initialSuccessMessage={loginSuccessNotice || undefined}
+            onClose={() => {
+              setAuthModalMode(null);
+              setLoginSuccessNotice(null);
+            }}
+            onSuccess={() => {
+              setAuthModalMode(null);
+              setLoginSuccessNotice(null);
+              navigateTo('feed');
+            }}
+          />
+        )}
+      </React.Suspense>
     );
   }
 
@@ -336,9 +391,14 @@ function AlumniAppContent() {
         {authModalMode && (
           <AuthModal
             initialMode={authModalMode}
-            onClose={() => setAuthModalMode(null)}
+            initialSuccessMessage={loginSuccessNotice || undefined}
+            onClose={() => {
+              setAuthModalMode(null);
+              setLoginSuccessNotice(null);
+            }}
             onSuccess={() => {
               setAuthModalMode(null);
+              setLoginSuccessNotice(null);
               navigateTo('feed');
             }}
           />
@@ -369,9 +429,14 @@ function AlumniAppContent() {
         {authModalMode && (
           <AuthModal
             initialMode={authModalMode}
-            onClose={() => setAuthModalMode(null)}
+            initialSuccessMessage={loginSuccessNotice || undefined}
+            onClose={() => {
+              setAuthModalMode(null);
+              setLoginSuccessNotice(null);
+            }}
             onSuccess={() => {
               setAuthModalMode(null);
+              setLoginSuccessNotice(null);
               navigateTo('feed');
             }}
           />
@@ -729,9 +794,14 @@ function AlumniAppContent() {
       {authModalMode && (
         <AuthModal
           initialMode={authModalMode}
-          onClose={() => setAuthModalMode(null)}
+          initialSuccessMessage={loginSuccessNotice || undefined}
+          onClose={() => {
+            setAuthModalMode(null);
+            setLoginSuccessNotice(null);
+          }}
           onSuccess={() => {
             setAuthModalMode(null);
+            setLoginSuccessNotice(null);
             navigateTo('feed');
           }}
         />

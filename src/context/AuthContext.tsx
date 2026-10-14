@@ -22,6 +22,91 @@ import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
 
 export { formatToE164Phone, normalizePhoneNumber };
 
+export function clearRecoveryUrlTokens(): void {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  try {
+    const url = new URL(window.location.href);
+    let modified = false;
+
+    ['recovery', 'token', 'type', 'code', 'error', 'error_code', 'error_description'].forEach((param) => {
+      if (url.searchParams.has(param)) {
+        url.searchParams.delete(param);
+        modified = true;
+      }
+    });
+
+    if (
+      url.hash.includes('access_token') ||
+      url.hash.includes('type=recovery') ||
+      url.hash.includes('refresh_token') ||
+      url.hash.includes('error=') ||
+      url.hash.includes('error_code=')
+    ) {
+      url.hash = '';
+      modified = true;
+    }
+
+    if (modified) {
+      window.history.replaceState({}, document.title, url.pathname + (url.search || '') + (url.hash || ''));
+    }
+  } catch (e) {
+    console.warn('Failed to clear recovery tokens from URL:', e);
+  }
+}
+
+export function detectRecoveryFromUrl(): {
+  isRecovery: boolean;
+  errorMessage: string | null;
+} {
+  if (typeof window === 'undefined') {
+    return { isRecovery: false, errorMessage: null };
+  }
+
+  const hash = window.location.hash || '';
+  const search = window.location.search || '';
+  const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+  const searchParams = new URLSearchParams(search);
+
+  const error = hashParams.get('error') || searchParams.get('error');
+  const errorCode = hashParams.get('error_code') || searchParams.get('error_code');
+  const errorDescription = hashParams.get('error_description') || searchParams.get('error_description');
+
+  if (error || errorCode || errorDescription) {
+    const raw = errorDescription || error || '';
+    const clean = decodeURIComponent(raw.replace(/\+/g, ' '));
+    if (
+      errorCode === 'otp_expired' ||
+      errorCode === 'bad_code_verifier' ||
+      raw.toLowerCase().includes('expired') ||
+      raw.toLowerCase().includes('invalid') ||
+      raw.toLowerCase().includes('recovery')
+    ) {
+      return {
+        isRecovery: true,
+        errorMessage:
+          clean ||
+          'This password reset link is invalid, expired, or has already been used. Please request a new password reset link.',
+      };
+    }
+  }
+
+  const type = hashParams.get('type') || searchParams.get('type');
+  const hasAccessToken = Boolean(hashParams.get('access_token') || searchParams.get('access_token'));
+  const hasRecoveryParam = searchParams.get('recovery') === '1' || searchParams.get('recovery') === 'true';
+
+  if (type === 'recovery' || (hasRecoveryParam && hasAccessToken)) {
+    return { isRecovery: true, errorMessage: null };
+  }
+
+  try {
+    if (sessionStorage.getItem('ndc_in_password_recovery') === '1') {
+      return { isRecovery: true, errorMessage: null };
+    }
+  } catch {}
+
+  return { isRecovery: false, errorMessage: null };
+}
+
 interface AuthContextType {
   isAuthInitializing: boolean;
   authInitializationError: string | null;
@@ -30,6 +115,10 @@ interface AuthContextType {
   firebaseToken: string | null;
   supabaseToken: string | null;
   isAdminUser: boolean;
+  isPasswordRecovery: boolean;
+  recoveryError: string | null;
+  recoveryEmail: string | null;
+  cancelPasswordRecovery: () => void;
   login: (phoneOrEmail: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   logout: () => void;
@@ -84,6 +173,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supabaseToken, setSupabaseToken] = useState<string | null>(null);
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
 
+  const initialUrlRecovery = detectRecoveryFromUrl();
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(initialUrlRecovery.isRecovery);
+  const [recoveryError, setRecoveryError] = useState<string | null>(initialUrlRecovery.errorMessage);
+  const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
+  const isPasswordRecoveryRef = useRef<boolean>(initialUrlRecovery.isRecovery);
+
+  useEffect(() => {
+    isPasswordRecoveryRef.current = isPasswordRecovery;
+  }, [isPasswordRecovery]);
+
   const [isAuthInitializing, setIsAuthInitializing] = useState(true);
   const [authInitializationError, setAuthInitializationError] = useState<string | null>(null);
   const authResolutionIdRef = useRef(0);
@@ -97,8 +196,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     let authEventReceived = false;
 
+    if (initialUrlRecovery.isRecovery) {
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('ndc_in_password_recovery', '1');
+        } catch {}
+      }
+      clearRecoveryUrlTokens();
+    }
+
     const applySession = async (session: Session | null, requestId: number) => {
       if (!active || requestId !== authResolutionIdRef.current) return;
+
+      // STRICT SECURITY: Do not establish regular login or load user into dashboard during password recovery
+      if (isPasswordRecoveryRef.current) {
+        setIsLoggedIn(false);
+        setIsAuthInitializing(false);
+        return;
+      }
 
       if (!session?.user) {
         resolvedAuthUserIdRef.current = null;
@@ -180,9 +295,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       authEventReceived = true;
       const requestId = ++authResolutionIdRef.current;
+
+      // STRICT SECURITY: Detect PASSWORD_RECOVERY event
+      if (event === 'PASSWORD_RECOVERY') {
+        isPasswordRecoveryRef.current = true;
+        setIsPasswordRecovery(true);
+        setRecoveryEmail(session?.user?.email || null);
+        setRecoveryError(null);
+        if (typeof window !== 'undefined') {
+          try {
+            sessionStorage.setItem('ndc_in_password_recovery', '1');
+          } catch {}
+        }
+        clearRecoveryUrlTokens();
+        // NEVER log the recovery user into the normal dashboard!
+        setIsLoggedIn(false);
+        setIsAuthInitializing(false);
+        return;
+      }
+
+      // If user is in password recovery flow, block normal session application
+      if (isPasswordRecoveryRef.current) {
+        if (session?.user?.email && !recoveryEmail) {
+          setRecoveryEmail(session.user.email);
+        }
+        setIsLoggedIn(false);
+        setIsAuthInitializing(false);
+        return;
+      }
+
       // Supabase Auth callbacks must return before profile queries run.
       window.setTimeout(() => {
         void applySession(session, requestId);
@@ -194,6 +338,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(({ data: { session }, error }) => {
         if (authEventReceived) return;
         if (error) throw error;
+        if (isPasswordRecoveryRef.current) {
+          if (session?.user?.email && !recoveryEmail) {
+            setRecoveryEmail(session.user.email);
+          }
+          setIsLoggedIn(false);
+          setIsAuthInitializing(false);
+          return;
+        }
         const requestId = ++authResolutionIdRef.current;
         void applySession(session, requestId);
       })
@@ -748,23 +900,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
+  const cancelPasswordRecovery = () => {
+    isPasswordRecoveryRef.current = false;
+    setIsPasswordRecovery(false);
+    setRecoveryEmail(null);
+    setRecoveryError(null);
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.removeItem('ndc_in_password_recovery');
+      } catch {}
+    }
+    clearRecoveryUrlTokens();
+    if (isSupabaseConfigured) {
+      supabase.auth.signOut().catch(() => {});
+    }
+  };
+
   const completePasswordRecovery = async (newPassword: string): Promise<boolean> => {
     if (!isSupabaseConfigured) {
       throw new Error('Supabase client is not configured.');
     }
-    if (!newPassword || newPassword.length < 6) {
-      throw new Error('Password must be at least 6 characters.');
+    if (!newPassword || newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters long.');
     }
 
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session?.user) {
-      throw new Error('Open the password reset link from your registered email before choosing a new password.');
+      throw new Error(
+        'Your password reset link is invalid, expired, or has already been used. Please request a new password reset link.'
+      );
     }
 
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('same password') || msg.includes('different from the old password')) {
+        throw new Error('New password must be different from your old password.');
+      }
       throw new Error(error.message || 'Password reset failed.');
     }
+
+    // CRITICAL: After success, sign out and clear recovery state
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+
+    isPasswordRecoveryRef.current = false;
+    setIsPasswordRecovery(false);
+    setRecoveryEmail(null);
+    setRecoveryError(null);
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.removeItem('ndc_in_password_recovery');
+      } catch {}
+    }
+    clearRecoveryUrlTokens();
+
+    inMemorySupabaseToken = null;
+    setSupabaseToken(null);
+    setIsLoggedIn(false);
+    setIsAdminUser(false);
+    setCurrentUser(DEFAULT_BLANK_USER);
+
     return true;
   };
 
@@ -778,6 +975,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         firebaseToken: null,
         supabaseToken,
         isAdminUser,
+        isPasswordRecovery,
+        recoveryError,
+        recoveryEmail,
+        cancelPasswordRecovery,
         login,
         loginWithGoogle,
         logout,
