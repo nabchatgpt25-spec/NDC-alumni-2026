@@ -49,6 +49,7 @@ import { WhatsAppIcon, FacebookIcon } from './SocialIcons';
 import { calculateProfileCompletion } from '../utils/profileCompletion';
 import { INITIAL_OFFLINE_SAVED_POSTS, INITIAL_OFFLINE_DIRECTORY } from '../utils/offlineStorage';
 import { PostLightboxModal } from './PostLightboxModal';
+import { PremiumPostCarousel } from './feed/PremiumPostCarousel';
 import {
   extractUrlsFromText,
   extractFirstValidUrl,
@@ -1370,7 +1371,49 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <span>Edit Profile</span>
               </button>
             )}
+
+            {isMine && (currentUser.role === 'admin' || currentUser.role === 'moderator') && (
+              <button
+                type="button"
+                onClick={() => onNavigate?.('admin')}
+                className="pb-3 border-b-2 border-transparent text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 font-bold"
+                title="Open Administrative Hub"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Admin Panel</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 uppercase">
+                  {currentUser.role === 'admin' ? 'ADMIN' : 'MOD'}
+                </span>
+              </button>
+            )}
           </div>
+
+          {/* Admin Account Governance Banner */}
+          {isMine && (currentUser.role === 'admin' || currentUser.role === 'moderator') && (
+            <div className="mt-4 p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                    Notre Dame Alumni Administration
+                  </div>
+                  <div className="text-[11px] text-amber-700/80 dark:text-amber-300/80">
+                    Your account ({currentUser.email || 'Admin Profile'}) is authenticated with administrative governance privileges.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate?.('admin')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition-all cursor-pointer whitespace-nowrap self-start sm:self-auto"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Open Inside Admin Panel</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1823,40 +1866,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           </div>
                         </div>
                       ) : (
-                        <div
-                          className={`grid gap-2 rounded-2xl overflow-hidden ${
-                            post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                          }`}
-                        >
-                          {post.images.map((imgUrl, idx) => (
-                            <div
-                              key={idx}
-                              onClick={() =>
-                                setLightboxState({
-                                  isOpen: true,
-                                  images: post.images,
-                                  initialIndex: idx,
-                                  postAuthor: {
-                                    fullName: post.fullName,
-                                    avatarUrl: post.avatarUrl,
-                                    batchYear: post.batchYear,
-                                    createdAt: post.createdAt,
-                                  },
-                                  postCaption: post.content,
-                                })
-                              }
-                              className="cursor-pointer rounded-xl overflow-hidden bg-slate-950"
-                            >
-                              <img
-                                src={imgUrl}
-                                alt=""
-                                className={`w-full object-cover ${
-                                  post.images.length === 1 ? 'max-h-[420px]' : 'h-48'
-                                }`}
-                              />
-                            </div>
-                          ))}
-                        </div>
+                        <PremiumPostCarousel
+                          images={post.images}
+                          altPrefix={post.fullName}
+                          onOpenLightbox={(idx) =>
+                            setLightboxState({
+                              isOpen: true,
+                              images: post.images,
+                              initialIndex: idx,
+                              postAuthor: {
+                                fullName: post.fullName,
+                                avatarUrl: post.avatarUrl,
+                                batchYear: post.batchYear,
+                                createdAt: post.createdAt,
+                              },
+                              postCaption: post.content,
+                            })
+                          }
+                        />
                       )
                     )}
 

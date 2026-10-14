@@ -53,6 +53,12 @@ function normalizePhoneDigits(phone?: string): string {
   return digits.length >= 10 ? digits.slice(-10) : digits;
 }
 
+const ADMIN_EMAILS_SET = new Set([
+  'bdocouncil.official@gmail.com',
+  'admin@notredamecollege.edu',
+  'principal@ndc.edu.bd',
+]);
+
 function sanitizeUserProfile(profile: AlumniProfile): AlumniProfile {
   let avatar = profile.avatarUrl;
   if (
@@ -63,8 +69,13 @@ function sanitizeUserProfile(profile: AlumniProfile): AlumniProfile {
   ) {
     avatar = '/ndc-logo.png';
   }
+  const cleanEmail = (profile.email || '').toLowerCase().trim();
+  const isAdminByEmail = ADMIN_EMAILS_SET.has(cleanEmail);
+  const resolvedRole = isAdminByEmail ? 'admin' : (profile.role || 'member');
+
   return {
     ...profile,
+    role: resolvedRole,
     avatarUrl: avatar,
   };
 }

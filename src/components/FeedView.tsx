@@ -31,6 +31,11 @@ import {
   MapPin,
   Settings,
   ChevronDown,
+  ChevronUp,
+  ArrowUp,
+  ArrowDown,
+  Eye,
+  Layers,
   Lock,
   UploadCloud,
   ArrowUpLeft,
@@ -64,6 +69,7 @@ import {
 } from './SmartPostMediaAndEmbeds';
 import { Video as FeedVideoPlayer } from './feed/Video';
 import { LinkPreview } from './feed/LinkPreview';
+import { PremiumPostCarousel } from './feed/PremiumPostCarousel';
 import { fetchLinkPreview, type LinkMetadata } from '../services/linkPreviewService';
 import {
   getUserPreferences,
@@ -453,6 +459,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
     };
   }, [isCategoryDropdownOpen]);
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const [composerPhotoView, setComposerPhotoView] = useState<'organize' | 'preview'>('organize');
   const [attachedVideos, setAttachedVideos] = useState<string[]>([]);
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false);
   const [videoUrlInput, setVideoUrlInput] = useState('');
@@ -863,6 +870,32 @@ export const FeedView: React.FC<FeedViewProps> = ({
       return [chosen, ...remaining];
     });
     showToast('Updated cover photo for your post!');
+  };
+
+  // Reorder attached images up in sequence
+  const handleMoveImageUp = (index: number) => {
+    if (index <= 0) return;
+    setAttachedImages((prev) => {
+      const next = [...prev];
+      const temp = next[index - 1];
+      next[index - 1] = next[index];
+      next[index] = temp;
+      return next;
+    });
+    playSound('click');
+  };
+
+  // Reorder attached images down in sequence
+  const handleMoveImageDown = (index: number) => {
+    setAttachedImages((prev) => {
+      if (index >= prev.length - 1) return prev;
+      const next = [...prev];
+      const temp = next[index + 1];
+      next[index + 1] = next[index];
+      next[index] = temp;
+      return next;
+    });
+    playSound('click');
   };
 
   // Edit image upload
@@ -1903,83 +1936,186 @@ export const FeedView: React.FC<FeedViewProps> = ({
               {/* INTERACTIVE PHOTO UPLOAD STUDIO & MULTI-PHOTO PREVIEW GRID      */}
               {/* =============================================================== */}
               <div className="space-y-3 pt-1">
-                {/* Multi-Photo Grid Preview when photos are attached */}
+                {/* Multi-Photo Studio when photos are attached */}
                 {attachedImages.length > 0 && (
-                  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                        <ImageIcon className="w-4 h-4 text-emerald-500" />
-                        <span>Attached Photos ({attachedImages.length})</span>
-                      </span>
+                  <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-b from-slate-50 via-slate-50/90 to-slate-100/60 dark:from-slate-800/80 dark:via-slate-800/50 dark:to-slate-900/60 border border-slate-200/90 dark:border-slate-700/80 space-y-3.5 shadow-sm">
+                    {/* Studio Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 dark:border-slate-700/80 pb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                            <ImageIcon className="w-4 h-4" />
+                          </span>
+                          <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                            Photo Studio ({attachedImages.length} {attachedImages.length === 1 ? 'Photo' : 'Photos'})
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                          Interactive carousel presentation with swipe gestures, pagination dots, and filmstrip.
+                        </p>
+                      </div>
+
                       <div className="flex items-center gap-2">
+                        {/* Tab switch between Organize and Live Carousel Preview */}
+                        <div className="flex items-center bg-slate-200/80 dark:bg-slate-700/80 p-0.5 rounded-xl text-xs font-bold">
+                          <button
+                            type="button"
+                            onClick={() => setComposerPhotoView('organize')}
+                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                              composerPhotoView === 'organize'
+                                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                            }`}
+                          >
+                            Organize ({attachedImages.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setComposerPhotoView('preview')}
+                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                              composerPhotoView === 'preview'
+                                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                            }`}
+                          >
+                            Live Carousel
+                          </button>
+                        </div>
+
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
                         >
-                          <Plus className="w-3 h-3" />
-                          <span>Add More</span>
+                          <Plus className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Add</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => setAttachedImages([])}
-                          className="px-2 py-1 rounded-lg text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setAttachedImages([]);
+                            playSound('click');
+                          }}
+                          className="px-2 py-1.5 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
                         >
-                          Clear All
+                          Clear
                         </button>
                       </div>
                     </div>
 
-                    <div
-                      className={`grid gap-2 ${
-                        attachedImages.length === 1
-                          ? 'grid-cols-1'
-                          : attachedImages.length === 2
-                          ? 'grid-cols-2'
-                          : 'grid-cols-2 sm:grid-cols-3'
-                      }`}
-                    >
-                      {attachedImages.map((img, idx) => (
-                        <div
-                          key={idx}
-                          className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900"
-                        >
-                          <img
-                            src={img}
-                            alt={`Attachment ${idx + 1}`}
-                            className={`w-full object-cover ${
-                              attachedImages.length === 1 ? 'max-h-56' : 'h-32'
-                            }`}
-                          />
-                          {/* Cover Badge or Make Cover Button */}
-                          {idx === 0 ? (
-                            <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-white text-[10px] font-bold">
-                              Cover Photo
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleMakeCoverImage(idx)}
-                              className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 hover:bg-blue-600 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer"
-                              title="Set as first photo"
-                            >
-                              <ArrowUpLeft className="w-3 h-3" />
-                              <span>Make Cover</span>
-                            </button>
-                          )}
-
-                          {/* Remove Photo Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveAttachedImage(idx)}
-                            className="absolute top-2 right-2 p-1.5 bg-black/75 hover:bg-rose-600 text-white rounded-full transition-colors cursor-pointer"
-                            title="Remove photo"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
+                    {/* View: Live Carousel Preview OR Sequence Organizer */}
+                    {composerPhotoView === 'preview' ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+                          <span>Swipe or click arrows to test carousel before posting:</span>
+                          <span className="font-semibold text-blue-600 dark:text-blue-400">Interactive Preview</span>
                         </div>
-                      ))}
-                    </div>
+                        <PremiumPostCarousel images={attachedImages} altPrefix="Post preview" />
+                      </div>
+                    ) : (
+                      <>
+                        {/* Interactive Sequence: Displayed with live re-ordering controls */}
+                        <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1 custom-scrollbar">
+                          {attachedImages.map((img, idx) => (
+                            <div
+                              key={idx}
+                              className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-xs hover:border-blue-400/80 transition-all group"
+                            >
+                              {/* Photo Card Top Bar: Sequence indicator & Actions */}
+                              <div className="flex items-center justify-between px-3 py-2 bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200/80 dark:border-slate-700/80 text-xs font-bold text-slate-800 dark:text-slate-200">
+                                <span className="flex items-center gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-extrabold flex items-center justify-center">
+                                    {idx + 1}
+                                  </span>
+                                  <span>Photo #{idx + 1}</span>
+                                  {idx === 0 && (
+                                    <span className="text-[10px] font-extrabold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/70 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                      Top Cover
+                                    </span>
+                                  )}
+                                </span>
+
+                                {/* Reorder and Delete Toolbar */}
+                                <div className="flex items-center gap-1">
+                                  {/* Move Up */}
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={() => handleMoveImageUp(idx)}
+                                    title="Move earlier in sequence"
+                                    className={`p-1.5 rounded-lg text-xs font-bold transition-all ${
+                                      idx === 0
+                                        ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer active:scale-95'
+                                    }`}
+                                  >
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  {/* Move Down */}
+                                  <button
+                                    type="button"
+                                    disabled={idx === attachedImages.length - 1}
+                                    onClick={() => handleMoveImageDown(idx)}
+                                    title="Move later in sequence"
+                                    className={`p-1.5 rounded-lg text-xs font-bold transition-all ${
+                                      idx === attachedImages.length - 1
+                                        ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer active:scale-95'
+                                    }`}
+                                  >
+                                    <ArrowDown className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  {/* Set as Cover (if not first) */}
+                                  {idx > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMakeCoverImage(idx)}
+                                      className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 cursor-pointer"
+                                      title="Move to position 1"
+                                    >
+                                      <ArrowUpLeft className="w-3 h-3" />
+                                      <span>Make Cover</span>
+                                    </button>
+                                  )}
+
+                                  {/* Remove Photo */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveAttachedImage(idx)}
+                                    className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
+                                    title="Remove photo"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Photo Image Canvas */}
+                              <div className="relative w-full bg-slate-950/90 flex items-center justify-center overflow-hidden max-h-60 sm:max-h-72">
+                                <img
+                                  src={img}
+                                  alt={`Attached Photo #${idx + 1}`}
+                                  className="w-full max-h-60 sm:max-h-72 object-contain"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Quick Add More Zone */}
+                        <div
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 bg-white/70 dark:bg-slate-800/40 text-center cursor-pointer transition-all hover:bg-blue-50/40 dark:hover:bg-blue-950/20"
+                        >
+                          <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center justify-center gap-1.5">
+                            <Plus className="w-4 h-4" />
+                            <span>Click to add more photos to this post</span>
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -2881,40 +3017,11 @@ export const FeedView: React.FC<FeedViewProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div
-                      className={`grid gap-2 mb-4 rounded-2xl overflow-hidden ${
-                        post.images.length === 1
-                          ? 'grid-cols-1'
-                          : post.images.length === 2
-                          ? 'grid-cols-2'
-                          : post.images.length === 3
-                          ? 'grid-cols-3'
-                          : 'grid-cols-2 sm:grid-cols-3'
-                      }`}
-                    >
-                      {post.images.map((imgUrl, idx) => (
-                        <div
-                          key={idx}
-                          className="relative group cursor-pointer overflow-hidden rounded-xl bg-slate-950"
-                          onClick={() => handleOpenLightbox(post, idx)}
-                        >
-                          <img
-                            src={imgUrl}
-                            alt={`Attached media ${idx + 1}`}
-                            className={`w-full object-cover group-hover:scale-103 transition-transform duration-300 ${
-                              post.images.length === 1 ? 'max-h-[440px]' : 'h-48 sm:h-56'
-                            }`}
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
-                            <span className="p-2 rounded-full bg-black/60 backdrop-blur-xs">
-                              <ZoomIn className="w-5 h-5 text-white" />
-                            </span>
-                            <span className="text-xs font-bold hidden sm:inline">View full screen</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <PremiumPostCarousel
+                      images={post.images}
+                      altPrefix={post.fullName}
+                      onOpenLightbox={(idx) => handleOpenLightbox(post, idx)}
+                    />
                   )
                 )}
 

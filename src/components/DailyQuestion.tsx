@@ -234,11 +234,6 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
     };
   }, [todayStr, isAnsweredToday, currentUser?.id]);
 
-  // If user dismissed via cross button for today, hide the card
-  if (isDismissed && !isDismissing) {
-    return null;
-  }
-
   const handleDismiss = () => {
     setIsDismissing(true);
     setTimeout(() => {
@@ -298,6 +293,11 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
   const has7DayBadge =
     streakData.currentStreak >= 7 ||
     streakData.milestoneBadges?.some((b) => b.includes('7-Day') || b.includes('7_day'));
+
+  // If user dismissed via cross button for today, hide the card (placed after all hooks)
+  if (isDismissed && !isDismissing) {
+    return null;
+  }
 
   return (
     <>

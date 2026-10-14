@@ -506,6 +506,25 @@ export const Header: React.FC<HeaderProps> = ({
                     My Profile
                   </button>
 
+                  {(currentUser.role === 'admin' || currentUser.role === 'moderator') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onNavigate('admin');
+                        setShowProfileMenu(false);
+                      }}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 rounded-lg transition-colors text-left"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        <span>Admin Hub &amp; Manager</span>
+                      </span>
+                      <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200">
+                        {currentUser.role === 'admin' ? 'ADMIN' : 'MOD'}
+                      </span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {

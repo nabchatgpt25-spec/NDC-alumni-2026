@@ -24,6 +24,7 @@ import {
   SharedEmbedCard
 } from './SmartPostMediaAndEmbeds';
 import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
+import { PremiumPostCarousel } from './feed/PremiumPostCarousel';
 
 interface SavedPostsViewProps {
   onViewProfile?: (userId: number) => void;
@@ -302,41 +303,26 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
                 {renderTextWithClickableLinks(post.content)}
               </p>
 
-              {/* Attached Images */}
+              {/* Attached Images (Ultra-Premium Carousel & Interactive Showcase) */}
               {post.images && post.images.length > 0 && (
-                <div
-                  className={`grid gap-2 rounded-2xl overflow-hidden ${
-                    post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                  }`}
-                >
-                  {post.images.map((img, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() =>
-                        setLightboxState({
-                          isOpen: true,
-                          images: post.images,
-                          initialIndex: idx,
-                          postAuthor: {
-                            fullName: post.fullName,
-                            avatarUrl: post.avatarUrl,
-                            batchYear: post.batchYear,
-                            createdAt: post.createdAt,
-                          },
-                          postCaption: post.content,
-                        })
-                      }
-                      className="cursor-pointer group relative aspect-video bg-slate-100 dark:bg-slate-800 overflow-hidden"
-                    >
-                      <img
-                        src={img}
-                        alt="Post media attachment"
-                        className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                  ))}
-                </div>
+                <PremiumPostCarousel
+                  images={post.images}
+                  altPrefix={post.fullName}
+                  onOpenLightbox={(idx) =>
+                    setLightboxState({
+                      isOpen: true,
+                      images: post.images,
+                      initialIndex: idx,
+                      postAuthor: {
+                        fullName: post.fullName,
+                        avatarUrl: post.avatarUrl,
+                        batchYear: post.batchYear,
+                        createdAt: post.createdAt,
+                      },
+                      postCaption: post.content,
+                    })
+                  }
+                />
               )}
 
               {/* Attached Videos & Shared Links (YouTube, Facebook, Instagram, LinkedIn, etc.) */}

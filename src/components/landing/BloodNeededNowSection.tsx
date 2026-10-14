@@ -27,17 +27,14 @@ export const BloodNeededNowSection: React.FC<BloodNeededNowSectionProps> = ({
   onNavigateToBloodNetwork,
   variant = 'landing',
 }) => {
-  // If variant is profile, do not show any notification
-  if (variant === 'profile') {
-    return null;
-  }
-
   const [requests, setRequests] = useState<BloodEmergencyRequest[]>([]);
   const [isDismissed, setIsDismissed] = useState<boolean>(() =>
     isBloodBannerDismissed()
   );
 
   useEffect(() => {
+    if (variant === 'profile') return;
+
     let mounted = true;
     const sync = () => {
       setIsDismissed(isBloodBannerDismissed());
@@ -61,9 +58,10 @@ export const BloodNeededNowSection: React.FC<BloodNeededNowSectionProps> = ({
       window.removeEventListener('ndc_blood_banner_dismissed', sync);
       window.removeEventListener('storage', sync);
     };
-  }, []);
+  }, [variant]);
 
   const urgentActiveRequests = useMemo(() => {
+    if (variant === 'profile') return [];
     return requests
       .filter((r) => r.status === 'Active' || r.status === 'Donor Found')
       .sort((a, b) => {
@@ -71,14 +69,15 @@ export const BloodNeededNowSection: React.FC<BloodNeededNowSectionProps> = ({
         return rank[b.emergencyLevel] - rank[a.emergencyLevel];
       })
       .slice(0, 3);
-  }, [requests]);
+  }, [requests, variant]);
 
   const handleDismiss = () => {
     dismissBloodBanner();
     setIsDismissed(true);
   };
 
-  if (urgentActiveRequests.length === 0) return null;
+  // If variant is profile or no urgent requests exist, don't render (placed after all hooks)
+  if (variant === 'profile' || urgentActiveRequests.length === 0) return null;
 
   // Simple, clean, non-intrusive feed alert banner (NOT a screen-blocking modal)
   if (variant === 'feed') {

@@ -926,6 +926,98 @@ html[data-theme="vintage-parchment"] .text-blue-700 {
   max-width: calc(100vw - 32px) !important;
 }
 
+/* ==========================================================================
+   Mentorship Celebration CSS Confetti & Lottie-style Badge Animations
+   ========================================================================== */
+@keyframes cssConfettiFall {
+  0% {
+    transform: translateY(-24px) rotate(0deg) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translateY(140px) rotate(350deg) scale(0.85);
+    opacity: 0;
+  }
+}
 
+@keyframes cssConfettiSway {
+  0%, 100% {
+    margin-left: 0px;
+  }
+  50% {
+    margin-left: 14px;
+  }
+}
 
+@keyframes celebrationPulseRing {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
 
+@keyframes lottieCheckDraw {
+  0% {
+    stroke-dashoffset: 44;
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  60% {
+    stroke-dashoffset: 0;
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes celebrationSparkle {
+  0% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2) rotate(90deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(180deg);
+    opacity: 0.85;
+  }
+}
+
+.animate-confetti-particle {
+  animation: cssConfettiFall 3.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+             cssConfettiSway 1.6s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+.animate-pulse-ring {
+  animation: celebrationPulseRing 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.animate-lottie-check {
+  stroke-dasharray: 44;
+  animation: lottieCheckDraw 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-sparkle-spin {
+  animation: celebrationSparkle 1.8s ease-in-out infinite alternate;
+}

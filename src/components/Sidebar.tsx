@@ -99,8 +99,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Segment 3: SERVICES Navigation
   const servicesNavItems: NavItemConfig[] = [
     { id: 'emergency', label: 'Blood Network', icon: HeartHandshake, badge: 'LIVE', badgeType: 'hot' },
-    { id: 'mentorship', label: 'Mentorship', icon: GraduationCap, badge: 'SOON', badgeType: 'soon' },
-    { id: 'careers', label: 'Career Portal', icon: Briefcase, badge: 'SOON', badgeType: 'soon' },
+    { id: 'mentorship', label: 'Mentorship', icon: GraduationCap, badge: 'LIVE', badgeType: 'hot' },
+    { id: 'careers', label: 'Career Portal', icon: Briefcase, badge: 'LIVE', badgeType: 'hot' },
     { id: 'contact', label: 'Contact Us', icon: Mail },
   ];
 

@@ -32,6 +32,7 @@ import {
   Check,
   Lock,
   Sparkles,
+  Award,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -53,12 +54,14 @@ import { AdminDocSubmission, UserRole } from '../../types';
 import { NDCLogo } from '../NDCLogo';
 import { AdminCommandCenterView } from './AdminCommandCenterView';
 
+import { AdminFeaturedAlumniManager } from './AdminFeaturedAlumniManager';
+
 interface AdminHubViewProps {
   onNavigate: (route: string) => void;
   onViewProfile?: (userId: number) => void;
 }
 
-type AdminTab = 'overview' | 'verifications' | 'users' | 'moderation' | 'audit' | 'command_center';
+type AdminTab = 'overview' | 'verifications' | 'users' | 'moderation' | 'audit' | 'command_center' | 'featured_alumni';
 
 export const AdminHubView: React.FC<AdminHubViewProps> = ({
   onNavigate,
@@ -542,6 +545,19 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
 
           <button
             type="button"
+            onClick={() => setActiveTab('featured_alumni')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'featured_alumni'
+                ? 'bg-amber-400 text-slate-950 shadow-md font-black'
+                : 'text-amber-200 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Award className="w-4 h-4 text-amber-400" />
+            <span>Featured Positions &amp; Luminaries</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('command_center')}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'command_center'
@@ -666,7 +682,7 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
           </div>
 
           {/* Quick Shortcuts Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div
               onClick={() => setActiveTab('verifications')}
               className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-blue-500 transition-all cursor-pointer shadow-sm group"
@@ -718,6 +734,24 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Role Delegation</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Promote trusted alumni to Moderators or Super Admins with audit logs.
+              </p>
+            </div>
+
+            <div
+              onClick={() => setActiveTab('featured_alumni')}
+              className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-amber-500 transition-all cursor-pointer shadow-sm group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold text-amber-600 group-hover:translate-x-1 transition-transform">
+                  Manage →
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Featured Positions</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Add, edit, or remove distinguished career positions in the Hall of Fame.
               </p>
             </div>
           </div>
@@ -1816,6 +1850,13 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
         <div className="space-y-6 animate-in fade-in duration-200">
           <AdminCommandCenterView onViewProfile={onViewProfile} />
         </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 7: FEATURED POSITIONS & LUMINARIES                                */}
+      {/* ===================================================================== */}
+      {activeTab === 'featured_alumni' && (
+        <AdminFeaturedAlumniManager onViewProfile={onViewProfile} />
       )}
 
       {/* Full-Screen Document Inspection Modal */}

@@ -334,6 +334,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             alumniList={ALUMNI_PROFILES}
             onSelectAlumnus={(alumnus) => setPreviewAlumnus(alumnus)}
             onExploreDirectory={() => onNavigate('directory')}
+            onNavigate={onNavigate}
           />
         </div>
 

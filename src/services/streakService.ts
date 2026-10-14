@@ -429,25 +429,48 @@ export async function fetchTodayAnswers(
   try {
     const { data: posts, error: postErr } = await supabase
       .from('posts')
-      .select('id, user_id, author_id, full_name, avatar_url, batch_year, content, created_at, likes_count')
+      .select('id, author_id, content, created_at, likes_count')
       .ilike('content', '%আজকের প্রশ্ন%')
+      .eq('is_deleted', false)
       .order('created_at', { ascending: false })
       .limit(20);
 
-    if (!postErr && posts) {
+    if (!postErr && posts && posts.length > 0) {
+      const authorIds = Array.from(new Set(posts.map((p: any) => Number(p.author_id)).filter(Boolean)));
+      const authorMap = new Map<number, { fullName: string; avatarUrl: string; batchYear: number | null }>();
+
+      if (authorIds.length > 0) {
+        try {
+          const { data: authors } = await supabase
+            .from('alumni_profiles')
+            .select('id, full_name, avatar_url, batch_year')
+            .in('id', authorIds);
+          if (authors) {
+            authors.forEach((a: any) => {
+              authorMap.set(Number(a.id), {
+                fullName: a.full_name || 'Notredamian Alumnus',
+                avatarUrl: a.avatar_url || '/ndc-logo.png',
+                batchYear: a.batch_year ? Number(a.batch_year) : null,
+              });
+            });
+          }
+        } catch {}
+      }
+
       posts.forEach((p: any) => {
-        const uId = Number(p.author_id || p.user_id);
+        const uId = Number(p.author_id);
         if (!seenUserIds.has(uId) && p.content) {
           const match = p.content.match(/আজকের প্রশ্ন:\s*([^\n]+)(?:\n+আমার উত্তর:\s*([\s\S]+))?/);
           const ansText = match && match[2] ? match[2].trim() : p.content.replace(/^আজকের প্রশ্ন:[^\n]+/, '').trim();
           if (ansText) {
             seenUserIds.add(uId);
+            const author = authorMap.get(uId);
             result.push({
               id: Number(p.id),
               userId: uId,
-              authorName: p.full_name || 'Notredamian Alumnus',
-              authorAvatar: p.avatar_url || '/ndc-logo.png',
-              authorBatch: p.batch_year ? Number(p.batch_year) : null,
+              authorName: author?.fullName || 'Notredamian Alumnus',
+              authorAvatar: author?.avatarUrl || '/ndc-logo.png',
+              authorBatch: author?.batchYear ?? null,
               questionDate,
               questionText: match ? match[1] : 'আজকের প্রশ্ন',
               answerText: ansText,

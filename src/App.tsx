@@ -27,6 +27,8 @@ const MapView = React.lazy(() => import('./components/MapView').then(m => ({ def
 const ProfileView = React.lazy(() => import('./components/ProfileView').then(m => ({ default: m.ProfileView })));
 const GalleryView = React.lazy(() => import('./components/GalleryView').then(m => ({ default: m.GalleryView })));
 const UpcomingFeatureView = React.lazy(() => import('./components/UpcomingFeatureView').then(m => ({ default: m.UpcomingFeatureView })));
+const CareerView = React.lazy(() => import('./components/CareerView').then(m => ({ default: m.CareerView })));
+const MentorshipView = React.lazy(() => import('./components/MentorshipView').then(m => ({ default: m.MentorshipView })));
 const ContactUsView = React.lazy(() => import('./components/ContactUsView').then(m => ({ default: m.ContactUsView })));
 const SavedPostsView = React.lazy(() => import('./components/SavedPostsView').then(m => ({ default: m.SavedPostsView })));
 const BloodNetworkView = React.lazy(() => import('./components/BloodNetworkView').then(m => ({ default: m.BloodNetworkView })));
@@ -228,6 +230,7 @@ function AlumniAppContent() {
     if (previousRoute === 'find') return 'Back to Search Results';
     if (previousRoute === 'settings' || previousRoute === 'profile-settings') return 'Back to Settings';
     if (previousRoute === 'emergency' || previousRoute === 'blood' || previousRoute === 'blood-network') return 'Back to Blood Network';
+    if (previousRoute === 'careers') return 'Back to Career Portal';
     return 'Back to Directory';
   };
 
@@ -473,7 +476,10 @@ function AlumniAppContent() {
                 )}
 
                 {route === 'mentorship' && (
-                  <UpcomingFeatureView type="mentorship" onNavigate={navigateTo} />
+                  <MentorshipView
+                    onViewProfile={handleViewProfile}
+                    onNavigate={navigateTo}
+                  />
                 )}
 
                 {route === 'news' && (
@@ -489,7 +495,10 @@ function AlumniAppContent() {
                 )}
 
                 {route === 'careers' && (
-                  <UpcomingFeatureView type="careers" onNavigate={navigateTo} />
+                  <CareerView
+                    onViewProfile={handleViewProfile}
+                    onNavigate={navigateTo}
+                  />
                 )}
 
                 {(route === 'emergency' || route === 'blood' || route === 'blood-network') && (
