@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiUrl } from '../lib/apiConfig';
+import { supabase } from '../lib/supabase';
 
 export interface FacebookOEmbedData {
   originalUrl: string;
@@ -169,7 +170,14 @@ export async function fetchFacebookOEmbed(rawUrl: string): Promise<FacebookOEmbe
 
   // Strategy A: Server-Side Open Graph Crawler (/api/unfurl)
   try {
-    const res = await fetch(apiUrl(`/api/unfurl?url=${encodeURIComponent(normalized)}`));
+    const headers: Record<string, string> = {};
+    try {
+      const { data: sData } = await supabase.auth.getSession();
+      if (sData?.session?.access_token) {
+        headers['Authorization'] = `Bearer ${sData.session.access_token}`;
+      }
+    } catch {}
+    const res = await fetch(apiUrl(`/api/unfurl?url=${encodeURIComponent(normalized)}`), { headers });
     if (res.ok) {
       const json = await res.json();
       if (json && (json.imageUrl || json.videoUrl || json.title || json.description)) {

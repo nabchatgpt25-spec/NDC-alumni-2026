@@ -22,6 +22,7 @@ import {
   type FacebookOEmbedData,
 } from '../services/facebookOEmbedService';
 import { apiUrl } from '../lib/apiConfig';
+import { supabase } from '../lib/supabase';
 
 export type DetectedEmbedType =
   | 'youtube'
@@ -673,7 +674,20 @@ function useLinkUnfurl(url: string, enabled = true) {
     setLoading(true);
 
     // 1. Try our backend OpenGraph crawler proxy first (/api/unfurl) which uses facebookexternalhit UA and bypasses CORS/rate-limits
-    fetch(apiUrl(`/api/unfurl?url=${encodeURIComponent(url)}`))
+    const getAuthHeaders = async (): Promise<Record<string, string>> => {
+      try {
+        const { data: sData } = await supabase.auth.getSession();
+        if (sData?.session?.access_token) {
+          return { Authorization: `Bearer ${sData.session.access_token}` };
+        }
+      } catch {}
+      return {};
+    };
+
+    getAuthHeaders()
+      .then((headers) =>
+        fetch(apiUrl(`/api/unfurl?url=${encodeURIComponent(url)}`), { headers })
+      )
       .then((res) => {
         if (!res.ok) throw new Error('Backend unfurl failed');
         return res.json();

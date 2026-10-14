@@ -263,7 +263,15 @@ export async function fetchLinkPreview(url: string): Promise<LinkMetadata> {
   try {
     // 1. Try our backend crawler proxy (/api/unfurl)
     const unfurlUrl = apiUrl(`/api/unfurl?url=${encodeURIComponent(cleanUrl)}`);
-    const resp = await fetch(unfurlUrl, { signal: AbortSignal.timeout(6000) });
+    const headers: Record<string, string> = {};
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.access_token) {
+        headers['Authorization'] = `Bearer ${sessionData.session.access_token}`;
+      }
+    } catch {}
+
+    const resp = await fetch(unfurlUrl, { headers, signal: AbortSignal.timeout(6000) });
 
     if (resp.ok) {
       const data = await resp.json();
