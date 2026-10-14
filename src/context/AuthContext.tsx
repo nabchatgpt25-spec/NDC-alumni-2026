@@ -661,12 +661,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const cleanWhatsapp = profileData.whatsapp?.trim() ? formatToE164Phone(profileData.whatsapp) : undefined;
     const cleanRoll = profileData.collegeRoll?.trim() || undefined;
 
-    // Store full profile draft in local storage so that when user verifies email and logs in,
+    // Store profile draft (excluding password) in local storage so that when user verifies email and logs in,
     // their entire profile details (blood group, academic stream, roll, etc.) are fully hydrated into Supabase.
     if (typeof window !== 'undefined') {
       try {
+        const { password: _omittedPassword, ...safeProfileData } = profileData;
         localStorage.setItem(`ndc_pending_reg_${cleanEmail}`, JSON.stringify({
-          ...profileData,
+          ...safeProfileData,
           collegeRoll: cleanRoll,
           college_roll: cleanRoll,
           email: cleanEmail,
