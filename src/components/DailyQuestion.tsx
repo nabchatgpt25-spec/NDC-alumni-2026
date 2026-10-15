@@ -342,29 +342,62 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
               </button>
             )}
 
-            {/* Duolingo Style Streak Counter Chip */}
+            {/* Unified Duolingo-Style Streak Pill: Counter + 7-Day Flame Tracker in ONE Element */}
             <div
               onClick={streakData.currentStreak >= 7 ? handleTriggerCelebration : undefined}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-black/40 border border-amber-500/30 backdrop-blur-md shadow-inner cursor-pointer"
+              className="inline-flex items-center gap-2 sm:gap-2.5 px-3 py-1.5 rounded-2xl bg-black/40 border border-amber-500/30 backdrop-blur-md shadow-inner cursor-pointer hover:border-amber-400/50 transition-colors"
+              title={
+                isAnsweredToday
+                  ? `আজকের স্ট্রিক সংরক্ষিত 🔥 (${streakData.currentStreak} দিন)`
+                  : `আজ উত্তর দিলে স্ট্রিক বৃদ্ধি পাবে 🔥 (${streakData.currentStreak} দিন)`
+              }
             >
-              <div className="relative flex items-center justify-center">
+              <div className="relative flex items-center justify-center shrink-0">
                 <Flame
-                  className={`w-5 h-5 transition-transform duration-300 ${
+                  className={`w-4 h-4 transition-transform duration-300 ${
                     streakData.currentStreak > 0
                       ? 'text-amber-400 fill-amber-400 filter drop-shadow-[0_0_8px_rgba(251,191,36,0.6)] animate-bounce'
                       : 'text-slate-500'
                   }`}
                 />
               </div>
-              <div className="flex flex-col text-left">
-                <div className="flex items-center gap-1">
-                  <span className="text-sm font-extrabold text-amber-300 font-mono">
-                    {banglaDigits(streakData.currentStreak)}
-                  </span>
-                  <span className="text-[11px] font-bold text-amber-200/90">
-                    দিনের স্ট্রিক!
-                  </span>
-                </div>
+              <div className="flex items-baseline gap-1 shrink-0">
+                <span className="text-sm font-extrabold text-amber-300 font-mono">
+                  {banglaDigits(streakData.currentStreak)}
+                </span>
+                <span className="text-[10px] font-bold text-amber-200/90 hidden xs:inline">
+                  দিনের স্ট্রিক
+                </span>
+              </div>
+
+              {/* Integrated 7-Day Streak Flame Dots */}
+              <div className="h-3.5 w-px bg-white/20 shrink-0" />
+              <div className="flex items-center gap-1">
+                {past7Days.map((d) => (
+                  <div
+                    key={d.date}
+                    title={`${d.dayName}: ${
+                      d.answered
+                        ? 'স্ট্রিক সংরক্ষিত'
+                        : d.isToday
+                        ? 'আজকের দিন (উত্তর দিন)'
+                        : 'বাকি'
+                    }`}
+                    className={`w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold transition-all ${
+                      d.answered
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : d.isToday
+                        ? 'bg-blue-500/30 text-blue-300 border border-amber-400/80 ring-1 ring-amber-400/30 animate-pulse'
+                        : 'bg-white/10 text-slate-400'
+                    }`}
+                  >
+                    {d.answered ? (
+                      <Flame className="w-2.5 h-2.5 fill-current" />
+                    ) : (
+                      <span className="w-1 h-1 rounded-full bg-slate-400" />
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -382,61 +415,10 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
         </div>
 
         {/* The Bangla Nostalgia Question */}
-        <div className="relative z-10 mb-5">
+        <div className="relative z-10 mb-4">
           <blockquote className="text-base sm:text-lg md:text-xl font-bold text-slate-100 leading-snug tracking-tight">
             "{question}"
           </blockquote>
-        </div>
-
-        {/* 7-Day Streak Week Tracker (Duolingo Style Flame Dots) */}
-        <div className="relative z-10 mb-5 p-3 rounded-2xl bg-black/25 border border-white/10 backdrop-blur-sm">
-          <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
-              <Award className="w-3.5 h-3.5 text-amber-400" />
-              <span>সাপ্তাহিক স্ট্রিক ট্র্যাকার</span>
-            </span>
-            <span className="text-[10px] text-amber-300/90 font-medium">
-              {isAnsweredToday
-                ? 'আজকের স্ট্রিক সফলভাবে সংরক্ষিত 🔥'
-                : 'আজ উত্তর দিলে স্ট্রিক বৃদ্ধি পাবে 🔥'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-            {past7Days.map((d) => (
-              <div
-                key={d.date}
-                className={`flex flex-col items-center justify-center py-1.5 rounded-xl border transition-all ${
-                  d.isToday
-                    ? d.answered
-                      ? 'bg-amber-500/20 border-amber-400 ring-2 ring-amber-400/30'
-                      : 'bg-blue-600/20 border-blue-400 ring-2 ring-blue-400/30 animate-pulse'
-                    : d.answered
-                    ? 'bg-amber-500/15 border-amber-500/30'
-                    : 'bg-white/5 border-white/5 opacity-60'
-                }`}
-              >
-                <span className="text-[10px] font-medium text-slate-300 mb-1">
-                  {d.dayName}
-                </span>
-                <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                    d.answered
-                      ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30'
-                      : d.isToday
-                      ? 'bg-blue-500/20 text-blue-300 border border-dashed border-blue-400'
-                      : 'bg-white/10 text-slate-400'
-                  }`}
-                >
-                  {d.answered ? (
-                    <Flame className="w-3.5 h-3.5 fill-current" />
-                  ) : (
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* ----------------------------------------------------------------- */}

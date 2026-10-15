@@ -7,8 +7,6 @@ import {
   Mail,
   User,
   GraduationCap,
-  Briefcase,
-  Building2,
   MapPin,
   Eye,
   EyeOff,
@@ -18,7 +16,6 @@ import {
   Globe,
   Sparkles,
   Camera,
-  Award,
   Heart,
   HelpCircle,
   KeyRound,
@@ -27,7 +24,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { BATCH_LIST } from '../data/mockData';
-import { WhatsAppIcon } from './SocialIcons';
 import { NDCLogo } from './NDCLogo';
 import { compressImageFileToDataUrl } from '../utils/mediaStorage';
 import { formatToE164Phone } from '../utils/phone';
@@ -164,32 +160,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     return list;
   }, [minAllowedHscYear, maxAllowedHscYear]);
 
-  const [batchYearSelect, setBatchYearSelect] = useState<string>(() => {
-    const d = (initialDraft.batchYear || '').trim();
-    const n = Number(d);
-    return n >= minAllowedHscYear && n <= maxAllowedHscYear ? d : '';
-  });
-  const [batchYearInput, setBatchYearInput] = useState<string>(() => {
-    return initialDraft.batchYear || '';
-  });
   const [batchYear, setBatchYear] = useState<string>(() => {
     const d = (initialDraft.batchYear || '').trim();
     return d;
   });
+  const [isYearDropdownOpen, setIsYearDropdownOpen] = useState(false);
+  const yearDropdownRef = React.useRef<HTMLDivElement>(null);
 
-  const handleBatchSelectChange = (val: string) => {
-    setBatchYearSelect(val);
-    setBatchYearInput('');
-    setBatchYear(val);
-  };
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (yearDropdownRef.current && !yearDropdownRef.current.contains(event.target as Node)) {
+        setIsYearDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-  const handleBatchInputChange = (raw: string) => {
-    const digitsOnly = raw.replace(/\D/g, '').slice(0, 4);
-    setBatchYearInput(digitsOnly);
-    // Logic: If user types in text field, use that value. Text field overrides dropdown. If empty, fall back to dropdown selection.
-    const effective = digitsOnly || batchYearSelect;
-    setBatchYear(effective);
-  };
+  const filteredYears = React.useMemo(() => {
+    const q = batchYear.trim();
+    const sortedDescending = [...hscYearOptions].reverse();
+    if (!q) return sortedDescending;
+    return sortedDescending.filter((yr) => String(yr).startsWith(q) || String(yr).includes(q));
+  }, [hscYearOptions, batchYear]);
 
   const [academicGroup, setAcademicGroup] = useState<string>(initialDraft.academicGroup || '');
   const [bmdcNumber, setBmdcNumber] = useState(initialDraft.collegeRoll || initialDraft.bmdcNumber || '');
@@ -393,7 +386,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMessage('Please provide your Full Name.');
       return;
     }
-    const effectiveBatchYear = batchYearInput.trim() ? batchYearInput.trim() : batchYearSelect.trim();
+
+    const effectiveBatchYear = batchYear.trim();
     if (!effectiveBatchYear) {
       setErrorMessage('Please select or enter your Notre Dame HSC Year.');
       return;
@@ -924,47 +918,79 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Notre Dame HSC Year <span className="text-rose-500">*</span>
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Left: select dropdown showing all years 1949 to (current year + 1) */}
-                    <div className="relative min-w-0 flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                      <div className="pl-3 text-slate-500 dark:text-slate-400 pointer-events-none">
+                  <div className="relative" ref={yearDropdownRef}>
+                    <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                      <div className="pl-3.5 text-slate-500 dark:text-slate-400 pointer-events-none">
                         <GraduationCap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                       </div>
-                      <select
-                        value={batchYearSelect}
-                        onChange={(e) => handleBatchSelectChange(e.target.value)}
-                        className="w-full pl-2 pr-7 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white bg-transparent focus:outline-none appearance-none cursor-pointer truncate"
-                        aria-label="Select Notre Dame HSC Year"
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        placeholder="Select or type HSC year (e.g. 2018)"
+                        value={batchYear}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                          setBatchYear(val);
+                          setIsYearDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsYearDropdownOpen(true)}
+                        className="w-full pl-3 pr-10 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                        aria-label="Select or type Notre Dame HSC Year"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsYearDropdownOpen((prev) => !prev)}
+                        className="absolute right-2.5 p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer rounded-lg transition-colors"
+                        title="Toggle HSC Year dropdown"
+                        aria-label="Toggle HSC Year list"
                       >
-                        <option value="" className="bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400">
-                          Select Year...
-                        </option>
-                        {hscYearOptions.map((yr) => (
-                          <option key={yr} value={yr} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {yr}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="absolute right-2.5 pointer-events-none text-slate-400">
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </div>
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform duration-200 ${
+                            isYearDropdownOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''
+                          }`}
+                        />
+                      </button>
                     </div>
 
-                    {/* Right: text field for manual entry with placeholder "Or type year..." */}
-                    <div className="relative min-w-0 flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={1949}
-                        max={maxAllowedHscYear}
-                        step={1}
-                        placeholder="Or type year..."
-                        value={batchYearInput}
-                        onChange={(e) => handleBatchInputChange(e.target.value)}
-                        className="w-full px-3 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        aria-label="Or type Notre Dame HSC Year"
-                      />
-                    </div>
+                    {/* Unified Year Dropdown Menu */}
+                    {isYearDropdownOpen && (
+                      <div className="absolute z-30 left-0 right-0 mt-1.5 max-h-56 overflow-y-auto rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/80 dark:border-white/15 shadow-xl p-1.5 space-y-0.5">
+                        <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center justify-between border-b border-slate-200/60 dark:border-white/10 mb-1">
+                          <span>Pick Year or Type Above</span>
+                          <span className="text-blue-600 dark:text-blue-400">1949 – {maxAllowedHscYear}</span>
+                        </div>
+                        {filteredYears.length > 0 ? (
+                          filteredYears.map((yr) => {
+                            const isSelected = batchYear === String(yr);
+                            return (
+                              <button
+                                key={yr}
+                                type="button"
+                                onClick={() => {
+                                  setBatchYear(String(yr));
+                                  setIsYearDropdownOpen(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer text-left ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white font-bold'
+                                    : 'text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-500/10'
+                                }`}
+                              >
+                                <span>HSC Batch {yr}</span>
+                                {isSelected && <Check className="w-3.5 h-3.5 ml-2 shrink-0" />}
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400 text-center">
+                            No matching year found for "{batchYear}". You can still keep typing your 4-digit year.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </motion.div>
 
@@ -1164,90 +1190,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </motion.div>
 
-              {/* SECTION 2: Professional, Location & WhatsApp */}
+              {/* SECTION 2: Location */}
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: 0.18 }}
                 className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-white/35 dark:border-white/10"
               >
-                {/* 6. Current Profession / Role */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    Current Profession / Role
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-500 dark:text-slate-400">
-                      <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. Senior Software Engineer / Lead / CEO"
-                      value={position}
-                      onChange={(e) => setPosition(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* 7. Organization / Workplace */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    Organization / Workplace
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-500 dark:text-slate-400">
-                      <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. Google / BUET / DMC / Apex"
-                      value={institution}
-                      onChange={(e) => setInstitution(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* 8. Field / Specialty */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    Field / Specialty
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-500 dark:text-slate-400">
-                      <Briefcase className="w-4 h-4 text-blue-500" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. Computer Science & Software"
-                      value={specialtyInput}
-                      onChange={(e) => setSpecialtyInput(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* 9. Degrees & Qualifications */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    Degrees & Qualifications
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
-                    <div className="pl-3 text-slate-500 dark:text-slate-400">
-                      <Award className="w-4 h-4 text-amber-500" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. HSC, BSc, MSc, MBA, PhD"
-                      value={degreeInput}
-                      onChange={(e) => setDegreeInput(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* 10. City */}
+                {/* City */}
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     City
@@ -1266,7 +1216,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                 </div>
 
-                {/* 11. Country */}
+                {/* Country */}
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Country
@@ -1280,25 +1230,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       placeholder="e.g. Bangladesh"
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* 12. WhatsApp Number */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    WhatsApp Number
-                  </label>
-                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-emerald-500 transition-all">
-                    <div className="pl-3 text-emerald-600 dark:text-emerald-400">
-                      <WhatsAppIcon className="w-4 h-4" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. 01711223344"
-                      value={whatsapp}
-                      onChange={(e) => setWhatsapp(e.target.value)}
                       className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
                     />
                   </div>
