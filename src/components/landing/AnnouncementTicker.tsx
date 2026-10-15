@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Megaphone, ChevronRight, Pause, Play, Bell } from 'lucide-react';
-import { OFFICIAL_NOTICES, OfficialNotice } from '../../data/noticesData';
+import { OfficialNotice } from '../../data/noticesData';
+import { useSiteSettings } from '../../hooks/useSiteSettings';
 
 interface AnnouncementTickerProps {
   onSelectNotice: (notice: OfficialNotice) => void;
@@ -12,15 +13,30 @@ export const AnnouncementTicker: React.FC<AnnouncementTickerProps> = ({
   onOpenNoticeBoard,
 }) => {
   const [isPaused, setIsPaused] = useState(false);
-  const urgentNotices = OFFICIAL_NOTICES;
+  const { settings } = useSiteSettings();
+  const { announcement, notices } = settings;
+
+  if (!announcement.enabled) {
+    return null;
+  }
+
+  const urgentNotices = notices.length > 0 ? notices : [];
 
   return (
     <div className="bg-blue-900 dark:bg-slate-900 border-y border-blue-800 dark:border-slate-800 text-white shadow-xs overflow-hidden relative z-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center h-11 text-xs">
         {/* Ticker Label Badge */}
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-slate-950 font-black rounded-lg uppercase tracking-wider text-[11px] shrink-0 shadow-xs mr-3">
+        <div
+          className={`flex items-center gap-1.5 px-3 py-1 font-black rounded-lg uppercase tracking-wider text-[11px] shrink-0 shadow-xs mr-3 ${
+            announcement.urgency === 'emergency'
+              ? 'bg-rose-600 text-white animate-pulse'
+              : announcement.urgency === 'urgent'
+              ? 'bg-amber-500 text-slate-950'
+              : 'bg-blue-600 text-white'
+          }`}
+        >
           <Megaphone className="w-3.5 h-3.5 animate-bounce" />
-          <span className="hidden sm:inline">OFFICIAL NOTICE</span>
+          <span className="hidden sm:inline">{announcement.badgeText || 'OFFICIAL NOTICE'}</span>
           <span className="sm:hidden">NOTICE</span>
         </div>
 
@@ -40,22 +56,29 @@ export const AnnouncementTicker: React.FC<AnnouncementTickerProps> = ({
               animationIterationCount: 'infinite',
             }}
           >
-            {urgentNotices.concat(urgentNotices).map((item, idx) => (
-              <button
-                key={`${item.id}-${idx}`}
-                type="button"
-                onClick={() => onSelectNotice(item)}
-                className="inline-flex items-center gap-2 text-blue-100 hover:text-amber-300 transition-colors cursor-pointer text-left"
-              >
+            {announcement.customTickerOverride ? (
+              <div className="inline-flex items-center gap-2 text-blue-100 font-semibold text-xs tracking-tight">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                <span className="font-semibold text-xs tracking-tight truncate max-w-md sm:max-w-xl">
-                  [{item.refNo}] {item.title}
-                </span>
-                <span className="text-[10px] text-blue-300 font-mono">
-                  ({item.publishedDate})
-                </span>
-              </button>
-            ))}
+                <span>{announcement.customTickerOverride}</span>
+              </div>
+            ) : (
+              urgentNotices.concat(urgentNotices).map((item, idx) => (
+                <button
+                  key={`${item.id}-${idx}`}
+                  type="button"
+                  onClick={() => onSelectNotice(item)}
+                  className="inline-flex items-center gap-2 text-blue-100 hover:text-amber-300 transition-colors cursor-pointer text-left"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                  <span className="font-semibold text-xs tracking-tight truncate max-w-md sm:max-w-xl">
+                    [{item.refNo}] {item.title}
+                  </span>
+                  <span className="text-[10px] text-blue-300 font-mono">
+                    ({item.publishedDate})
+                  </span>
+                </button>
+              ))
+            )}
           </div>
         </div>
 

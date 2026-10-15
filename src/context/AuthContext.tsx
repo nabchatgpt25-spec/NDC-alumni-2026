@@ -19,6 +19,7 @@ import {
 import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 import { formatToE164Phone, normalizePhoneNumber } from '../utils/phone';
 import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
+import { isExecutiveCouncilEmail } from '../services/executiveCouncilService';
 
 export { formatToE164Phone, normalizePhoneNumber };
 
@@ -143,9 +144,11 @@ function normalizePhoneDigits(phone?: string): string {
 }
 
 const ADMIN_EMAILS_SET = new Set([
+  'firstaidnetworkbd@gmail.com',
   'bdocouncil.official@gmail.com',
   'admin@notredamecollege.edu',
   'principal@ndc.edu.bd',
+  'ndc.executive.council@gmail.com',
 ]);
 
 function sanitizeUserProfile(profile: AlumniProfile): AlumniProfile {
@@ -159,7 +162,7 @@ function sanitizeUserProfile(profile: AlumniProfile): AlumniProfile {
     avatar = '/ndc-logo.png';
   }
   const cleanEmail = (profile.email || '').toLowerCase().trim();
-  const isAdminByEmail = ADMIN_EMAILS_SET.has(cleanEmail);
+  const isAdminByEmail = ADMIN_EMAILS_SET.has(cleanEmail) || isExecutiveCouncilEmail(cleanEmail);
   const resolvedRole = isAdminByEmail ? 'admin' : (profile.role || 'member');
 
   return {

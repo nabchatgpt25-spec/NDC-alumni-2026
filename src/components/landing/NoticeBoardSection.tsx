@@ -14,6 +14,7 @@ import {
   Users
 } from 'lucide-react';
 import { OFFICIAL_NOTICES, OfficialNotice } from '../../data/noticesData';
+import { useSiteSettings } from '../../hooks/useSiteSettings';
 import { fetchOfficialNoticesFromDb } from '../../services/supabaseService';
 
 interface NoticeBoardSectionProps {
@@ -25,8 +26,17 @@ export const NoticeBoardSection: React.FC<NoticeBoardSectionProps> = ({
   onSelectNotice,
   onOpenRegister,
 }) => {
+  const { settings } = useSiteSettings();
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [notices, setNotices] = useState<OfficialNotice[]>(OFFICIAL_NOTICES);
+  const [notices, setNotices] = useState<OfficialNotice[]>(() =>
+    settings.notices && settings.notices.length > 0 ? settings.notices : OFFICIAL_NOTICES
+  );
+
+  React.useEffect(() => {
+    if (settings.notices && settings.notices.length > 0) {
+      setNotices(settings.notices);
+    }
+  }, [settings.notices]);
 
   React.useEffect(() => {
     let isMounted = true;

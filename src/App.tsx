@@ -35,7 +35,9 @@ const BloodNetworkView = React.lazy(() => import('./components/BloodNetworkView'
 const VerificationCenterModal = React.lazy(() => import('./components/verification/VerificationCenterModal').then(m => ({ default: m.VerificationCenterModal })));
 const SettingsView = React.lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
 const AdminHubView = React.lazy(() => import('./components/admin/AdminHubView').then(m => ({ default: m.AdminHubView })));
+const ExecutiveCouncilHubView = React.lazy(() => import('./components/admin/ExecutiveCouncilHubView').then(m => ({ default: m.ExecutiveCouncilHubView })));
 const ResetPasswordView = React.lazy(() => import('./components/ResetPasswordView').then(m => ({ default: m.ResetPasswordView })));
+import { isExecutiveCouncilEmail } from './services/executiveCouncilService';
 
 const ViewLoadingFallback = () => (
   <div className="w-full py-20 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
@@ -75,6 +77,7 @@ function AlumniAppContent() {
       if (window.location.hash) {
         const h = window.location.hash.replace('#', '').toLowerCase();
         if (h === 'reset-password' || h === 'recovery') return 'reset-password';
+        if (h === 'council' || h === 'executive-council' || h === 'council-admin') return 'council';
         if (h === 'admin' || h === 'dashboard/admin' || h === 'dashboard-admin') return 'admin';
         if (h.startsWith('post-') || h === 'dashboard' || h === 'feed') return 'feed';
         if (h.startsWith('blood-req-')) return 'emergency';
@@ -184,7 +187,15 @@ function AlumniAppContent() {
   useEffect(() => {
     const handleHashChange = () => {
       const h = window.location.hash.replace('#', '');
-      if (h === 'admin' || h === 'dashboard/admin' || h === 'dashboard-admin') {
+      if (h === 'council' || h === 'executive-council' || h === 'council-admin') {
+        const isCouncil = isExecutiveCouncilEmail(currentUser.email);
+        if (isCouncil) {
+          setRoute('council');
+        } else {
+          setRoute('feed');
+          window.location.hash = 'dashboard';
+        }
+      } else if (h === 'admin' || h === 'dashboard/admin' || h === 'dashboard-admin') {
         const isAdminOrMod = currentUser.role === 'admin' || currentUser.role === 'moderator';
         if (isAdminOrMod) {
           setRoute('admin');
@@ -204,10 +215,18 @@ function AlumniAppContent() {
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [currentUser.role]);
+  }, [currentUser.role, currentUser.email]);
 
-  // Strict Security Route Guard: Immediate redirection if non-admin lands on admin route
+  // Strict Security Route Guard: Immediate redirection if non-admin lands on admin/council route
   useEffect(() => {
+    const isCouncilRoute = route === 'council' || route === 'executive-council' || route === 'council-admin';
+    if (isCouncilRoute && !isAuthInitializing && isLoggedIn) {
+      if (!isExecutiveCouncilEmail(currentUser.email)) {
+        setRoute('feed');
+        window.location.hash = 'dashboard';
+      }
+    }
+
     const isAdminRoute = route === 'admin' || route === 'dashboard/admin' || route === 'dashboard-admin';
     if (isAdminRoute && !isAuthInitializing && isLoggedIn) {
       const hasPrivileges = currentUser.role === 'admin' || currentUser.role === 'moderator';
@@ -216,10 +235,15 @@ function AlumniAppContent() {
         window.location.hash = 'dashboard';
       }
     }
-  }, [route, currentUser.role, isAuthInitializing, isLoggedIn]);
+  }, [route, currentUser.role, currentUser.email, isAuthInitializing, isLoggedIn]);
 
   const navigateTo = (newRoute: string, keepSelectedProfile = false) => {
     let target = newRoute;
+    if (target === 'council' || target === 'executive-council' || target === 'council-admin') {
+      if (!isExecutiveCouncilEmail(currentUser.email)) {
+        target = 'feed';
+      }
+    }
     if (target === 'admin' || target === 'dashboard/admin' || target === 'dashboard-admin') {
       const hasPrivileges = currentUser.role === 'admin' || currentUser.role === 'moderator';
       if (!hasPrivileges) {
@@ -622,6 +646,15 @@ function AlumniAppContent() {
                 {(route === 'admin' || route === 'dashboard/admin' || route === 'dashboard-admin') && (
                   currentUser.role === 'admin' || currentUser.role === 'moderator' ? (
                     <AdminHubView
+                      onNavigate={navigateTo}
+                      onViewProfile={handleViewProfile}
+                    />
+                  ) : null
+                )}
+
+                {(route === 'council' || route === 'executive-council' || route === 'council-admin') && (
+                  isExecutiveCouncilEmail(currentUser.email) ? (
+                    <ExecutiveCouncilHubView
                       onNavigate={navigateTo}
                       onViewProfile={handleViewProfile}
                     />

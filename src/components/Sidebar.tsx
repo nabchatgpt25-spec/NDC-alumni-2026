@@ -19,6 +19,7 @@ import {
   Sun,
   Moon,
   ShieldCheck,
+  ShieldAlert,
   Settings,
   Sparkles,
 } from 'lucide-react';
@@ -27,6 +28,8 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { NDCLogo } from './NDCLogo';
 import { loadVouchRequests } from '../utils/verificationService';
+import { useSiteSettings } from '../hooks/useSiteSettings';
+import { isExecutiveCouncilEmail } from '../services/executiveCouncilService';
 
 export interface NavItemConfig {
   id: string;
@@ -61,10 +64,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const { currentUser } = useAuth();
+  const { settings } = useSiteSettings();
   const isVerified = (currentUser.verificationStatus || 'verified') === 'verified';
   const pendingCount = loadVouchRequests().filter((r) => r.status === 'pending').length;
 
   const isAdminOrMod = currentUser.role === 'admin' || currentUser.role === 'moderator';
+  const isCouncil = isExecutiveCouncilEmail(currentUser.email);
 
   // Segment 1: MAIN Navigation
   const mainNavItems: NavItemConfig[] = [
@@ -74,18 +79,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'map', label: 'Alumni Map', icon: MapPin },
   ];
 
-  // Segment 1.5: ADMINISTRATION (Strictly for Admins & Moderators)
-  const adminNavItems: NavItemConfig[] = isAdminOrMod
-    ? [
-        {
-          id: 'admin',
-          label: 'Admin Hub',
-          icon: ShieldCheck,
-          badge: currentUser.role === 'admin' ? 'ADMIN' : 'MOD',
-          badgeType: 'hot',
-        },
-      ]
-    : [];
+  // Segment 1.5: ADMINISTRATION (Includes Executive Council strictly for 4-5 whitelisted Gmails)
+  const adminNavItems: NavItemConfig[] = [];
+
+  // ONLY show Executive Council authority on the sidebar when logged in with an authorized council Gmail
+  if (isCouncil) {
+    adminNavItems.push({
+      id: 'council',
+      label: 'Executive Council',
+      icon: ShieldAlert,
+      badge: 'COUNCIL',
+      badgeType: 'hot',
+    });
+  }
+
+  if (isAdminOrMod) {
+    adminNavItems.push({
+      id: 'admin',
+      label: 'Admin Hub',
+      icon: ShieldCheck,
+      badge: currentUser.role === 'admin' ? 'ADMIN' : 'MOD',
+      badgeType: 'hot',
+    });
+  }
 
   // Segment 2: COMMUNITY Navigation
   const communityNavItems: NavItemConfig[] = [
@@ -108,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ? [{ id: 'custom', title: 'MAIN', items: customNavItems }]
     : [
         { id: 'main', title: 'MAIN', items: mainNavItems },
-        ...(isAdminOrMod ? [{ id: 'admin', title: 'ADMINISTRATION', items: adminNavItems }] : []),
+        ...(adminNavItems.length > 0 ? [{ id: 'admin', title: 'ADMINISTRATION', items: adminNavItems }] : []),
         { id: 'community', title: 'COMMUNITY', items: communityNavItems },
         { id: 'services', title: 'SERVICES', items: servicesNavItems },
       ];
@@ -116,6 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isItemActive = (id: string) => {
     if (activeTab === id) return true;
     if (id === 'dashboard' && activeTab === 'feed') return true;
+    if (id === 'council' && (activeTab === 'council' || activeTab === 'executive-council' || activeTab === 'council-admin')) return true;
     if (id === 'admin' && (activeTab === 'admin' || activeTab === 'dashboard/admin' || activeTab === 'dashboard-admin')) return true;
     if (id === 'alumni' && activeTab === 'directory') return true;
     if (id === 'batches' && activeTab.startsWith('batch:')) return true;
@@ -212,10 +229,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="min-w-0">
               <div className="font-black text-sm text-slate-900 dark:text-white tracking-tight leading-tight truncate">
-                Notre Dame Alumni
+                {settings.branding.siteTitle || 'Notre Dame Alumni'}
               </div>
               <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold tracking-wide truncate">
-                Diligite Lumen Sapientiae
+                {settings.branding.shortTagline || 'Diligite Lumen Sapientiae'}
               </div>
             </div>
           </button>

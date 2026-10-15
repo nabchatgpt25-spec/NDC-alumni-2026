@@ -33,6 +33,7 @@ import {
   Lock,
   Sparkles,
   Award,
+  Sliders,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -53,15 +54,23 @@ import {
 import { AdminDocSubmission, UserRole } from '../../types';
 import { NDCLogo } from '../NDCLogo';
 import { AdminCommandCenterView } from './AdminCommandCenterView';
-
 import { AdminFeaturedAlumniManager } from './AdminFeaturedAlumniManager';
+import { AdminSiteCustomizer } from './AdminSiteCustomizer';
 
 interface AdminHubViewProps {
   onNavigate: (route: string) => void;
   onViewProfile?: (userId: number) => void;
 }
 
-type AdminTab = 'overview' | 'verifications' | 'users' | 'moderation' | 'audit' | 'command_center' | 'featured_alumni';
+type AdminTab =
+  | 'overview'
+  | 'site_customizer'
+  | 'verifications'
+  | 'users'
+  | 'moderation'
+  | 'audit'
+  | 'command_center'
+  | 'featured_alumni';
 
 export const AdminHubView: React.FC<AdminHubViewProps> = ({
   onNavigate,
@@ -488,6 +497,19 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
 
           <button
             type="button"
+            onClick={() => setActiveTab('site_customizer')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'site_customizer'
+                ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md font-black ring-2 ring-white/30'
+                : 'text-blue-300 hover:text-white hover:bg-white/10 font-bold'
+            }`}
+          >
+            <Sliders className="w-4 h-4 text-blue-300" />
+            <span>🎨 Branding, Logo &amp; Background</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('verifications')}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap relative ${
               activeTab === 'verifications'
@@ -755,6 +777,45 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
               </p>
             </div>
           </div>
+
+          {/* Institutional Studio Banner */}
+          <div
+            onClick={() => setActiveTab('site_customizer')}
+            className="p-6 rounded-3xl bg-gradient-to-r from-blue-900 via-indigo-900 to-blue-950 text-white shadow-xl border border-blue-800/80 hover:border-blue-400 transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 group"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/20 p-2 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Sliders className="w-6 h-6 text-blue-300" />
+              </div>
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/30 text-blue-200 text-[10px] font-black uppercase tracking-wider mb-1">
+                  <span>No-Code Control</span>
+                </div>
+                <h3 className="text-base font-black tracking-tight">
+                  Institutional Customizer &amp; Portal Studio
+                </h3>
+                <p className="text-xs text-blue-100/80 mt-0.5">
+                  Update college crest logo, campus background artwork, reunion countdown timer, and circulars live.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="px-5 py-2.5 bg-white text-slate-950 font-black text-xs rounded-xl shadow-md group-hover:bg-blue-50 transition-colors flex items-center gap-1.5 shrink-0 self-start md:self-auto cursor-pointer"
+            >
+              <span>Open Studio</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB: SITE CUSTOMIZER (NO-CODE LOGO, BACKGROUND, REUNION, ETC.)        */}
+      {/* ===================================================================== */}
+      {activeTab === 'site_customizer' && (
+        <div className="animate-in fade-in duration-200">
+          <AdminSiteCustomizer onShowToast={showToast} />
         </div>
       )}
 

@@ -8,8 +8,9 @@ import {
   ArrowRight,
   Music,
   Award,
-  BookOpen
+  BookOpen,
 } from 'lucide-react';
+import { useSiteSettings } from '../../hooks/useSiteSettings';
 
 interface ReunionCountdownSectionProps {
   onRegisterPrompt: () => void;
@@ -18,8 +19,10 @@ interface ReunionCountdownSectionProps {
 export const ReunionCountdownSection: React.FC<ReunionCountdownSectionProps> = ({
   onRegisterPrompt,
 }) => {
-  // Target date: December 25, 2026
-  const targetDate = new Date('2026-12-25T09:00:00');
+  const { settings } = useSiteSettings();
+  const { reunion } = settings;
+
+  const targetDateStr = reunion.targetDate || '2026-12-25T09:00:00';
 
   const [timeLeft, setTimeLeft] = useState<{
     days: number;
@@ -34,6 +37,8 @@ export const ReunionCountdownSection: React.FC<ReunionCountdownSectionProps> = (
   });
 
   useEffect(() => {
+    const targetDate = new Date(targetDateStr);
+
     const calculateTime = () => {
       const now = new Date().getTime();
       const difference = targetDate.getTime() - now;
@@ -53,7 +58,20 @@ export const ReunionCountdownSection: React.FC<ReunionCountdownSectionProps> = (
     calculateTime();
     const interval = setInterval(calculateTime, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [targetDateStr]);
+
+  const formattedDate = (() => {
+    try {
+      const d = new Date(targetDateStr);
+      return d.toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch {
+      return 'December 25, 2026';
+    }
+  })();
 
   return (
     <section className="py-16 sm:py-20 max-w-7xl mx-auto px-4 sm:px-6">
@@ -71,21 +89,22 @@ export const ReunionCountdownSection: React.FC<ReunionCountdownSectionProps> = (
             </div>
 
             <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight mb-4">
-              Notre Dame Grand Reunion & Platinum Jubilee Gala
+              {reunion.eventTitle || 'Notre Dame Grand Reunion & Platinum Jubilee Gala'}
             </h2>
 
             <p className="text-xs sm:text-sm text-blue-100/80 leading-relaxed max-w-xl mb-6">
-              The grandest congregation of Notre Dame College graduates. Rekindle cherished memories with mentors, Holy Cross fathers, seniors, batchmates, and juniors under the historic campus sky of Motijheel.
+              {reunion.description ||
+                'The grandest congregation of Notre Dame College graduates. Rekindle cherished memories with mentors, Holy Cross fathers, seniors, batchmates, and juniors under the historic campus sky of Motijheel.'}
             </p>
 
             <div className="flex flex-wrap items-center gap-y-2 gap-x-5 text-xs text-blue-200 mb-8">
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-blue-400" />
-                <span>December 25–26, 2026</span>
+                <span>{formattedDate}</span>
               </span>
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-4 h-4 text-amber-400" />
-                <span>Notre Dame College Campus Grounds, Motijheel, Dhaka</span>
+                <span>{reunion.venue || 'Notre Dame College Campus Grounds, Motijheel, Dhaka'}</span>
               </span>
             </div>
 
@@ -165,7 +184,15 @@ export const ReunionCountdownSection: React.FC<ReunionCountdownSectionProps> = (
               </div>
 
               <p className="text-xs text-blue-200/90 leading-relaxed font-medium">
-                Over <b className="text-white">1,500+ alumni</b> already pre-registered across batches. Make sure your batch is represented in full strength!
+                Registration Status:{' '}
+                <span className="font-bold text-amber-300 uppercase tracking-wide">
+                  {reunion.registrationStatus?.replace('_', ' ')}
+                </span>
+                {reunion.ticketFee && (
+                  <span className="block mt-1 text-[11px] text-blue-100">
+                    Pass Fee: {reunion.ticketFee}
+                  </span>
+                )}
               </p>
             </div>
           </div>
