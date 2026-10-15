@@ -308,6 +308,8 @@ export const Header: React.FC<HeaderProps> = ({
                       const isLike = item.type === 'like';
                       const isComment = item.type === 'comment';
                       const isBlood = item.type === 'blood';
+                      const isMentorship = item.type === 'mentorship';
+                      const isCareer = item.type === 'career';
 
                       return (
                         <div
@@ -332,11 +334,19 @@ export const Header: React.FC<HeaderProps> = ({
                                 className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs ${
                                   isBlood
                                     ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 ring-2 ring-rose-200 dark:ring-rose-900'
+                                    : isMentorship
+                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300 ring-2 ring-amber-200 dark:ring-amber-900'
+                                    : isCareer
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 ring-2 ring-emerald-200 dark:ring-emerald-900'
                                     : 'bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300'
                                 }`}
                               >
                                 {isBlood ? (
                                   <Droplet className="w-5 h-5 fill-current" />
+                                ) : isMentorship ? (
+                                  <GraduationCap className="w-5 h-5" />
+                                ) : isCareer ? (
+                                  <Briefcase className="w-5 h-5" />
                                 ) : (
                                   <User className="w-5 h-5" />
                                 )}
@@ -352,6 +362,10 @@ export const Header: React.FC<HeaderProps> = ({
                                   ? 'bg-emerald-600'
                                   : isBlood
                                   ? 'bg-rose-600'
+                                  : isMentorship
+                                  ? 'bg-amber-500'
+                                  : isCareer
+                                  ? 'bg-emerald-600'
                                   : 'bg-indigo-600'
                               }`}
                             >
@@ -361,6 +375,10 @@ export const Header: React.FC<HeaderProps> = ({
                                 <MessageCircle className="w-2.5 h-2.5 fill-current" />
                               ) : isBlood ? (
                                 <Heart className="w-2.5 h-2.5 fill-current" />
+                              ) : isMentorship ? (
+                                <GraduationCap className="w-2.5 h-2.5" />
+                              ) : isCareer ? (
+                                <Briefcase className="w-2.5 h-2.5" />
                               ) : (
                                 <ShieldCheck className="w-2.5 h-2.5" />
                               )}

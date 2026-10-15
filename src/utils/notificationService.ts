@@ -406,6 +406,9 @@ export async function loadMergedNotifications(userId: number): Promise<Notificat
     if (item.actorId && item.actorId === userId) {
       continue;
     }
+    if (item.targetUserId && item.targetUserId !== userId) {
+      continue;
+    }
 
     // Generate semantic signature
     const signature = `${item.type}_${item.actorId || 0}_${item.postId || item.bloodRequestId || item.photoId || ''}_${(item.title || '').trim()}`;

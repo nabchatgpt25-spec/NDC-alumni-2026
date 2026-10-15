@@ -21,6 +21,7 @@ import {
   XCircle,
   Zap,
   ChevronDown,
+  GraduationCap,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -933,6 +934,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             'Instant notifications when classmates vouch for you or administrators approve credentials.',
             'verification_alerts',
             <ShieldCheck className="w-4 h-4" />
+          )}
+
+          {renderToggle(
+            'Mentorship & Career direct alerts',
+            'Strict 1-to-1 notifications when juniors ask you for senior guidance, mentors reply to your questions, or alumni apply to your career postings.',
+            'mentorship_career_alerts',
+            <GraduationCap className="w-4 h-4" />
           )}
         </div>
       )}

@@ -2184,7 +2184,17 @@ export async function createNotificationInDb(params: {
 }): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
-  const validTypes = ['like', 'comment', 'post', 'system', 'blood', 'verification'];
+  // STRICT RECIPIENT PRIVACY & ZERO SPAM:
+  // 1. Positive recipientId required (never broadcast)
+  if (!params.recipientId || params.recipientId <= 0) {
+    return false;
+  }
+  // 2. Never notify user of their own actions
+  if (params.actorId && Number(params.actorId) === Number(params.recipientId)) {
+    return false;
+  }
+
+  const validTypes = ['like', 'comment', 'post', 'system', 'blood', 'verification', 'mentorship', 'career'];
   const normalizedType = (params.type || 'system').toLowerCase();
   const type = validTypes.includes(normalizedType) ? normalizedType : 'system';
 
