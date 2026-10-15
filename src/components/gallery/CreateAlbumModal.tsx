@@ -11,7 +11,8 @@ import {
   UploadCloud,
   Link2
 } from 'lucide-react';
-import { GalleryAlbum } from '../../types';
+import { GalleryAlbum, GalleryPhoto } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 interface CreateAlbumModalProps {
   isOpen: boolean;
@@ -51,12 +52,15 @@ export const CreateAlbumModal: React.FC<CreateAlbumModalProps> = ({
   onClose,
   onCreateAlbum,
 }) => {
+  const { currentUser } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<GalleryAlbum['category']>('reunion');
   const [date, setDate] = useState('');
   const [location, setLocation] = useState('NDC Campus, Motijheel, Dhaka');
-  const [batchYear, setBatchYear] = useState<number>(0);
+  const [batchYear, setBatchYear] = useState<number>(
+    currentUser?.batchYear && currentUser.batchYear >= 1949 ? currentUser.batchYear : 0
+  );
   const [selectedCover, setSelectedCover] = useState<string>(PRESET_COVERS[0].url);
   const [customCoverUrl, setCustomCoverUrl] = useState('');
   const [coverSourceMode, setCoverSourceMode] = useState<'preset' | 'custom' | 'file'>('preset');
@@ -87,6 +91,31 @@ export const CreateAlbumModal: React.FC<CreateAlbumModalProps> = ({
         ? customCoverUrl.trim()
         : selectedCover;
 
+    const uploaderFullName = currentUser?.fullName || 'Notre Dame Alumnus';
+    const uploaderAvatarUrl =
+      currentUser?.avatarUrl ||
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
+    const effectiveBatch =
+      currentUser?.batchYear && currentUser.batchYear >= 1949
+        ? currentUser.batchYear
+        : (batchYear > 0 ? batchYear : 0);
+
+    const initialPhotos: GalleryPhoto[] = [
+      {
+        id: `p-${Date.now()}`,
+        url: finalCover,
+        caption: `${title.trim()} - Album Cover`,
+        uploaderId: currentUser?.id,
+        uploaderName: uploaderFullName,
+        uploaderAvatar: uploaderAvatarUrl,
+        batchYear: effectiveBatch > 0 ? effectiveBatch : undefined,
+        uploadedAt: 'Today',
+        likesCount: 1,
+        likedByMe: true,
+        tags: ['Cover', category],
+      },
+    ];
+
     const newAlbum: GalleryAlbum = {
       id: Date.now(),
       title: title.trim(),
@@ -94,26 +123,12 @@ export const CreateAlbumModal: React.FC<CreateAlbumModalProps> = ({
       category,
       date: date.trim() || 'Recent Collection',
       location: location.trim() || 'NDC Campus, Motijheel, Dhaka',
-      batchYear,
-      photosCount: 1,
+      batchYear: effectiveBatch,
+      photosCount: initialPhotos.length,
       coverUrl: finalCover,
-      createdBy: 'You (Alumni Member)',
+      createdBy: uploaderFullName,
       createdDate: 'Just now',
-      photos: [
-        {
-          id: `p-${Date.now()}`,
-          url: finalCover,
-          caption: `${title.trim()} - Album Cover Photo`,
-          uploaderName: 'Dr. Nurul Anam Bashir',
-          uploaderAvatar:
-            'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=200&auto=format&fit=crop&q=80',
-          batchYear: 34,
-          uploadedAt: 'Today',
-          likesCount: 1,
-          likedByMe: true,
-          tags: ['Cover', category],
-        },
-      ],
+      photos: initialPhotos,
     };
 
     onCreateAlbum(newAlbum);

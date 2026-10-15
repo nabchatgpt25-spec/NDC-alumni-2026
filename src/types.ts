@@ -286,7 +286,7 @@ export interface PostItem {
     | string;
   isEdited?: boolean;
   isSaved?: boolean;
-  postType?: 'standard' | 'profile_photo_update' | 'cover_photo_update' | 'blood_request';
+  postType?: 'standard' | 'profile_photo_update' | 'cover_photo_update' | 'blood_request' | 'gallery_album';
   linked_url?: string;
   link_metadata?: any;
 }
@@ -297,11 +297,12 @@ export interface NotificationItem {
   message: string;
   timeAgo: string;
   unread: boolean;
-  type: 'like' | 'comment' | 'post' | 'system' | 'blood' | 'verification';
+  type: 'like' | 'comment' | 'post' | 'system' | 'blood' | 'verification' | 'mentorship' | 'career';
   targetRoute?: string;
   bloodRequestId?: string;
   targetUserId?: number;
   isMatchedDonorAlert?: boolean;
+  isOfficialNotice?: boolean;
   actorId?: number;
   actorName?: string;
   actorAvatar?: string;
@@ -402,6 +403,8 @@ export interface MentorshipRequest {
   createdAt: string;
   status: 'open' | 'answered' | 'resolved';
   answers?: MentorshipAnswer[];
+  targetMentorId?: number;
+  targetMentorName?: string;
 }
 
 export interface MentorOffer {

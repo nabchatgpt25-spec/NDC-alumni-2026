@@ -84,7 +84,8 @@ export const saveMentorshipRequests = (requests: MentorshipRequest[]) => {
 export const createMentorshipRequest = (
   topic: MentorshipCategory,
   question: string,
-  user: { id: number; name: string; batch?: number | null; avatar?: string; contact?: string }
+  user: { id: number; name: string; batch?: number | null; avatar?: string; contact?: string },
+  targetMentor?: { id: number; name: string }
 ): MentorshipRequest => {
   const current = loadMentorshipRequests();
   const newReq: MentorshipRequest = {
@@ -96,6 +97,8 @@ export const createMentorshipRequest = (
     topic,
     question: question.trim(),
     contactInfo: user.contact?.trim() || undefined,
+    targetMentorId: targetMentor?.id,
+    targetMentorName: targetMentor?.name,
     createdAt: 'Just now',
     status: 'open',
     answers: [],

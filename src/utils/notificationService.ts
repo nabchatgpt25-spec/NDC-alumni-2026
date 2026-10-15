@@ -2,6 +2,7 @@ import { AlumniProfile, BloodDonorProfile, BloodEmergencyRequest, GalleryPhoto, 
 import { createNotificationInDb, fetchNotificationsFromDb, markNotificationReadInDb } from '../services/supabaseService';
 import { formatFacebookTime } from './facebookTime';
 import { playSound } from './audio';
+import { getUserPreferences } from './userPreferences';
 
 export const PORTAL_NOTIFICATIONS_STORAGE_KEY = 'ndc_portal_notifications';
 
@@ -39,12 +40,15 @@ export function saveLocalNotifications(notifications: NotificationItem[]): void 
 
 /**
  * Core function to create, persist, and broadcast a notification across Supabase and client UI.
- * Does not notify the actor themselves (just like Facebook).
+ * STRICT RECIPIENT PRIVACY & ZERO SPAM:
+ * - Always requires an exact, valid recipientId (> 0).
+ * - Never notifies the user of their own actions (actorId === recipientId dropped immediately).
+ * - Respects recipient notification preferences from Settings.
  */
 export async function sendSocialNotification(params: {
   recipientId: number;
   actor: AlumniProfile;
-  type: 'like' | 'comment' | 'blood' | 'system' | 'post' | 'verification';
+  type: 'like' | 'comment' | 'blood' | 'system' | 'post' | 'verification' | 'mentorship' | 'career';
   title: string;
   message: string;
   targetRoute?: string;
@@ -53,13 +57,46 @@ export async function sendSocialNotification(params: {
   photoUrl?: string;
   bloodRequestId?: string;
   isMatchedDonorAlert?: boolean;
+  isOfficialNotice?: boolean;
 }): Promise<NotificationItem | null> {
   const actorId = Number(params.actor.id || params.actor.userId || 0);
   const recipientId = Number(params.recipientId);
 
-  // Guard: Facebook doesn't send notifications to yourself when you like or comment on your own post
-  if (!recipientId || recipientId <= 0 || (actorId > 0 && recipientId === actorId)) {
+  // Strict Rule 1: Always set exact recipient_id (positive integer)
+  if (!recipientId || recipientId <= 0) {
     return null;
+  }
+
+  // Strict Rule 2: Never notify the user of their own actions
+  if (actorId > 0 && recipientId === actorId) {
+    return null;
+  }
+
+  // Strict Rule 3: Respect user notification preferences from Settings
+  if (typeof window !== 'undefined') {
+    try {
+      const rawUser = localStorage.getItem('ndc_current_user');
+      if (rawUser) {
+        const u = JSON.parse(rawUser);
+        const currentUid = Number(u.id || u.userId || 0);
+        // If recipient is currently the local active user, check their live settings
+        if (currentUid === recipientId) {
+          const prefs = getUserPreferences();
+          if (prefs.in_app_notifications === false) {
+            return null; // Muted completely by user choice
+          }
+          if (params.type === 'verification' && prefs.verification_alerts === false) {
+            return null;
+          }
+          if (
+            (params.type === 'mentorship' || params.type === 'career') &&
+            prefs.mentorship_career_alerts === false
+          ) {
+            return null;
+          }
+        }
+      }
+    } catch {}
   }
 
   const newId = Date.now() + Math.floor(Math.random() * 1000);
@@ -72,7 +109,7 @@ export async function sendSocialNotification(params: {
     timeAgo: 'Just now',
     unread: true,
     type: params.type,
-    targetRoute: params.targetRoute || 'feed',
+    targetRoute: params.targetRoute || (params.type === 'mentorship' ? 'mentorship' : params.type === 'career' ? 'career' : 'feed'),
     targetUserId: recipientId,
     actorId: actorId > 0 ? actorId : undefined,
     actorName: params.actor.fullName,
@@ -82,6 +119,7 @@ export async function sendSocialNotification(params: {
     photoUrl: params.photoUrl,
     bloodRequestId: params.bloodRequestId,
     isMatchedDonorAlert: params.isMatchedDonorAlert,
+    isOfficialNotice: params.isOfficialNotice,
     createdAt: nowIso,
   };
 
@@ -90,7 +128,7 @@ export async function sendSocialNotification(params: {
   const updated = [notification, ...current.filter((n) => n.id !== newId)].slice(0, 100);
   saveLocalNotifications(updated);
 
-  // 2. Play subtle chime if current logged in user is the recipient
+  // 2. Play subtle chime if current logged in user is the recipient and hasn't muted in-app alerts
   if (typeof window !== 'undefined') {
     try {
       const rawUser = localStorage.getItem('ndc_current_user');
@@ -98,7 +136,10 @@ export async function sendSocialNotification(params: {
         const u = JSON.parse(rawUser);
         const currentUid = Number(u.id || u.userId || 0);
         if (currentUid === recipientId) {
-          playSound('notification');
+          const prefs = getUserPreferences();
+          if (prefs.in_app_notifications !== false) {
+            playSound('notification');
+          }
         }
       }
     } catch {}
@@ -297,17 +338,51 @@ export async function notifyMatchedBloodDonors(
 /**
  * Merges Supabase notifications and client local notifications for the active user,
  * formats all timestamps in authentic Facebook style, and sorts them newest first.
+ * STRICT ZERO SPAM & PREFERENCE ENFORCEMENT:
+ * - If user disabled in-app notifications in Settings, returns empty list.
+ * - Enforces exact recipient targeting (never broadcasts except rare official admin notices).
+ * - Never includes self-actions.
+ * - Filters out disabled preference categories (e.g. verification_alerts, mentorship_career_alerts).
  */
 export async function loadMergedNotifications(userId: number): Promise<NotificationItem[]> {
+  const prefs = getUserPreferences();
+
+  // 1. If user disabled in-app notifications in Settings, respect choice and mute entirely
+  if (prefs.in_app_notifications === false) {
+    return [];
+  }
+
   const localList = getLocalNotifications();
 
-  // Filter local items relevant to this user or general community alerts, excluding self-activity
+  // 2. Strict Recipient & Zero Spam Filter:
+  // - Must match current recipient userId (or rare official admin notice with no targetUserId)
+  // - Never notify user of their own actions
+  // - Respect category preference toggles
   const userLocal = localList.filter((item) => {
-    if (item.actorId && item.actorId === userId && item.type !== 'system' && !item.isMatchedDonorAlert) {
+    // Never notify user of their own actions
+    if (item.actorId && item.actorId === userId) {
       return false;
     }
-    if (!item.targetUserId) return true; // Community/portal broadcast
-    return item.targetUserId === userId;
+
+    // Strict recipient targeting:
+    if (item.targetUserId) {
+      if (item.targetUserId !== userId) return false;
+    } else {
+      // If no targetUserId: Only rare official admin notices are allowed through
+      if (!(item.type === 'system' && item.isOfficialNotice)) {
+        return false;
+      }
+    }
+
+    // Category preferences
+    if (item.type === 'verification' && prefs.verification_alerts === false) {
+      return false;
+    }
+    if ((item.type === 'mentorship' || item.type === 'career') && prefs.mentorship_career_alerts === false) {
+      return false;
+    }
+
+    return true;
   });
 
   let dbList: NotificationItem[] = [];
@@ -321,6 +396,17 @@ export async function loadMergedNotifications(userId: number): Promise<Notificat
   const map = new Map<string, NotificationItem>();
 
   for (const item of [...userLocal, ...dbList]) {
+    // Category preferences check on dbList as well
+    if (item.type === 'verification' && prefs.verification_alerts === false) {
+      continue;
+    }
+    if ((item.type === 'mentorship' || item.type === 'career') && prefs.mentorship_career_alerts === false) {
+      continue;
+    }
+    if (item.actorId && item.actorId === userId) {
+      continue;
+    }
+
     // Generate semantic signature
     const signature = `${item.type}_${item.actorId || 0}_${item.postId || item.bloodRequestId || item.photoId || ''}_${(item.title || '').trim()}`;
     const key = signature.length > 5 ? signature : `id_${item.id}`;
@@ -358,4 +444,103 @@ export async function loadMergedNotifications(userId: number): Promise<Notificat
   });
 
   return merged;
+}
+
+/**
+ * 1. Mentorship: When a user asks a mentor a question:
+ * STRICT 1-to-1: Notifies ONLY that specific mentor.
+ * Does NOT broadcast to any other users.
+ * Never notifies the user of their own actions.
+ * Respects mentor's notification preferences.
+ */
+export async function notifyMentorshipQuestion(params: {
+  mentorId: number;
+  mentorName: string;
+  questionText: string;
+  topic: string;
+  actor: AlumniProfile;
+}): Promise<NotificationItem | null> {
+  const mentorId = Number(params.mentorId);
+  const actorId = Number(params.actor.id || params.actor.userId || 0);
+
+  // Strict targeting: must have valid positive recipient and cannot notify self
+  if (!mentorId || mentorId <= 0 || (actorId > 0 && mentorId === actorId)) {
+    return null;
+  }
+
+  const cleanText = params.questionText.replace(/\s+/g, ' ').trim();
+  const snippet = cleanText.length > 70 ? `${cleanText.slice(0, 70)}...` : cleanText;
+
+  return sendSocialNotification({
+    recipientId: mentorId,
+    actor: params.actor,
+    type: 'mentorship',
+    title: `${params.actor.fullName} asked you for mentorship advice (${params.topic}).`,
+    message: snippet ? `"${snippet}"` : 'Asked you a direct mentorship question.',
+    targetRoute: 'mentorship',
+  });
+}
+
+/**
+ * 1. Mentorship: When a mentor replies to a mentorship question:
+ * STRICT 1-to-1: Notifies ONLY the original requester.
+ * Does NOT broadcast to any other users.
+ * Never notifies the mentor of their own reply.
+ * Respects requester's notification preferences.
+ */
+export async function notifyMentorshipAnswer(params: {
+  requesterId: number;
+  answerText: string;
+  actor: AlumniProfile;
+}): Promise<NotificationItem | null> {
+  const requesterId = Number(params.requesterId);
+  const actorId = Number(params.actor.id || params.actor.userId || 0);
+
+  // Strict targeting: must have valid positive recipient and cannot notify self
+  if (!requesterId || requesterId <= 0 || (actorId > 0 && requesterId === actorId)) {
+    return null;
+  }
+
+  const cleanText = params.answerText.replace(/\s+/g, ' ').trim();
+  const snippet = cleanText.length > 70 ? `${cleanText.slice(0, 70)}...` : cleanText;
+
+  return sendSocialNotification({
+    recipientId: requesterId,
+    actor: params.actor,
+    type: 'mentorship',
+    title: `${params.actor.fullName} answered your mentorship question.`,
+    message: snippet ? `"${snippet}"` : 'Provided senior advice to your question.',
+    targetRoute: 'mentorship',
+  });
+}
+
+/**
+ * 2. Career Portal: When an alumnus applies to a job:
+ * STRICT 1-to-1: Notifies ONLY the job poster.
+ * Does NOT broadcast to any other users.
+ * Never notifies the user of their own actions.
+ * Respects job poster's notification preferences.
+ */
+export async function notifyCareerApplication(params: {
+  posterId: number;
+  jobTitle: string;
+  company: string;
+  actor: AlumniProfile;
+}): Promise<NotificationItem | null> {
+  const posterId = Number(params.posterId);
+  const actorId = Number(params.actor.id || params.actor.userId || 0);
+
+  // Strict targeting: must have valid positive recipient and cannot notify self
+  if (!posterId || posterId <= 0 || (actorId > 0 && posterId === actorId)) {
+    return null;
+  }
+
+  return sendSocialNotification({
+    recipientId: posterId,
+    actor: params.actor,
+    type: 'career',
+    title: `New Job Application: ${params.jobTitle}`,
+    message: `${params.actor.fullName} (${params.actor.batchYear ? `HSC ${params.actor.batchYear}` : 'Alum'}) applied for ${params.jobTitle} at ${params.company}.`,
+    targetRoute: 'career',
+  });
 }

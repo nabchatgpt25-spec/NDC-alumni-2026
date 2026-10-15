@@ -90,14 +90,20 @@ function AlumniAppContent() {
   });
 
   // Whenever user logs in, ALWAYS take them to the central social media feed / dashboard
-  // (unless currently in password recovery flow)
+  // (unless currently in password recovery flow) and track login timestamp for delayed notifications
   const wasLoggedInRef = useRef(isLoggedIn);
   useEffect(() => {
     if (!wasLoggedInRef.current && isLoggedIn && !isPasswordRecovery) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('ndc_login_timestamp', String(Date.now()));
+      }
       // User just logged in — clear any stale #profile/#alumni hash and default to feed/dashboard
       setRoute('feed');
       window.location.hash = 'feed';
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (isLoggedIn && typeof window !== 'undefined' && !sessionStorage.getItem('ndc_login_timestamp')) {
+      // Initialize login timestamp if session is active but timestamp was not recorded yet
+      sessionStorage.setItem('ndc_login_timestamp', String(Date.now()));
     }
     wasLoggedInRef.current = isLoggedIn;
   }, [isLoggedIn, isPasswordRecovery]);
@@ -190,7 +196,7 @@ function AlumniAppContent() {
         setRoute('feed');
       } else if (h.startsWith('blood-req-')) {
         setRoute('emergency');
-      } else if (h.startsWith('photo-')) {
+      } else if (h.startsWith('photo-') || h.startsWith('album-') || h.startsWith('gallery-album-')) {
         setRoute('gallery');
       } else if (h) {
         setRoute(h);
@@ -223,8 +229,17 @@ function AlumniAppContent() {
     if (target === 'profile' && !keepSelectedProfile) {
       setSelectedProfileId(currentUser.id);
     }
+    if (target.startsWith('album-') || target.startsWith('gallery-album-')) {
+      const albumId = target.replace(/^(album-|gallery-album-)/, '');
+      setRoute('gallery');
+      window.location.hash = `album-${albumId}`;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setRoute(target);
-    window.location.hash = target === 'feed' ? 'dashboard' : target;
+    if (!target.startsWith('gallery') || !window.location.hash.startsWith('#album-')) {
+      window.location.hash = target === 'feed' ? 'dashboard' : target;
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -555,8 +570,8 @@ function AlumniAppContent() {
                   <UpcomingFeatureView type="events" onNavigate={navigateTo} />
                 )}
 
-                {route === 'gallery' && (
-                  <GalleryView />
+                {(route === 'gallery' || route.startsWith('album-') || route.startsWith('gallery-album-')) && (
+                  <GalleryView onNavigate={navigateTo} />
                 )}
 
                 {route === 'careers' && (
@@ -588,6 +603,12 @@ function AlumniAppContent() {
                     backLabel={getBackLabel()}
                     onOpenVerificationCenter={openVerificationCenter}
                     onNavigate={navigateTo}
+                    onSelectProfile={(id) => {
+                      setSelectedProfileId(id);
+                      setRoute('profile');
+                      window.location.hash = 'profile';
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
                   />
                 )}
 

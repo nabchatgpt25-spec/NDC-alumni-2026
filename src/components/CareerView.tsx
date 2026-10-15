@@ -27,6 +27,7 @@ import {
   applyToCareerOpportunity,
   deleteCareerOpportunity,
 } from '../utils/careerService';
+import { notifyCareerApplication } from '../utils/notificationService';
 
 interface CareerViewProps {
   onViewProfile?: (profileId: number) => void;
@@ -173,6 +174,8 @@ export const CareerView: React.FC<CareerViewProps> = ({ onViewProfile, onNavigat
       return;
     }
 
+    const targetOpp = opportunities.find((item) => item.id === opportunityId);
+
     const result = applyToCareerOpportunity(opportunityId, {
       applicantId: currentUser.id || 0,
       applicantName: currentUser.fullName || 'Notredamian Alumnus',
@@ -190,6 +193,18 @@ export const CareerView: React.FC<CareerViewProps> = ({ onViewProfile, onNavigat
 
     if (result.success) {
       setOpportunities(loadCareerOpportunities());
+
+      // STRICT 1-to-1 Community Notification:
+      // When an alumnus applies to a job, notify ONLY the job poster.
+      // Do NOT broadcast to other users. Never notify self.
+      if (targetOpp && targetOpp.posterId && currentUser) {
+        notifyCareerApplication({
+          posterId: targetOpp.posterId,
+          jobTitle: targetOpp.title,
+          company: targetOpp.company,
+          actor: currentUser,
+        });
+      }
     }
 
     setTimeout(() => {

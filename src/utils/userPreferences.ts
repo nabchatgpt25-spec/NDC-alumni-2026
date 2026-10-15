@@ -18,6 +18,7 @@ export interface UserPreferences {
   email_notifications: boolean;
   in_app_notifications: boolean;
   verification_alerts: boolean;
+  mentorship_career_alerts: boolean;
 
   // Privacy
   is_public: boolean;
@@ -35,6 +36,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   email_notifications: true,
   in_app_notifications: true,
   verification_alerts: true,
+  mentorship_career_alerts: true,
 
   is_public: true,
   show_contact_to_verified: true,

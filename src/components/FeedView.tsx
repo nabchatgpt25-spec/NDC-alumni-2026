@@ -70,6 +70,7 @@ import {
 import { Video as FeedVideoPlayer } from './feed/Video';
 import { LinkPreview } from './feed/LinkPreview';
 import { PremiumPostCarousel } from './feed/PremiumPostCarousel';
+import { GalleryAlbumPostCard } from './feed/GalleryAlbumPostCard';
 import { fetchLinkPreview, type LinkMetadata } from '../services/linkPreviewService';
 import {
   getUserPreferences,
@@ -149,6 +150,16 @@ export interface CategoryItem {
 }
 
 const FEED_PAGE_SIZE = 12;
+
+const normalizeFeedPost = (p: PostItem): PostItem => ({
+  ...p,
+  linked_url: p.linked_url && p.linked_url.startsWith('#') ? undefined : p.linked_url,
+  comments: Array.isArray(p.comments) ? p.comments : [],
+  images: Array.isArray(p.images) ? p.images : [],
+  videos: Array.isArray(p.videos) ? p.videos : [],
+  commentsCount: typeof p.commentsCount === 'number' ? p.commentsCount : (p.comments?.length || 0),
+  likesCount: typeof p.likesCount === 'number' ? p.likesCount : 0,
+});
 
 const CATEGORIES: CategoryItem[] = [
   {
@@ -353,17 +364,15 @@ export const FeedView: React.FC<FeedViewProps> = ({
     fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, 0)
       .then((dbPosts) => {
         if (!isMounted) return;
-        const loadedPosts = (dbPosts || []).filter((p) => !isProfilePhotoPost(p));
+        const loadedPosts = (dbPosts || []).filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
         try {
           const local = localStorage.getItem('ndc_alumni_posts');
           if (local) {
             const parsed: PostItem[] = JSON.parse(local);
-            const cleanedLocal = parsed.filter((p) => !isProfilePhotoPost(p));
-            if (cleanedLocal.length !== parsed.length) {
-              try {
-                localStorage.setItem('ndc_alumni_posts', JSON.stringify(cleanedLocal));
-              } catch {}
-            }
+            const cleanedLocal = parsed.filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
+            try {
+              localStorage.setItem('ndc_alumni_posts', JSON.stringify(cleanedLocal));
+            } catch {}
             const merged = [...cleanedLocal.filter((p) => !loadedPosts.some((lp) => lp.id === p.id)), ...loadedPosts];
             nextFeedOffsetRef.current = merged.length;
             setPosts(merged);
@@ -382,7 +391,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
             const local = localStorage.getItem('ndc_alumni_posts');
             if (local) {
               const parsed: PostItem[] = JSON.parse(local);
-              const cleanedLocal = parsed.filter((p) => !isProfilePhotoPost(p));
+              const cleanedLocal = parsed.filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
               setPosts(cleanedLocal);
               return;
             }
@@ -402,7 +411,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
     const handlePostCreated = (e: Event) => {
       const custom = e as CustomEvent<{ post: PostItem; replaceTempId?: number }>;
       if (!custom.detail?.post) return;
-      const newPost = custom.detail.post;
+      const newPost = normalizeFeedPost(custom.detail.post);
       if (isProfilePhotoPost(newPost)) return;
       setPosts((prev) => {
         if (custom.detail.replaceTempId) {
@@ -480,7 +489,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
   // Facebook-style "New Post" Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isDailyQuestionAnswer, setIsDailyQuestionAnswer] = useState(false);
   const [postBackground, setPostBackground] = useState<string>('default');
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [postFeeling, setPostFeeling] = useState<string | null>(null);
@@ -563,7 +571,16 @@ export const FeedView: React.FC<FeedViewProps> = ({
       }
     };
     window.addEventListener('ndc_user_prefs_changed', handlePrefsChange);
-    return () => window.removeEventListener('ndc_user_prefs_changed', handlePrefsChange);
+
+    const handleStreakNotification = () => {
+      showToast('🔥 আজকের নটর ডেম নস্টালজিয়া প্রশ্নের সময় হয়েছে! উত্তর দিয়ে স্ট্রিক বাড়িয়ে নিন।');
+    };
+    window.addEventListener('ndc_daily_streak_available', handleStreakNotification);
+
+    return () => {
+      window.removeEventListener('ndc_user_prefs_changed', handlePrefsChange);
+      window.removeEventListener('ndc_daily_streak_available', handleStreakNotification);
+    };
   }, []);
 
   const showToast = (msg: string) => {
@@ -1091,20 +1108,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
       // Prepend the real database-persisted post with its assigned ID and clear temp
       setPosts((prev) => [res.post!, ...prev.filter((p) => p.id !== tempPostId && p.id !== res.post!.id)]);
-      if (finalContent.includes('আজকের প্রশ্ন:') || isDailyQuestionAnswer) {
-        const match = finalContent.match(/আজকের প্রশ্ন:\s*([^\n]+)(?:\n+আমার উত্তর:\s*([\s\S]+))?/);
-        const qText = match && match[1] ? match[1].trim() : 'আজকের প্রশ্ন';
-        const aText = match && match[2] ? match[2].trim() : finalContent.replace(/^আজকের প্রশ্ন:[^\n]+/, '').trim();
-
-        recordStreakAnswerInDb({
-          userId: currentUser.id,
-          authUserId: currentUser.authUserId,
-          questionText: qText,
-          answerText: aText || finalContent,
-          postId: res.post.id,
-        });
-        setIsDailyQuestionAnswer(false);
-      }
       setPostContent('');
       setAttachedImages([]);
       setAttachedVideos([]);
@@ -1220,6 +1223,17 @@ export const FeedView: React.FC<FeedViewProps> = ({
     });
   };
 
+  // Navigate directly into a specific Gallery Album Showcase
+  const handleViewAlbum = (albumId: number) => {
+    window.location.hash = `album-${albumId}`;
+    if (onNavigate) {
+      onNavigate('gallery');
+    } else {
+      window.dispatchEvent(new CustomEvent('ndc_navigate_route', { detail: { route: 'gallery' } }));
+    }
+    window.dispatchEvent(new CustomEvent('ndc_open_gallery_album', { detail: { albumId } }));
+  };
+
   // Refresh the first page directly from Supabase.
   const handleRefreshFeed = async () => {
     setHasNewPosts(false);
@@ -1227,7 +1241,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
     setIsLoadingPosts(true);
     try {
       const dbPosts = await fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, 0);
-      const loadedPosts = (dbPosts || []).filter((p) => !isProfilePhotoPost(p));
+      const loadedPosts = (dbPosts || []).filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
       nextFeedOffsetRef.current = loadedPosts.length;
       setPosts(loadedPosts);
       setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
@@ -1254,7 +1268,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
     try {
       const rawNextPage = await fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, offset);
-      const nextPage = (rawNextPage || []).filter((p) => !isProfilePhotoPost(p));
+      const nextPage = (rawNextPage || []).filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
       nextFeedOffsetRef.current = offset + nextPage.length;
       setPosts((previousPosts) => {
         const existingIds = new Set(previousPosts.map((post) => post.id));
@@ -1308,8 +1322,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
         if (p.id === postId) {
           return {
             ...p,
-            commentsCount: p.commentsCount + 1,
-            comments: [...p.comments, newComment],
+            commentsCount: (p.commentsCount || 0) + 1,
+            comments: [...(p.comments || []), newComment],
           };
         }
         return p;
@@ -1354,7 +1368,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id === postId) {
-          const updatedComments = p.comments.map((c) => {
+          const updatedComments = (p.comments || []).map((c) => {
             if (c.id === parentCommentId) {
               return {
                 ...c,
@@ -1375,19 +1389,6 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
     setReplyInputs({ ...replyInputs, [parentCommentId]: '' });
     setActiveReplyId(null);
-  };
-
-  const handleAnswerDailyQuestion = (questionText: string) => {
-    setIsDailyQuestionAnswer(true);
-    setPostContent(`আজকের প্রশ্ন: ${questionText}\n\nআমার উত্তর: `);
-    setIsCreateModalOpen(true);
-    setTimeout(() => {
-      if (composerTextareaRef.current) {
-        composerTextareaRef.current.focus();
-        const len = composerTextareaRef.current.value.length;
-        composerTextareaRef.current.setSelectionRange(len, len);
-      }
-    }, 120);
   };
 
   return (
@@ -1432,9 +1433,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
         onNavigateToBloodNetwork={() => onNavigate && onNavigate('emergency')}
       />
 
-      {/* Daily Nostalgia Question & Duolingo-style Streak */}
+      {/* Daily Nostalgia Question & Duolingo-style Streak (Appears 2 minutes after login; answers are strictly private to profile streak) */}
       <DailyQuestion
-        onAnswerQuestion={handleAnswerDailyQuestion}
         onViewProfile={onViewProfile}
       />
 
@@ -2793,6 +2793,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
                             Emergency Blood Request
                           </span>
                         )}
+                        {(post.postType === 'gallery_album' || post.link_metadata?.postType === 'gallery_album') && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50 shadow-2xs">
+                            <Camera className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                            {post.link_metadata?.actionType === 'upload_photos' ? 'Gallery Photos Added' : 'New Gallery Album'}
+                          </span>
+                        )}
                         {post.isEdited && (
                           <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
                             (edited)
@@ -2982,46 +2988,55 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   </div>
                 )}
 
-                {/* Facebook-style Profile Picture Showcase OR Regular Image Grid */}
-                {post.images && post.images.length > 0 && (
-                  isProfilePhotoPost(post) ? (
-                    <div className="mb-4 rounded-2xl sm:rounded-3xl p-6 sm:p-8 bg-gradient-to-b from-slate-100/90 to-slate-50/60 dark:from-slate-800/60 dark:to-slate-900/40 border border-slate-200/70 dark:border-slate-800 flex flex-col items-center justify-center relative overflow-hidden group">
-                      <div
-                        className="relative cursor-pointer"
-                        onClick={() => handleOpenLightbox(post, 0)}
-                      >
-                        <div className="w-48 h-48 sm:w-60 sm:h-60 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-2xl relative transition-transform duration-300 group-hover:scale-105 bg-white dark:bg-slate-800">
-                          <img
-                            src={post.images[0]}
-                            alt={post.fullName}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                            <span className="p-2 rounded-full bg-black/60 backdrop-blur-xs">
-                              <ZoomIn className="w-5 h-5 text-white" />
-                            </span>
+                {/* Dedicated Gallery Album Post with Photo Collage & View Full Album Link */}
+                {(post.postType === 'gallery_album' || post.link_metadata?.postType === 'gallery_album') ? (
+                  <GalleryAlbumPostCard
+                    post={post}
+                    onOpenLightbox={(idx) => handleOpenLightbox(post, idx)}
+                    onViewAlbum={(albumId) => handleViewAlbum(albumId)}
+                  />
+                ) : (
+                  /* Facebook-style Profile Picture Showcase OR Regular Image Grid */
+                  post.images && post.images.length > 0 && (
+                    isProfilePhotoPost(post) ? (
+                      <div className="mb-4 rounded-2xl sm:rounded-3xl p-6 sm:p-8 bg-gradient-to-b from-slate-100/90 to-slate-50/60 dark:from-slate-800/60 dark:to-slate-900/40 border border-slate-200/70 dark:border-slate-800 flex flex-col items-center justify-center relative overflow-hidden group">
+                        <div
+                          className="relative cursor-pointer"
+                          onClick={() => handleOpenLightbox(post, 0)}
+                        >
+                          <div className="w-48 h-48 sm:w-60 sm:h-60 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-2xl relative transition-transform duration-300 group-hover:scale-105 bg-white dark:bg-slate-800">
+                            <img
+                              src={post.images[0]}
+                              alt={post.fullName}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                              <span className="p-2 rounded-full bg-black/60 backdrop-blur-xs">
+                                <ZoomIn className="w-5 h-5 text-white" />
+                              </span>
+                            </div>
+                          </div>
+                          <div
+                            className="absolute bottom-1.5 right-1.5 p-2 rounded-full bg-blue-600 text-white ring-3 ring-white dark:ring-slate-800 shadow-md flex items-center justify-center"
+                            title="Profile Picture"
+                          >
+                            <Camera className="w-4 h-4" />
                           </div>
                         </div>
-                        <div
-                          className="absolute bottom-1.5 right-1.5 p-2 rounded-full bg-blue-600 text-white ring-3 ring-white dark:ring-slate-800 shadow-md flex items-center justify-center"
-                          title="Profile Picture"
-                        >
-                          <Camera className="w-4 h-4" />
+                        <div className="mt-3.5 text-center">
+                          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
+                            <Camera className="w-3 h-3" /> Profile Picture
+                          </span>
                         </div>
                       </div>
-                      <div className="mt-3.5 text-center">
-                        <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
-                          <Camera className="w-3 h-3" /> Profile Picture
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <PremiumPostCarousel
-                      images={post.images}
-                      altPrefix={post.fullName}
-                      onOpenLightbox={(idx) => handleOpenLightbox(post, idx)}
-                    />
+                    ) : (
+                      <PremiumPostCarousel
+                        images={post.images}
+                        altPrefix={post.fullName}
+                        onOpenLightbox={(idx) => handleOpenLightbox(post, idx)}
+                      />
+                    )
                   )
                 )}
 
@@ -3057,6 +3072,11 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
                 {/* Universal Link Preview: link_metadata or detected URL (only if not already shown in post.videos) */}
                 {(() => {
+                  // Never render generic link preview for gallery album updates, blood requests, or internal hash links
+                  if (post.postType === 'gallery_album' || post.link_metadata?.postType === 'gallery_album') return null;
+                  if (post.postType === 'blood_request' || post.link_metadata?.postType === 'blood_request') return null;
+                  if (post.linked_url?.startsWith('#')) return null;
+
                   const hasVideos = Boolean(post.videos && post.videos.length > 0);
                   const extraUrl = post.linked_url || firstPostUrl;
                   const alreadyShownInVideos = hasVideos && Boolean(
@@ -3081,10 +3101,10 @@ export const FeedView: React.FC<FeedViewProps> = ({
                     <span className="w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center text-[9px]">
                       ♥
                     </span>
-                    {post.likesCount} {post.likesCount === 1 ? 'like' : 'likes'}
+                    {(post.likesCount || 0)} {post.likesCount === 1 ? 'like' : 'likes'}
                   </span>
                   <span>
-                    {post.commentsCount} {post.commentsCount === 1 ? 'comment' : 'comments'}
+                    {(post.commentsCount || (post.comments?.length || 0))} {((post.commentsCount || (post.comments?.length || 0)) === 1) ? 'comment' : 'comments'}
                   </span>
                 </div>
 
@@ -3194,7 +3214,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
                 {/* Comments Thread */}
                 <div className="mt-3.5 space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800/60">
-                  {post.comments.map((comment) => (
+                  {(post.comments || []).map((comment) => (
                     <div key={comment.id} className="space-y-2">
                       <div className="flex items-start gap-2.5">
                         <img
@@ -3234,7 +3254,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
                           {comment.replies && comment.replies.length > 0 && (
                             <div className="ml-5 mt-2 space-y-2 border-l-2 border-slate-200 dark:border-slate-700/80 pl-3">
-                              {comment.replies.map((reply) => (
+                              {(comment.replies || []).map((reply) => (
                                 <div key={reply.id} className="flex items-start gap-2">
                                   <img
                                     src={reply.avatarUrl}

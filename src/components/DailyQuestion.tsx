@@ -146,7 +146,7 @@ export const banglaDigits = (n: number) =>
   String(n).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[parseInt(d, 10)]);
 
 interface DailyQuestionProps {
-  onAnswerQuestion: (question: string) => void;
+  onAnswerQuestion?: (question: string) => void;
   onViewProfile?: (userId: number) => void;
 }
 
@@ -158,6 +158,47 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
   const todayStr = getDhakaDateString();
   const { question, index, formattedDateBangla } = getDailyQuestion(todayStr);
 
+  // 2-Minute Login Delay: Streak card/notification only appears after 2 minutes of login
+  const [isDelayPassed, setIsDelayPassed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const loginTs = parseInt(sessionStorage.getItem('ndc_login_timestamp') || '0', 10);
+    if (!loginTs) return false;
+    return Date.now() - loginTs >= 120_000;
+  });
+
+  useEffect(() => {
+    if (isDelayPassed) return;
+    if (typeof window === 'undefined') {
+      setIsDelayPassed(true);
+      return;
+    }
+
+    let loginTs = parseInt(sessionStorage.getItem('ndc_login_timestamp') || '0', 10);
+    if (!loginTs) {
+      loginTs = Date.now();
+      sessionStorage.setItem('ndc_login_timestamp', String(loginTs));
+    }
+
+    const elapsed = Date.now() - loginTs;
+    const remaining = Math.max(0, 120_000 - elapsed);
+
+    if (remaining <= 0) {
+      setIsDelayPassed(true);
+    } else {
+      const timer = setTimeout(() => {
+        setIsDelayPassed(true);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('ndc_daily_streak_available', {
+              detail: { question, formattedDateBangla },
+            })
+          );
+        }
+      }, remaining);
+      return () => clearTimeout(timer);
+    }
+  }, [isDelayPassed, question, formattedDateBangla]);
+
   const [streakData, setStreakData] = useState<UserStreakData>(() =>
     loadDailyStreakLocal(currentUser?.id)
   );
@@ -166,6 +207,12 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
   );
   const [isDismissing, setIsDismissing] = useState<boolean>(false);
   const [copied, setCopied] = useState(false);
+
+  // Private Streak Answer Composer State (Not a public post, only stored on profile streak)
+  const [isWritingAnswer, setIsWritingAnswer] = useState<boolean>(false);
+  const [answerInputText, setAnswerInputText] = useState<string>('');
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState<boolean>(false);
+  const [submissionFeedback, setSubmissionFeedback] = useState<string | null>(null);
 
   // Reveal Gate State
   const [todayAnswers, setTodayAnswers] = useState<DailyQuestionAnswerItem[]>([]);
@@ -243,8 +290,52 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
     }, 200);
   };
 
+  // Submit private streak answer (NOT public post, stored on profile streak)
+  const handleSubmitAnswer = async () => {
+    if (!answerInputText.trim() || !currentUser?.id) return;
+    setIsSubmittingAnswer(true);
+    try {
+      const res = await recordStreakAnswerInDb({
+        userId: currentUser.id,
+        authUserId: currentUser.authUserId,
+        authorName: currentUser.fullName,
+        authorAvatar: currentUser.avatarUrl,
+        authorBatch: currentUser.batchYear ? Number(currentUser.batchYear) : null,
+        questionText: question,
+        answerText: answerInputText.trim(),
+        questionIndex: index,
+        // No postId: strictly keeps it private to streak profile without posting to feed
+      });
+
+      setStreakData(res.streakData);
+      setSubmissionFeedback('🎉 আপনার স্মৃতিচারণ উত্তর সফলভাবে প্রোফাইল স্ট্রিকে সংরক্ষিত হয়েছে!');
+      setIsWritingAnswer(false);
+      setAnswerInputText('');
+
+      if (res.isMilestone) {
+        setMilestoneDaysCelebrated(res.milestoneDays);
+        setShowMilestoneModal(true);
+        triggerStreakMilestoneConfetti(res.milestoneDays);
+      }
+
+      // Refresh today's answers list so user immediately sees their friends' answers
+      fetchTodayAnswers(todayStr, currentUser.id).then((answers) => {
+        setTodayAnswers(answers);
+      });
+
+      // Notify profile streak component
+      window.dispatchEvent(new CustomEvent('ndc_daily_streak_updated'));
+
+      setTimeout(() => setSubmissionFeedback(null), 5000);
+    } catch (e) {
+      console.error('Failed to submit private streak answer:', e);
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
+  };
+
   const handleAnswerClick = () => {
-    onAnswerQuestion(question);
+    setIsWritingAnswer((prev) => !prev);
   };
 
   const handleShareQuestion = async () => {
@@ -299,32 +390,37 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
     return null;
   }
 
+  // 2-Minute Login Delay: The daily streak card/notification only appears 2 minutes after login
+  if (!isDelayPassed) {
+    return null;
+  }
+
   return (
     <>
       <div
-        className={`relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-5 sm:p-6 border border-blue-500/30 shadow-xl transition-all duration-300 hover:shadow-2xl hover:border-blue-500/50 ${
+        className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/95 to-blue-950 text-white p-3 sm:p-4 border border-blue-500/25 shadow-md transition-all duration-300 hover:border-blue-500/40 ${
           isDismissing ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'
         }`}
       >
-        {/* Decorative Golden / Flame Glow Background */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+        {/* Decorative Golden / Flame Glow Background (scaled down) */}
+        <div className="absolute top-0 right-0 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-6 -left-6 w-28 h-28 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
 
-        {/* Header Row: Badge, Date & Duolingo-style Streak Counter + Cross Button */}
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold tracking-wide shadow-xs">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span>দৈনিক নস্টালজিয়া প্রশ্ন #{banglaDigits(index)}</span>
+        {/* Compact Header Row: Badge, Date & Duolingo-style Streak Counter + Cross Button */}
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-bold tracking-tight shadow-xs">
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>নস্টালজিয়া #{banglaDigits(index)}</span>
             </span>
-            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-blue-200/80 font-medium">
-              <Calendar className="w-3 h-3 text-blue-400" />
+            <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-blue-200/70 font-medium">
+              <Calendar className="w-2.5 h-2.5 text-blue-400" />
               <span>{formattedDateBangla}</span>
             </span>
           </div>
 
           {/* Right Header Area: Streak Counter + 7-Day Badge + Cross Button */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {/* 7-Day Streak Milestone Badge Chip */}
             {has7DayBadge && (
               <button
@@ -335,66 +431,53 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
                   handleTriggerCelebration();
                 }}
                 title="৭ দিনের স্ট্রিক ব্যাজ — কনফেটি ওড়ান!"
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-300 text-[11px] font-bold shadow-xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-300 text-[10px] font-bold shadow-xs cursor-pointer transition-all hover:scale-105 active:scale-95"
               >
-                <span>🔥 ৭ দিনের স্ট্রিক ব্যাজ</span>
-                <PartyPopper className="w-3 h-3 text-amber-300" />
+                <span>🔥 ৭ দিন</span>
+                <PartyPopper className="w-2.5 h-2.5 text-amber-300" />
               </button>
             )}
 
-            {/* Unified Duolingo-Style Streak Pill: Counter + 7-Day Flame Tracker in ONE Element */}
+            {/* Unified Compact Streak Pill */}
             <div
               onClick={streakData.currentStreak >= 7 ? handleTriggerCelebration : undefined}
-              className="inline-flex items-center gap-2 sm:gap-2.5 px-3 py-1.5 rounded-2xl bg-black/40 border border-amber-500/30 backdrop-blur-md shadow-inner cursor-pointer hover:border-amber-400/50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-xl bg-black/40 border border-amber-500/25 backdrop-blur-md shadow-xs cursor-pointer hover:border-amber-400/50 transition-colors"
               title={
                 isAnsweredToday
                   ? `আজকের স্ট্রিক সংরক্ষিত 🔥 (${streakData.currentStreak} দিন)`
                   : `আজ উত্তর দিলে স্ট্রিক বৃদ্ধি পাবে 🔥 (${streakData.currentStreak} দিন)`
               }
             >
-              <div className="relative flex items-center justify-center shrink-0">
-                <Flame
-                  className={`w-4 h-4 transition-transform duration-300 ${
-                    streakData.currentStreak > 0
-                      ? 'text-amber-400 fill-amber-400 filter drop-shadow-[0_0_8px_rgba(251,191,36,0.6)] animate-bounce'
-                      : 'text-slate-500'
-                  }`}
-                />
-              </div>
-              <div className="flex items-baseline gap-1 shrink-0">
-                <span className="text-sm font-extrabold text-amber-300 font-mono">
-                  {banglaDigits(streakData.currentStreak)}
-                </span>
-                <span className="text-[10px] font-bold text-amber-200/90 hidden xs:inline">
-                  দিনের স্ট্রিক
-                </span>
-              </div>
+              <Flame
+                className={`w-3.5 h-3.5 transition-transform duration-300 ${
+                  streakData.currentStreak > 0
+                    ? 'text-amber-400 fill-amber-400 filter drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]'
+                    : 'text-slate-500'
+                }`}
+              />
+              <span className="text-xs font-black text-amber-300 font-mono">
+                {banglaDigits(streakData.currentStreak)}
+              </span>
 
-              {/* Integrated 7-Day Streak Flame Dots */}
-              <div className="h-3.5 w-px bg-white/20 shrink-0" />
-              <div className="flex items-center gap-1">
+              {/* Integrated 7-Day Mini Dots */}
+              <div className="h-3 w-px bg-white/20 shrink-0 mx-0.5" />
+              <div className="flex items-center gap-0.5">
                 {past7Days.map((d) => (
                   <div
                     key={d.date}
-                    title={`${d.dayName}: ${
+                    title={`${d.dayName}: ${d.answered ? 'স্ট্রিক সংরক্ষিত' : d.isToday ? 'আজকের দিন' : 'বাকি'}`}
+                    className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold transition-all ${
                       d.answered
-                        ? 'স্ট্রিক সংরক্ষিত'
+                        ? 'bg-amber-500 text-slate-950'
                         : d.isToday
-                        ? 'আজকের দিন (উত্তর দিন)'
-                        : 'বাকি'
-                    }`}
-                    className={`w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold transition-all ${
-                      d.answered
-                        ? 'bg-amber-500 text-slate-950 shadow-xs'
-                        : d.isToday
-                        ? 'bg-blue-500/30 text-blue-300 border border-amber-400/80 ring-1 ring-amber-400/30 animate-pulse'
-                        : 'bg-white/10 text-slate-400'
+                        ? 'bg-blue-500/30 text-blue-300 border border-amber-400/80 animate-pulse'
+                        : 'bg-white/10 text-slate-500'
                     }`}
                   >
                     {d.answered ? (
-                      <Flame className="w-2.5 h-2.5 fill-current" />
+                      <Flame className="w-2 h-2 fill-current" />
                     ) : (
-                      <span className="w-1 h-1 rounded-full bg-slate-400" />
+                      <span className="w-0.5 h-0.5 rounded-full bg-slate-400" />
                     )}
                   </div>
                 ))}
@@ -406,90 +489,142 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
               type="button"
               onClick={handleDismiss}
               aria-label="আজকের ব্যানারটি বন্ধ করুন"
-              title="আজকের ব্যানারটি বন্ধ / ক্রস করুন"
-              className="p-1.5 sm:p-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition-all cursor-pointer border border-white/5 hover:border-white/20 active:scale-95"
+              title="আজকের ব্যানারটি বন্ধ করুন"
+              className="p-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition-all cursor-pointer border border-white/5"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* The Bangla Nostalgia Question */}
-        <div className="relative z-10 mb-4">
-          <blockquote className="text-base sm:text-lg md:text-xl font-bold text-slate-100 leading-snug tracking-tight">
+        {/* The Bangla Nostalgia Question (Sleek, condensed font & spacing) */}
+        <div className="relative z-10 my-2">
+          <p className="text-xs sm:text-sm font-semibold text-slate-100 leading-snug tracking-tight">
             "{question}"
-          </blockquote>
+          </p>
         </div>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* REVEAL GATE SECTION (Requirement 2)                               */}
-        {/* ----------------------------------------------------------------- */}
-        {!isAnsweredToday ? (
-          /* LOCKED STATE (Before user answers today) */
-          <div className="relative z-10 mb-4 rounded-2xl overflow-hidden border border-amber-500/30 bg-black/40 backdrop-blur-md p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-300 shrink-0">
-                  <Lock className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                    <span>অন্যান্য অ্যালামনাইদের উত্তর (Reveal Gate)</span>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
-                      লক করা
-                    </span>
-                  </h4>
-                  <p className="text-[11px] text-slate-300/90 mt-0.5 leading-relaxed">
-                    আজকের প্রশ্নের উত্তর দেওয়ার পরেই অন্যান্য ব্যাচমেট ও অ্যালামনাইদের স্মৃতিচারণ আনলক হবে!
-                  </p>
-                </div>
-              </div>
+        {/* Submission Feedback Banner (Compact) */}
+        {submissionFeedback && (
+          <div className="relative z-10 my-2 p-2 rounded-xl bg-emerald-500/20 border border-emerald-400/50 text-emerald-200 text-xs font-medium flex items-center gap-2 animate-fade-in shadow-xs">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{submissionFeedback}</span>
+          </div>
+        )}
 
-              {todayAnswers.length > 0 && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[11px] font-semibold text-amber-200 shrink-0">
-                  <Users className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{banglaDigits(todayAnswers.length)} জন ইতিমধ্যে উত্তর দিয়েছেন</span>
-                </div>
-              )}
+        {/* Private Streak Answer Composer (Compact & Shrunk) */}
+        {isWritingAnswer && (
+          <div className="relative z-10 my-2 p-2.5 sm:p-3 rounded-xl bg-black/60 border border-amber-500/35 backdrop-blur-md shadow-lg space-y-2 animate-fade-in">
+            <div className="flex items-center justify-between gap-1 text-[11px]">
+              <span className="font-bold text-amber-300 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                <span>আপনার স্মৃতিচারণ লিখুন</span>
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-300 font-medium bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                <Lock className="w-2.5 h-2.5" />
+                <span>প্রাইভেট স্ট্রিক মেমোরি (ফিডে যাবে না)</span>
+              </span>
             </div>
 
-            {/* Blurred Teaser Preview */}
-            <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-2 filter blur-[2px] opacity-40 pointer-events-none select-none">
-              <div className="p-2.5 rounded-xl bg-white/5 text-xs text-slate-400">
-                “ক্যান্টিনের সেই গরম শিঙাড়া আর বন্ধুদের সাথে আড্ডা...”
-              </div>
-              <div className="p-2.5 rounded-xl bg-white/5 text-xs text-slate-400 hidden sm:block">
-                “ফাদার টিমের স্নেহের সেই কথাগুলো আজও মনে পড়ে...”
+            <textarea
+              value={answerInputText}
+              onChange={(e) => setAnswerInputText(e.target.value)}
+              placeholder="ক্যান্টিনের শিঙাড়া, ল্যাব ক্লাস বা কোনো প্রিয় শিক্ষকের স্মৃতি সংক্ষেপে লিখুন..."
+              rows={2}
+              className="w-full p-2.5 rounded-lg bg-slate-900/90 border border-white/15 text-white placeholder-slate-400 text-xs focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 resize-none transition-all"
+            />
+
+            <div className="flex items-center justify-between gap-2 pt-0.5">
+              <span className="text-[10px] text-slate-400">
+                {answerInputText.trim().length > 0 ? `${banglaDigits(answerInputText.trim().length)} অক্ষর` : '🔒 প্রোফাইলে সংরক্ষিত হবে'}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsWritingAnswer(false);
+                    setAnswerInputText('');
+                  }}
+                  disabled={isSubmittingAnswer}
+                  className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitAnswer}
+                  disabled={!answerInputText.trim() || isSubmittingAnswer}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-bold text-xs shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+                >
+                  {isSubmittingAnswer ? (
+                    <span>সংরক্ষণ হচ্ছে...</span>
+                  ) : (
+                    <>
+                      <Flame className="w-3 h-3 fill-current" />
+                      <span>সংরক্ষণ ও স্ট্রিক বৃদ্ধি</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
-        ) : (
-          /* UNLOCKED STATE (After user answers today - REVEAL GATE ACTIVE!) */
-          <div className="relative z-10 mb-4 rounded-2xl border border-emerald-500/40 bg-black/45 backdrop-blur-md p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
-                  <Unlock className="w-4 h-4" />
-                </span>
-                <div>
-                  <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                    <span>আজকের উত্তরসমূহ (Reveal Gate Unlocked)</span>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                      আনলকড
-                    </span>
-                  </h4>
-                  <span className="text-[10px] text-emerald-200/80">
-                    আজ মোট {banglaDigits(todayAnswers.length)} টি উত্তর জমা পড়েছে
-                  </span>
+        )}
+
+        {/* REVEAL GATE SECTION (Compact & Shrunk) */}
+        {!isAnsweredToday ? (
+          /* LOCKED STATE (Sleek 1-line teaser strip instead of massive card) */
+          <div className="relative z-10 my-2 rounded-xl border border-amber-500/25 bg-black/35 backdrop-blur-md px-3 py-1.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-5 h-5 rounded-md bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-300 shrink-0">
+                <Lock className="w-3 h-3" />
+              </div>
+              <p className="text-[11px] text-slate-300 truncate">
+                উত্তর দিলে বন্ধুদের স্মৃতিচারণ আনলক হবে
+              </p>
+            </div>
+
+            {todayAnswers.length > 0 ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Overlapping mini avatar teasers */}
+                <div className="flex -space-x-1.5 overflow-hidden">
+                  {todayAnswers.slice(0, 3).map((a, idx) => (
+                    <img
+                      key={idx}
+                      src={a.authorAvatar}
+                      alt={a.authorName}
+                      className="inline-block w-4.5 h-4.5 rounded-full ring-1 ring-slate-900 object-cover opacity-80"
+                    />
+                  ))}
                 </div>
+                <span className="text-[10px] font-semibold text-amber-300">
+                  {banglaDigits(todayAnswers.length)} জন
+                </span>
+              </div>
+            ) : (
+              <span className="text-[10px] text-amber-400/90 font-medium shrink-0">
+                প্রথম উত্তরদাতা হোন!
+              </span>
+            )}
+          </div>
+        ) : (
+          /* UNLOCKED STATE (Compact friends list with collapse support) */
+          <div className="relative z-10 my-2 rounded-xl border border-emerald-500/35 bg-black/40 backdrop-blur-md p-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <Unlock className="w-3 h-3" />
+                </span>
+                <span className="text-xs font-bold text-white">
+                  বন্ধুদের উত্তরসমূহ ({banglaDigits(todayAnswers.length)})
+                </span>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 {currentUser?.batchYear && (
                   <button
                     type="button"
                     onClick={() => setBatchFilter((prev) => (prev === 'all' ? 'my_batch' : 'all'))}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border ${
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer border ${
                       batchFilter === 'my_batch'
                         ? 'bg-blue-600 text-white border-blue-400'
                         : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
@@ -501,58 +636,60 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAnswersCollapsed(!isAnswersCollapsed)}
-                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition-colors cursor-pointer"
-                  title={isAnswersCollapsed ? 'উত্তর তালিকা খুলুন' : 'সংক্ষেপ করুন'}
+                  className="p-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 transition-colors cursor-pointer"
+                  title={isAnswersCollapsed ? 'তালিকা খুলুন' : 'সংক্ষেপ করুন'}
                 >
-                  {isAnswersCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                  {isAnswersCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
 
-            {/* List of Answers */}
+            {/* List of Answers (Streamlined & Compact) */}
             {!isAnswersCollapsed && (
-              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                 {isLoadingAnswers ? (
-                  <div className="py-6 text-center text-xs text-slate-400">
-                    উত্তরসমূহ লোড হচ্ছে...
+                  <div className="py-3 text-center text-[11px] text-slate-400">
+                    উত্তর লোড হচ্ছে...
                   </div>
                 ) : filteredAnswers.length === 0 ? (
-                  <div className="p-4 rounded-xl bg-white/5 text-center text-xs text-slate-300 space-y-1">
-                    <p>আপনিই প্রথম উত্তরদাতা অথবা নির্বাচিত ফিল্টারে কোনো উত্তর নেই।</p>
-                    <p className="text-[11px] text-amber-300 font-medium">
-                      আপনার ব্যাচমেটদের সাথে প্রশ্নটি শেয়ার করুন!
-                    </p>
+                  <div className="p-2.5 rounded-lg bg-white/5 text-center text-[11px] text-slate-300">
+                    নির্বাচিত ফিল্টারে কোনো উত্তর পাওয়া যায়নি।
                   </div>
                 ) : (
                   filteredAnswers.map((ans) => (
                     <div
                       key={ans.id}
-                      className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-left space-y-1.5"
+                      className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-left space-y-1"
                     >
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center justify-between gap-1.5">
                         <div
-                          className="flex items-center gap-2 cursor-pointer group"
+                          className="flex items-center gap-1.5 cursor-pointer group"
                           onClick={() => onViewProfile && onViewProfile(ans.userId)}
                         >
                           <img
                             src={ans.authorAvatar}
                             alt={ans.authorName}
-                            className="w-6 h-6 rounded-full object-cover ring-1 ring-white/20"
+                            className="w-5 h-5 rounded-full object-cover ring-1 ring-white/20"
                           />
-                          <span className="text-xs font-bold text-white group-hover:text-blue-300 transition-colors">
+                          <span className="text-[11px] font-bold text-white group-hover:text-blue-300 transition-colors">
                             {ans.authorName}
                           </span>
                           {ans.authorBatch && (
-                            <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 text-[10px] font-semibold">
-                              ব্যাচ '{String(ans.authorBatch).slice(-2)}
+                            <span className="px-1 py-0.2 rounded bg-blue-500/20 text-blue-300 text-[9px] font-medium">
+                              '{String(ans.authorBatch).slice(-2)}
+                            </span>
+                          )}
+                          {ans.userId !== currentUser?.id && currentUser?.batchYear && Number(ans.authorBatch) === Number(currentUser.batchYear) && (
+                            <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold">
+                              🤝 ব্যাচমেট
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-slate-400">
-                          {ans.userId === currentUser.id ? 'আপনার উত্তর' : 'আজ'}
+                        <span className="text-[9px] text-slate-400">
+                          {ans.userId === currentUser?.id ? 'আপনি' : 'আজ'}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-200 leading-relaxed pl-8 italic">
+                      <p className="text-[11px] text-slate-200 leading-snug pl-6 italic">
                         "{ans.answerText}"
                       </p>
                     </div>
@@ -563,52 +700,57 @@ export const DailyQuestion: React.FC<DailyQuestionProps> = ({
           </div>
         )}
 
-        {/* Action Footer: "✏️ উত্তর লিখুন" Button + Share Option + Skip Option */}
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-white/10">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-300 font-medium">
-              {isAnsweredToday
-                ? '🎉 আজকের স্ট্রিক সম্পন্ন হয়েছে — আগামীকাল নতুন প্রশ্ন আসবে!'
-                : 'আপনার ব্যাচমেট ও ভাইদের সাথে স্মৃতি শেয়ার করুন'}
-            </span>
+        {/* Compact Action Footer */}
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-white/10 text-xs">
+          <div className="flex items-center gap-1 text-[11px] text-slate-300 truncate">
+            {isAnsweredToday ? (
+              <span className="text-emerald-300 font-medium flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>আজকের স্ট্রিক সম্পন্ন</span>
+              </span>
+            ) : (
+              <span className="text-slate-300">
+                স্মৃতি শেয়ার করে স্ট্রিক বাড়ান
+              </span>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            {/* Skip / Close Button */}
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="px-3 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 text-xs font-semibold transition-colors cursor-pointer border border-white/10 shrink-0"
-            >
-              {isAnsweredToday ? 'ব্যানার বন্ধ করুন' : 'এড়িয়ে যান'}
-            </button>
-
-            {/* Copy / Share Button */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Share Button */}
             <button
               type="button"
               onClick={handleShareQuestion}
               title="প্রশ্ন কপি করুন"
-              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition-colors cursor-pointer border border-white/10 shrink-0"
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white transition-colors cursor-pointer border border-white/10"
             >
               {copied ? (
-                <span className="text-[11px] font-bold text-emerald-300 px-1">কপি হয়েছে!</span>
+                <span className="text-[10px] font-bold text-emerald-300 px-0.5">কপি!</span>
               ) : (
-                <Share2 className="w-4 h-4" />
+                <Share2 className="w-3.5 h-3.5" />
               )}
             </button>
 
-            {/* Write Answer Button (or Answer Again) */}
+            {/* Skip / Dismiss Button */}
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="px-2 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 text-[11px] font-medium transition-colors cursor-pointer"
+            >
+              এড়িয়ে যান
+            </button>
+
+            {/* Answer Button */}
             <button
               type="button"
               onClick={handleAnswerClick}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-lg border transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
+              className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
                 isAnsweredToday
-                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-white/20 shadow-slate-900/40'
-                  : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-600 text-white border-blue-400/40 shadow-blue-600/30'
+                  ? 'bg-white/10 hover:bg-white/15 text-slate-200 border border-white/15'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30'
               }`}
             >
-              <span>{isAnsweredToday ? '✏️ আরও একটি স্মৃতি লিখুন' : '✏️ উত্তর লিখুন'}</span>
-              <ChevronRight className="w-4 h-4 text-blue-200" />
+              <span>{isWritingAnswer ? '✖️ বন্ধ করুন' : (isAnsweredToday ? '✏️ আরও স্মৃতি' : '✏️ উত্তর দিন')}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-blue-200" />
             </button>
           </div>
         </div>

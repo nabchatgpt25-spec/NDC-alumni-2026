@@ -25,6 +25,7 @@ import {
 } from './SmartPostMediaAndEmbeds';
 import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
 import { PremiumPostCarousel } from './feed/PremiumPostCarousel';
+import { GalleryAlbumPostCard } from './feed/GalleryAlbumPostCard';
 
 interface SavedPostsViewProps {
   onViewProfile?: (userId: number) => void;
@@ -303,11 +304,10 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
                 {renderTextWithClickableLinks(post.content)}
               </p>
 
-              {/* Attached Images (Ultra-Premium Carousel & Interactive Showcase) */}
-              {post.images && post.images.length > 0 && (
-                <PremiumPostCarousel
-                  images={post.images}
-                  altPrefix={post.fullName}
+              {/* Attached Images or Gallery Album Card */}
+              {(post.postType === 'gallery_album' || post.link_metadata?.postType === 'gallery_album') ? (
+                <GalleryAlbumPostCard
+                  post={post}
                   onOpenLightbox={(idx) =>
                     setLightboxState({
                       isOpen: true,
@@ -322,7 +322,33 @@ export const SavedPostsView: React.FC<SavedPostsViewProps> = ({
                       postCaption: post.content,
                     })
                   }
+                  onViewAlbum={(albumId) => {
+                    window.location.hash = `album-${albumId}`;
+                    window.dispatchEvent(new CustomEvent('ndc_open_gallery_album', { detail: { albumId } }));
+                    window.dispatchEvent(new CustomEvent('ndc_navigate_route', { detail: { route: 'gallery' } }));
+                  }}
                 />
+              ) : (
+                post.images && post.images.length > 0 && (
+                  <PremiumPostCarousel
+                    images={post.images}
+                    altPrefix={post.fullName}
+                    onOpenLightbox={(idx) =>
+                      setLightboxState({
+                        isOpen: true,
+                        images: post.images,
+                        initialIndex: idx,
+                        postAuthor: {
+                          fullName: post.fullName,
+                          avatarUrl: post.avatarUrl,
+                          batchYear: post.batchYear,
+                          createdAt: post.createdAt,
+                        },
+                        postCaption: post.content,
+                      })
+                    }
+                  />
+                )
               )}
 
               {/* Attached Videos & Shared Links (YouTube, Facebook, Instagram, LinkedIn, etc.) */}

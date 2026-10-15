@@ -36,6 +36,7 @@ import {
 } from '../utils/mentorshipService';
 import { triggerMentorshipConfetti } from '../utils/confettiHelper';
 import { MentorshipCelebrationBanner } from './MentorshipCelebrationBanner';
+import { notifyMentorshipQuestion, notifyMentorshipAnswer } from '../utils/notificationService';
 
 interface MentorshipViewProps {
   onViewProfile?: (userId: number) => void;
@@ -55,6 +56,7 @@ export const MentorshipView: React.FC<MentorshipViewProps> = ({
 
   // ACTION 1: “সাহায্য চাই” state
   const [askTopic, setAskTopic] = useState<MentorshipCategory>('Medical');
+  const [targetedMentor, setTargetedMentor] = useState<MentorOffer | null>(null);
   const [askQuestion, setAskQuestion] = useState('');
   const [askContact, setAskContact] = useState('');
   const [askSuccessMessage, setAskSuccessMessage] = useState<string | null>(null);
@@ -106,18 +108,37 @@ export const MentorshipView: React.FC<MentorshipViewProps> = ({
     if (!askQuestion.trim()) return;
 
     const currentText = askQuestion.trim();
-    createMentorshipRequest(askTopic, currentText, {
-      id: currentUser?.id || Date.now(),
-      name: currentUser?.fullName || 'নটরডেমিয়ান ব্রাদার',
-      batch: currentUser?.batchYear,
-      avatar: currentUser?.avatarUrl,
-      contact: askContact || currentUser?.phone || currentUser?.email,
-    });
+    createMentorshipRequest(
+      askTopic,
+      currentText,
+      {
+        id: currentUser?.id || Date.now(),
+        name: currentUser?.fullName || 'নটরডেমিয়ান ব্রাদার',
+        batch: currentUser?.batchYear,
+        avatar: currentUser?.avatarUrl,
+        contact: askContact || currentUser?.phone || currentUser?.email,
+      },
+      targetedMentor ? { id: targetedMentor.userId, name: targetedMentor.fullName } : undefined
+    );
+
+    // STRICT 1-to-1 Community Notification:
+    // When a user asks a mentor, notify ONLY that specific mentor.
+    // Do NOT broadcast to other users.
+    if (targetedMentor && targetedMentor.userId && currentUser) {
+      notifyMentorshipQuestion({
+        mentorId: targetedMentor.userId,
+        mentorName: targetedMentor.fullName,
+        questionText: currentText,
+        topic: askTopic,
+        actor: currentUser,
+      });
+    }
 
     setRequests(loadMentorshipRequests());
     setAskSubmittedSnippet(currentText);
     setAskQuestion('');
     setAskContact('');
+    setTargetedMentor(null);
 
     // Trigger subtle celebratory confetti effect
     triggerMentorshipConfetti('request');
@@ -157,6 +178,8 @@ export const MentorshipView: React.FC<MentorshipViewProps> = ({
   const handlePostAnswer = (requestId: string) => {
     if (!answerInputText.trim()) return;
 
+    const targetReq = requests.find((r) => r.id === requestId);
+
     addMentorshipAnswer(requestId, answerInputText, {
       id: currentUser?.id || Date.now(),
       name: currentUser?.fullName || 'সিনিয়র নটরডেমিয়ান',
@@ -164,6 +187,17 @@ export const MentorshipView: React.FC<MentorshipViewProps> = ({
       avatar: currentUser?.avatarUrl,
       profession: currentUser?.position || currentUser?.profession || 'অ্যালামনাই',
     });
+
+    // STRICT 1-to-1 Community Notification:
+    // When a mentor replies, notify ONLY the original requester.
+    // Do NOT broadcast to other users.
+    if (targetReq && targetReq.userId && currentUser) {
+      notifyMentorshipAnswer({
+        requesterId: targetReq.userId,
+        answerText: answerInputText,
+        actor: currentUser,
+      });
+    }
 
     setRequests(loadMentorshipRequests());
     setAnswerInputText('');
@@ -359,6 +393,72 @@ export const MentorshipView: React.FC<MentorshipViewProps> = ({
           )}
 
           <form onSubmit={handleSubmitQuestion} className="space-y-4">
+            {/* Targeted 1-to-1 Mentor Indicator */}
+            {targetedMentor ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/70 shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden ring-2 ring-amber-200 dark:ring-amber-900">
+                    {targetedMentor.avatarUrl ? (
+                      <img src={targetedMentor.avatarUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      targetedMentor.fullName.charAt(0)
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                        Directing to Mentor: {targetedMentor.fullName}
+                      </span>
+                      {targetedMentor.batchYear && (
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                          (HSC {targetedMentor.batchYear})
+                        </span>
+                      )}
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 font-bold uppercase tracking-wider">
+                        1-to-1 Private
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                      Only {targetedMentor.fullName} receives this notification. Zero broadcast to other users.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setTargetedMentor(null)}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg text-amber-800 dark:text-amber-200 hover:bg-amber-200/50 dark:hover:bg-amber-900/40 transition-colors shrink-0 self-end sm:self-auto cursor-pointer"
+                >
+                  Ask Open Community Instead
+                </button>
+              </div>
+            ) : mentors.length > 0 ? (
+              <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="shrink-0 text-slate-400">🎯</span>
+                  <span className="truncate">Want to ask a specific senior mentor directly?</span>
+                </div>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const found = mentors.find((m) => m.id === e.target.value);
+                    if (found) {
+                      setTargetedMentor(found);
+                      setAskTopic(found.category);
+                    }
+                  }}
+                  className="text-xs font-semibold py-1 px-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+                >
+                  <option value="">Choose Mentor (Optional)</option>
+                  {mentors.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.fullName} ({m.category})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
             {/* Step 1: Choose Topic */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
@@ -767,6 +867,7 @@ export const MentorshipView: React.FC<MentorshipViewProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          setTargetedMentor(senior);
                           setAskTopic(senior.category);
                           setActiveAction('ask');
                           window.scrollTo({ top: 0, behavior: 'smooth' });

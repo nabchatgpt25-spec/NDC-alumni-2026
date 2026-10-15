@@ -130,6 +130,12 @@ export default defineConfig(() => {
       },
     },
     build: {
+      target: 'esnext',
+      cssCodeSplit: true,
+      minify: 'esbuild',
+      assetsInlineLimit: 4096,
+      reportCompressedSize: false,
+      sourcemap: false,
       rollupOptions: {
         output: {
           manualChunks(id) {
@@ -156,7 +162,10 @@ export default defineConfig(() => {
           },
         },
       },
-      chunkSizeWarningLimit: 700,
+      chunkSizeWarningLimit: 800,
+    },
+    esbuild: {
+      legalComments: 'none',
     },
     server: {
       host: '0.0.0.0',

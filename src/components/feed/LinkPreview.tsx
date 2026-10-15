@@ -274,7 +274,16 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     );
   }
 
-  if (!effectiveUrl) return null;
+  if (
+    !effectiveUrl ||
+    effectiveUrl.startsWith('#') ||
+    (initialData as any)?.postType === 'gallery_album' ||
+    (initialData as any)?.postType === 'blood_request' ||
+    (metadata as any)?.postType === 'gallery_album' ||
+    (metadata as any)?.postType === 'blood_request'
+  ) {
+    return null;
+  }
 
   // View original footer button
   const renderViewOriginal = (label = 'View original') => (

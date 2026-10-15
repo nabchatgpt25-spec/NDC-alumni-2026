@@ -29,10 +29,16 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { notifyPhotoLike, notifyPhotoComment } from '../utils/notificationService';
 import { playSound } from '../utils/audio';
+import { syncNewAlbumToQuadFeed, syncUploadedPhotosToQuadFeed } from '../utils/galleryFeedSync';
 
 const STORAGE_KEY = 'ndc_alumni_gallery_albums';
 
-export const GalleryView: React.FC = () => {
+export interface GalleryViewProps {
+  initialAlbumId?: number | null;
+  onNavigate?: (route: string) => void;
+}
+
+export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavigate }) => {
   const { currentUser } = useAuth();
   // Load albums from localStorage or fallback to INITIAL_ALBUMS
   const [albums, setAlbums] = useState<GalleryAlbum[]>(() => {
@@ -83,7 +89,17 @@ export const GalleryView: React.FC = () => {
   }, [albums]);
 
   // Selected Album for Showcase View
-  const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(null);
+  const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(() => {
+    if (initialAlbumId) return initialAlbumId;
+    if (typeof window !== 'undefined') {
+      const h = window.location.hash.replace('#', '');
+      if (h.startsWith('album-') || h.startsWith('gallery-album-')) {
+        const idNum = parseInt(h.replace(/^(album-|gallery-album-)/, ''), 10);
+        if (!isNaN(idNum)) return idNum;
+      }
+    }
+    return null;
+  });
 
   // Category and Search filter
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -135,30 +151,50 @@ export const GalleryView: React.FC = () => {
     return () => clearInterval(timer);
   }, [isPlayingSlideshow, lightboxState.isOpen, activeLightboxPhotos.length]);
 
-  // Deep link to photo from notification (#photo-{photoId})
+  // Deep link to photo or album from hash or custom event
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const checkHash = () => {
-      const h = window.location.hash.replace('#', '');
-      if (h.startsWith('photo-')) {
-        const photoId = h.replace('photo-', '');
-        for (const alb of albums) {
-          const idx = alb.photos.findIndex((p) => p.id === photoId);
-          if (idx >= 0) {
-            setSelectedAlbumId(alb.id);
-            setLightboxState({
-              isOpen: true,
-              albumId: alb.id,
-              currentIndex: idx,
-            });
-            break;
+    if (typeof window !== 'undefined') {
+      const checkHash = () => {
+        const h = window.location.hash.replace('#', '');
+        if (h.startsWith('album-') || h.startsWith('gallery-album-')) {
+          const albumIdStr = h.replace(/^(album-|gallery-album-)/, '');
+          const targetId = parseInt(albumIdStr, 10);
+          if (!isNaN(targetId)) {
+            setSelectedAlbumId(targetId);
+          }
+        } else if (h.startsWith('photo-')) {
+          const photoId = h.replace('photo-', '');
+          for (const alb of albums) {
+            const idx = alb.photos.findIndex((p) => p.id === photoId);
+            if (idx >= 0) {
+              setSelectedAlbumId(alb.id);
+              setLightboxState({
+                isOpen: true,
+                albumId: alb.id,
+                currentIndex: idx,
+              });
+              break;
+            }
           }
         }
-      }
-    };
-    checkHash();
-    window.addEventListener('hashchange', checkHash);
-    return () => window.removeEventListener('hashchange', checkHash);
+      };
+
+      checkHash();
+      window.addEventListener('hashchange', checkHash);
+
+      const handleOpenAlbum = (e: Event) => {
+        const custom = e as CustomEvent<{ albumId: number }>;
+        if (custom.detail?.albumId) {
+          setSelectedAlbumId(custom.detail.albumId);
+        }
+      };
+      window.addEventListener('ndc_open_gallery_album', handleOpenAlbum);
+
+      return () => {
+        window.removeEventListener('hashchange', checkHash);
+        window.removeEventListener('ndc_open_gallery_album', handleOpenAlbum);
+      };
+    }
   }, [albums]);
 
   // Filtered albums for grid
@@ -201,6 +237,16 @@ export const GalleryView: React.FC = () => {
 
     setAlbums((prev) => [newAlbum, ...prev]);
     setSelectedAlbumId(newAlbum.id); // immediately navigate into showcase
+
+    // Automatically create activity post in the Quad Feed
+    if (currentUser) {
+      syncNewAlbumToQuadFeed({
+        album: newAlbum,
+        author: currentUser,
+      }).catch((err) => {
+        console.warn('Failed to sync new album to Quad Feed:', err);
+      });
+    }
   };
 
   const handleUploadPhotos = (albumId: number, newPhotos: GalleryPhoto[]) => {
@@ -218,6 +264,8 @@ export const GalleryView: React.FC = () => {
       });
     });
 
+    const targetAlbum = albums.find((a) => a.id === albumId);
+
     setAlbums((prev) =>
       prev.map((alb) => {
         if (alb.id === albumId) {
@@ -231,6 +279,17 @@ export const GalleryView: React.FC = () => {
         return alb;
       })
     );
+
+    // Automatically create activity post in the Quad Feed
+    if (targetAlbum && currentUser) {
+      syncUploadedPhotosToQuadFeed({
+        album: targetAlbum,
+        newPhotos,
+        author: currentUser,
+      }).catch((err) => {
+        console.warn('Failed to sync uploaded photos to Quad Feed:', err);
+      });
+    }
   };
 
   const handleToggleLike = (photoId: string) => {
@@ -335,7 +394,16 @@ export const GalleryView: React.FC = () => {
       <>
         <AlbumShowcaseView
           album={activeAlbum}
-          onBack={() => setSelectedAlbumId(null)}
+          onBack={() => {
+            setSelectedAlbumId(null);
+            if (
+              typeof window !== 'undefined' &&
+              (window.location.hash.startsWith('#album-') ||
+                window.location.hash.startsWith('#gallery-album-'))
+            ) {
+              window.location.hash = 'gallery';
+            }
+          }}
           onOpenLightbox={(index) => {
             setLightboxState({
               isOpen: true,

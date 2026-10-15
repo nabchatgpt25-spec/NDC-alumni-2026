@@ -2137,22 +2137,26 @@ export async function fetchNotificationsFromDb(
       return [];
     }
 
-    return data.map((n: any) => ({
-      id: Number(n.id),
-      title: n.title || 'Notification',
-      message: n.message || '',
-      timeAgo: n.created_at ? new Date(n.created_at).toISOString() : 'Just now',
-      unread: Boolean(n.unread),
-      type: n.type || 'system',
-      targetRoute: n.target_route || undefined,
-      targetUserId: n.recipient_id ? Number(n.recipient_id) : undefined,
-      actorId: n.actor_id ? Number(n.actor_id) : (n.actor?.id ? Number(n.actor.id) : undefined),
-      actorName: n.actor?.full_name || undefined,
-      actorAvatar: n.actor?.avatar_url || undefined,
-      postId: n.post_id ? Number(n.post_id) : undefined,
-      bloodRequestId: n.blood_request_id || undefined,
-      createdAt: n.created_at || new Date().toISOString(),
-    }));
+    return data.map((n: any) => {
+      const targetRoute = n.target_route || undefined;
+      const type = targetRoute === 'mentorship' ? 'mentorship' : targetRoute === 'career' ? 'career' : (n.type || 'system');
+      return {
+        id: Number(n.id),
+        title: n.title || 'Notification',
+        message: n.message || '',
+        timeAgo: n.created_at ? new Date(n.created_at).toISOString() : 'Just now',
+        unread: Boolean(n.unread),
+        type,
+        targetRoute,
+        targetUserId: n.recipient_id ? Number(n.recipient_id) : undefined,
+        actorId: n.actor_id ? Number(n.actor_id) : (n.actor?.id ? Number(n.actor.id) : undefined),
+        actorName: n.actor?.full_name || undefined,
+        actorAvatar: n.actor?.avatar_url || undefined,
+        postId: n.post_id ? Number(n.post_id) : undefined,
+        bloodRequestId: n.blood_request_id || undefined,
+        createdAt: n.created_at || new Date().toISOString(),
+      };
+    });
   } catch {
     return [];
   }

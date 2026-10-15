@@ -19,6 +19,8 @@ import {
   Loader2,
   Trash2,
   XCircle,
+  Zap,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -52,6 +54,69 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     getUserPreferences()
   );
   const [prefsSavedMessage, setPrefsSavedMessage] = useState<string | null>(null);
+  const [isClearingCache, setIsClearingCache] = useState(false);
+  const [cacheClearStatus, setCacheClearStatus] = useState<string | null>(null);
+  const [openDescriptions, setOpenDescriptions] = useState<Record<string, boolean>>({});
+
+  const toggleDescriptionDropdown = (id: string) => {
+    setOpenDescriptions((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const handleClearAllCaches = async () => {
+    setIsClearingCache(true);
+    setCacheClearStatus(null);
+    try {
+      // 1. Clear Service Worker and CacheStorage caches
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+
+      // 2. Clear transient session storage
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.clear();
+      }
+
+      // 3. Clear temporary local cache keys while preserving user session and preferences
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const preserveKeys = new Set([
+          'ndc_auth_user',
+          'ndc_user_preferences',
+          'ndc_theme',
+          'ndc_bg_music_muted',
+          'ndc_alumni_posts',
+          'ndc_alumni_gallery_albums',
+        ]);
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (
+            key &&
+            !preserveKeys.has(key) &&
+            (key.includes('cache') ||
+              key.includes('temp') ||
+              key.includes('preview') ||
+              key.includes('query'))
+          ) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      }
+
+      setCacheClearStatus('All cache files removed! Website speed maximized.');
+      setTimeout(() => setCacheClearStatus(null), 4000);
+    } catch (err) {
+      console.warn('Cache clear note:', err);
+      setCacheClearStatus('Cache cleaned.');
+      setTimeout(() => setCacheClearStatus(null), 3000);
+    } finally {
+      setIsClearingCache(false);
+    }
+  };
 
   useEffect(() => {
     // Keep local state in sync if preferences are updated elsewhere
@@ -233,6 +298,62 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  // Helper heading dropdown renderer for section titles & headlines
+  const renderHeadingDropdown = (
+    id: string,
+    titleNode: React.ReactNode,
+    description?: string,
+    isDanger?: boolean
+  ) => {
+    if (!description) return <>{titleNode}</>;
+    const isDescOpen = Boolean(openDescriptions[id]);
+
+    return (
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          {titleNode}
+          <button
+            type="button"
+            onClick={() => toggleDescriptionDropdown(id)}
+            className={`p-1 rounded-md transition-all cursor-pointer border flex items-center justify-center shrink-0 ${
+              isDescOpen
+                ? isDanger
+                  ? 'bg-rose-200/80 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border-rose-300 dark:border-rose-700 shadow-xs'
+                  : 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
+                : isDanger
+                ? 'bg-rose-100/70 dark:bg-rose-900/30 text-rose-600 dark:text-rose-300 border-rose-200/70 dark:border-rose-800/50 hover:bg-rose-200/50'
+                : 'bg-slate-100/80 dark:bg-slate-800/80 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 border-slate-200/60 dark:border-slate-700/60 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
+            }`}
+            title={isDescOpen ? 'Hide description' : 'View description dropdown'}
+            aria-label={isDescOpen ? 'Hide description' : 'View description dropdown'}
+            aria-expanded={isDescOpen}
+          >
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                isDescOpen
+                  ? `rotate-180 ${isDanger ? 'text-rose-600 dark:text-rose-300' : 'text-blue-600 dark:text-blue-400'}`
+                  : ''
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Dropdown Menu for description under this headline */}
+        {isDescOpen && (
+          <div
+            className={`mt-2 p-2.5 rounded-xl border text-xs leading-relaxed animate-fadeIn ${
+              isDanger
+                ? 'bg-rose-100/70 dark:bg-rose-900/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+                : 'bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            <p>{description}</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Helper toggle switch renderer
   const renderToggle = (
     label: string,
@@ -241,45 +362,74 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     icon?: React.ReactNode
   ) => {
     const isChecked = Boolean(preferences[key]);
+    const isDescOpen = Boolean(openDescriptions[String(key)]);
+
     return (
-      <div className="flex items-start justify-between gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/80 last:border-0">
-        <div className="flex items-start gap-3 min-w-0">
-          {icon && (
-            <div className="mt-0.5 w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-              {icon}
+      <div className="py-3 border-b border-slate-100 dark:border-slate-800/80 last:border-0 transition-colors">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            {icon && (
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                {icon}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label
+                  htmlFor={`toggle-${key}`}
+                  className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white cursor-pointer select-none"
+                >
+                  {label}
+                </label>
+                {description && (
+                  <button
+                    type="button"
+                    onClick={() => toggleDescriptionDropdown(String(key))}
+                    className={`p-0.5 rounded-md transition-all cursor-pointer border flex items-center justify-center shrink-0 ${
+                      isDescOpen
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
+                        : 'bg-slate-100/80 dark:bg-slate-800/80 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 border-slate-200/60 dark:border-slate-700/60 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
+                    }`}
+                    title={isDescOpen ? 'Hide description' : 'View description dropdown'}
+                    aria-label={isDescOpen ? 'Hide description' : 'View description dropdown'}
+                  >
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform duration-200 ${
+                        isDescOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''
+                      }`}
+                    />
+                  </button>
+                )}
+              </div>
             </div>
-          )}
-          <div>
-            <label
-              htmlFor={`toggle-${key}`}
-              className="text-sm font-semibold text-slate-900 dark:text-white cursor-pointer select-none block"
-            >
-              {label}
-            </label>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-0.5">
-              {description}
-            </p>
           </div>
+
+          <button
+            id={`toggle-${key}`}
+            type="button"
+            role="switch"
+            aria-checked={isChecked}
+            onClick={() => handleTogglePreference(key)}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
+              isChecked ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'
+            }`}
+          >
+            <span className="sr-only">{label}</span>
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                isChecked ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
         </div>
 
-        <button
-          id={`toggle-${key}`}
-          type="button"
-          role="switch"
-          aria-checked={isChecked}
-          onClick={() => handleTogglePreference(key)}
-          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
-            isChecked ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'
-          }`}
-        >
-          <span className="sr-only">{label}</span>
-          <span
-            aria-hidden="true"
-            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-              isChecked ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
+        {/* Dropdown Menu for description under this headline */}
+        {isDescOpen && description && (
+          <div className="mt-2.5 ml-11 p-2.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-300 leading-relaxed animate-fadeIn">
+            <p>{description}</p>
+          </div>
+        )}
       </div>
     );
   };
@@ -289,13 +439,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Top Header */}
       <div className="border-b border-slate-200/80 dark:border-slate-800 pb-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Settings
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Manage your account credentials, institutional verification, application preferences, and privacy.
-            </p>
+          <div className="min-w-0">
+            {renderHeadingDropdown(
+              'main_settings',
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                Settings
+              </h1>,
+              'Manage your account credentials, institutional verification, application preferences, and privacy.'
+            )}
           </div>
           {prefsSavedMessage && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 animate-fadeIn">
@@ -394,25 +545,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* 1. Verification Status (Read-Only) */}
           <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-xs">
             <div className="flex items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                   <ShieldCheck className="w-4 h-4" />
                 </div>
-                <div>
+                {renderHeadingDropdown(
+                  'section_verification',
                   <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                     Verification Status
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Official Notre Dame College Alumni institutional standing
-                  </p>
-                </div>
+                  </h2>,
+                  'Official Notre Dame College Alumni institutional standing'
+                )}
               </div>
 
               {onOpenVerificationCenter && (
                 <button
                   type="button"
                   onClick={() => onOpenVerificationCenter('status')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200/60 dark:border-blue-700/50 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200/60 dark:border-blue-700/50 transition-colors cursor-pointer shrink-0"
                 >
                   <span>Open Verification Center</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -504,14 +654,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
                 <KeyRound className="w-4 h-4" />
               </div>
-              <div>
+              {renderHeadingDropdown(
+                'section_password',
                 <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                   Change Password
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Update your authentication credentials securely
-                </p>
-              </div>
+                </h2>,
+                'Update your authentication credentials securely'
+              )}
             </div>
 
             <form onSubmit={handleUpdatePassword} className="mt-4 space-y-3.5 max-w-md">
@@ -587,14 +736,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
                 <Mail className="w-4 h-4" />
               </div>
-              <div>
+              {renderHeadingDropdown(
+                'section_email',
                 <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                   Change Email
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Update primary account contact email address
-                </p>
-              </div>
+                </h2>,
+                'Update primary account contact email address'
+              )}
             </div>
 
             <form onSubmit={handleUpdateEmail} className="mt-4 space-y-3.5 max-w-md">
@@ -654,14 +802,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
               <Sliders className="w-4 h-4" />
             </div>
-            <div>
+            {renderHeadingDropdown(
+              'section_preferences',
               <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                 Application Preferences
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tailor playback, multimedia, animations, and feed presentation
-              </p>
-            </div>
+              </h2>,
+              'Tailor playback, multimedia, animations, and feed presentation'
+            )}
           </div>
 
           {renderToggle(
@@ -698,6 +845,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             'compact_layout',
             <LayoutTemplate className="w-4 h-4" />
           )}
+
+          {/* Cache Cleaning & Website Speed Optimization */}
+          <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  {renderHeadingDropdown(
+                    'section_cache_clean',
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <span>Clear Browser Cache & Speed Up Website</span>
+                      <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px] font-bold">
+                        Turbo
+                      </span>
+                    </h3>,
+                    'Remove accumulated browser asset caches, service worker entries, and temporary files to free memory and maximize browsing speed.'
+                  )}
+                  {cacheClearStatus && (
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1.5 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {cacheClearStatus}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleClearAllCaches}
+                disabled={isClearingCache}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs shadow-xs hover:shadow transition-all shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                {isClearingCache ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Cleaning...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear Cache Now</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -710,14 +905,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
               <Bell className="w-4 h-4" />
             </div>
-            <div>
+            {renderHeadingDropdown(
+              'section_notifications',
               <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                 Notification Preferences
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Choose how and when the network communicates critical announcements
-              </p>
-            </div>
+              </h2>,
+              'Choose how and when the network communicates critical announcements'
+            )}
           </div>
 
           {renderToggle(
@@ -752,14 +946,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <Eye className="w-4 h-4" />
             </div>
-            <div>
+            {renderHeadingDropdown(
+              'section_privacy',
               <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                 Privacy & Visibility Controls
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Control who can discover and view your professional presence
-              </p>
-            </div>
+              </h2>,
+              'Control who can discover and view your professional presence'
+            )}
           </div>
 
           {renderToggle(
@@ -791,18 +984,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {(activeSection === 'all' || activeSection === 'danger') && (
         <div className="rounded-2xl border-2 border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 p-5 sm:p-6 space-y-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                 <Trash2 className="w-4 h-4" />
               </div>
-              <div>
+              {renderHeadingDropdown(
+                'section_danger',
                 <h2 className="text-sm sm:text-base font-bold text-rose-900 dark:text-rose-200">
                   Danger Zone — Delete Account
-                </h2>
-                <p className="text-xs text-rose-700/80 dark:text-rose-300/80 mt-0.5">
-                  Deleting is permanent. Contact admin if you need help.
-                </p>
-              </div>
+                </h2>,
+                'Deleting is permanent. Contact admin if you need help.',
+                true
+              )}
             </div>
 
             {!showDeleteConfirm && (

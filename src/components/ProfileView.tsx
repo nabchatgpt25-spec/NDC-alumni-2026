@@ -50,6 +50,7 @@ import { calculateProfileCompletion } from '../utils/profileCompletion';
 import { INITIAL_OFFLINE_SAVED_POSTS, INITIAL_OFFLINE_DIRECTORY } from '../utils/offlineStorage';
 import { PostLightboxModal } from './PostLightboxModal';
 import { PremiumPostCarousel } from './feed/PremiumPostCarousel';
+import { GalleryAlbumPostCard } from './feed/GalleryAlbumPostCard';
 import {
   extractUrlsFromText,
   extractFirstValidUrl,
@@ -88,6 +89,7 @@ interface ProfileViewProps {
   onOpenVerificationCenter?: (tab?: 'status' | 'vouch_classmates' | 'upload_id' | 'policy') => void;
   onNavigate?: (route: string) => void;
   initialTab?: 'about' | 'posts' | 'edit';
+  onSelectProfile?: (id: number) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -97,6 +99,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onOpenVerificationCenter,
   onNavigate,
   initialTab,
+  onSelectProfile,
 }) => {
   const { isLoggedIn, currentUser, updateProfile, deleteAccount } = useAuth();
 
@@ -1058,43 +1061,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }`}
                   title={profile.online ? 'Online' : 'Offline'}
                 />
-
-                {isMine && (
-                  <>
-                    <button
-                      type="button"
-                      id="change-avatar-overlay-btn"
-                      onClick={() => handleOpenPhotoModal('avatar')}
-                      className="absolute inset-0 rounded-full bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white cursor-pointer"
-                      title="Change Profile Picture"
-                    >
-                      <Camera className="w-6 h-6 mb-0.5" />
-                      <span className="text-[10px] font-bold">Update</span>
-                    </button>
-                    <button
-                      type="button"
-                      id="change-avatar-badge-btn"
-                      onClick={() => handleOpenPhotoModal('avatar')}
-                      className="absolute bottom-0 right-0 p-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white ring-2 ring-white dark:ring-slate-900 shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer z-10"
-                      title="Change Profile Picture"
-                      aria-label="Change Profile Picture"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                    </button>
-                    {profile.avatarUrl && profile.avatarUrl !== '/ndc-logo.png' && (
-                      <button
-                        type="button"
-                        id="remove-avatar-badge-btn"
-                        onClick={handleRemoveAvatar}
-                        className="absolute top-0 right-0 p-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white ring-2 ring-white dark:ring-slate-900 shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer z-10"
-                        title="Remove Profile Picture"
-                        aria-label="Remove Profile Picture"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </>
-                )}
               </div>
 
               {/* Profile Name & Details: Placed on the Right Side of Profile Pic, In Card Body */}
@@ -1423,7 +1389,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         authUserId={currentUser?.authUserId}
         isOwnProfile={isMine}
         onNavigateToDailyQuestion={() => onNavigate?.('feed')}
-        className="my-5"
+        onViewProfile={(uid) => {
+          if (onSelectProfile) {
+            onSelectProfile(uid);
+          } else if (onNavigate) {
+            window.location.hash = 'profile';
+            onNavigate('profile');
+          }
+        }}
+        className="my-3 sm:my-4"
       />
 
       {/* Tab 1: ABOUT (Combined About & Credentials + Career & Education Timeline) */}
@@ -1480,47 +1454,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 ) : (
                   <span className="text-xs text-slate-400">No specialties listed yet.</span>
                 )}
-              </div>
-            </div>
-
-            {/* Daily Nostalgia Streak Card (Cross-Device Synced) */}
-            <div className="liquid-glass-card p-5 rounded-3xl md:col-span-2 border border-amber-500/20 bg-gradient-to-br from-amber-500/5 via-transparent to-orange-500/5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/25 shrink-0">
-                    <Flame className="w-7 h-7 fill-white" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                        দৈনিক নস্টালজিয়া স্ট্রিক (Daily Streak)
-                      </h4>
-                      {profileStreak && profileStreak.currentStreak >= 7 && (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-400/40 text-[10px] font-extrabold">
-                          🔥 ৭ দিনের স্ট্রিক ব্যাজ
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      নটর ডেম স্মৃতিচারণ প্রশ্ন নিয়মিত উত্তর দিয়ে স্ট্রিক বজায় রাখুন
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-amber-400/30 text-center shadow-xs">
-                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">বর্তমান স্ট্রিক</div>
-                    <div className="text-base font-black text-amber-600 dark:text-amber-400 font-mono">
-                      {banglaDigits(profileStreak?.currentStreak || 0)} দিন
-                    </div>
-                  </div>
-                  <div className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center shadow-xs">
-                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">সর্বোচ্চ স্ট্রিক</div>
-                    <div className="text-base font-black text-slate-800 dark:text-slate-200 font-mono">
-                      {banglaDigits(profileStreak?.maxStreak || 0)} দিন
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -1865,6 +1798,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             </span>
                           </div>
                         </div>
+                      ) : (post.postType === 'gallery_album' || post.link_metadata?.postType === 'gallery_album') ? (
+                        <GalleryAlbumPostCard
+                          post={post}
+                          onOpenLightbox={(idx) =>
+                            setLightboxState({
+                              isOpen: true,
+                              images: post.images,
+                              initialIndex: idx,
+                              postAuthor: {
+                                fullName: post.fullName,
+                                avatarUrl: post.avatarUrl,
+                                batchYear: post.batchYear,
+                                createdAt: post.createdAt,
+                              },
+                              postCaption: post.content,
+                            })
+                          }
+                          onViewAlbum={(albumId) => {
+                            window.location.hash = `album-${albumId}`;
+                            if (onNavigate) {
+                              onNavigate('gallery');
+                            } else {
+                              window.dispatchEvent(new CustomEvent('ndc_navigate_route', { detail: { route: 'gallery' } }));
+                            }
+                            window.dispatchEvent(new CustomEvent('ndc_open_gallery_album', { detail: { albumId } }));
+                          }}
+                        />
                       ) : (
                         <PremiumPostCarousel
                           images={post.images}

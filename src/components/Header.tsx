@@ -17,6 +17,8 @@ import {
   Droplet,
   Heart,
   BellOff,
+  GraduationCap,
+  Briefcase,
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { NDCLogo } from './NDCLogo';
@@ -81,10 +83,12 @@ export const Header: React.FC<HeaderProps> = ({
     syncNotifications();
     window.addEventListener('ndc_vouch_requests_updated', syncVouches);
     window.addEventListener('ndc_notifications_updated', syncNotifications);
+    window.addEventListener('ndc_user_prefs_changed', syncNotifications);
     window.addEventListener('storage', syncNotifications);
     return () => {
       window.removeEventListener('ndc_vouch_requests_updated', syncVouches);
       window.removeEventListener('ndc_notifications_updated', syncNotifications);
+      window.removeEventListener('ndc_user_prefs_changed', syncNotifications);
       window.removeEventListener('storage', syncNotifications);
     };
   }, [currentUser?.id]);
