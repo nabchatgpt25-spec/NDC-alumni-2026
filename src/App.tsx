@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Home, Users, BookOpen, HeartHandshake, User as UserIcon } from 'lucide-react';
+import { Home, Users, BookOpen, HeartHandshake, User as UserIcon, GraduationCap, AlertCircle, RefreshCw } from 'lucide-react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
@@ -56,6 +56,7 @@ function AlumniAppContent() {
     recoveryError,
     recoveryEmail,
     cancelPasswordRecovery,
+    isProfileIncomplete,
   } = useAuth();
   const prefersReducedMotion = useReducedMotion();
   const [loginSuccessNotice, setLoginSuccessNotice] = useState<string | null>(null);
@@ -333,8 +334,33 @@ function AlumniAppContent() {
 
   if (authInitializationError && !isLoggedIn && !isPasswordRecovery) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 text-center" role="alert">
-        {authInitializationError}
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-7 h-7" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-white">Connecting to Notre Dame Alumni Portal</h2>
+            <p className="text-xs text-slate-400 mt-1">{authInitializationError}</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.location.reload()}
+              className="flex-1 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Retry</span>
+            </button>
+            <button
+              onClick={() => {
+                window.location.href = '/';
+              }}
+              className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer transition-all"
+            >
+              <span>Back Home</span>
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -526,6 +552,28 @@ function AlumniAppContent() {
 
         {/* View Router with Smooth Cinematic Page Transitions */}
         <main className="flex-1 px-2.5 sm:px-5 lg:px-8 py-3 sm:py-6 lg:py-8 max-w-[1500px] w-full mx-auto pb-24 lg:pb-8 min-w-0">
+          {isLoggedIn && isProfileIncomplete && route !== 'profile' && (
+            <div className="mb-4 sm:mb-6 p-4 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-blue-500/30 animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <GraduationCap className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm sm:text-base">Complete Your Alumnus Profile</p>
+                  <p className="text-xs text-blue-100">Confirm your Notre Dame HSC Batch Year and Roll to connect with batchmates and request verified status.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedProfileId(currentUser.id);
+                  navigateTo('profile');
+                }}
+                className="px-4 py-2 rounded-xl bg-white text-blue-900 font-extrabold text-xs hover:bg-blue-50 transition-all shrink-0 cursor-pointer shadow-md"
+              >
+                Complete Profile
+              </button>
+            </div>
+          )}
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={`${route}-${route === 'profile' ? selectedProfileId : ''}`}

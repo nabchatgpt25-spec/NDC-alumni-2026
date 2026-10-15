@@ -335,6 +335,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState(initialSuccessMessage || '');
   const [isRegistrationSuccess, setIsRegistrationSuccess] = useState(false);
+  const [registrationRequiresEmailConfirmation, setRegistrationRequiresEmailConfirmation] = useState(false);
+  const [registrationAutoLoggedIn, setRegistrationAutoLoggedIn] = useState(false);
 
   // Handle Google OAuth Sign-In (Task 1)
   const handleGoogleLogin = async () => {
@@ -435,7 +437,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const cleanWhatsapp = whatsapp.trim() ? formatToE164Phone(whatsapp) : '';
       const streamGroup = normalizeAcademicStreamAndGroup(academicGroup);
 
-      await register({
+      const regRes = await register({
         fullName: fullName.trim(),
         avatarUrl: selectedAvatar,
         batchYear: parsedYear,
@@ -462,6 +464,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         bio: '',
         password,
       });
+
+      const requiresConfirm = Boolean(regRes && typeof regRes === 'object' && regRes.requiresEmailConfirmation);
+      const autoLogged = Boolean(regRes && typeof regRes === 'object' && regRes.autoLoggedIn);
+      setRegistrationRequiresEmailConfirmation(requiresConfirm);
+      setRegistrationAutoLoggedIn(autoLogged);
 
       // Securely upload ID document to private storage and record in admin_doc_submissions
       if (verificationMethod === 'id_card_upload' && idProofFile) {
@@ -833,42 +840,55 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {mode === 'register' && isRegistrationSuccess && (
             <div className="py-6 px-4 text-center max-w-md mx-auto space-y-5 animate-in fade-in duration-300">
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
-                <Mail className="w-8 h-8" />
+                {registrationRequiresEmailConfirmation ? <Mail className="w-8 h-8" /> : <Check className="w-8 h-8" />}
               </div>
 
               <div>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                  Account Created Successfully
+                  {registrationRequiresEmailConfirmation ? 'Account Created Successfully' : 'Account Created & Profile Activated!'}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Email verification required before sign in
+                  {registrationRequiresEmailConfirmation ? 'Email verification required before sign in' : 'Your alumni account and profile are ready'}
                 </p>
               </div>
 
               <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-slate-800 dark:text-slate-200 text-xs sm:text-sm text-left space-y-3 leading-relaxed shadow-xs">
                 <p className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>Your account has been created successfully!</span>
+                  <span>
+                    {registrationRequiresEmailConfirmation
+                      ? 'Your account has been created successfully!'
+                      : 'Welcome to the Notre Dame College Alumni Network!'}
+                  </span>
                 </p>
                 <p className="text-slate-700 dark:text-slate-300">
-                  Please check your email inbox to verify your email address before signing in.
+                  {registrationRequiresEmailConfirmation
+                    ? 'Please check your email inbox to verify your email address before signing in.'
+                    : 'Your alumni profile has been saved and your session is active. You can now explore the portal.'}
                 </p>
-                <p className="text-xs text-slate-600 dark:text-slate-400 border-t border-emerald-200/60 dark:border-emerald-800/40 pt-2.5">
-                  If you cannot find the verification email, please check your Spam or Junk folder.
-                </p>
+                {registrationRequiresEmailConfirmation && (
+                  <p className="text-xs text-slate-600 dark:text-slate-400 border-t border-emerald-200/60 dark:border-emerald-800/40 pt-2.5">
+                    If you cannot find the verification email, please check your Spam or Junk folder.
+                  </p>
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={() => {
                   setIsRegistrationSuccess(false);
-                  setMode('login');
-                  setErrorMessage('');
-                  setSuccessMessage('');
+                  if (registrationAutoLoggedIn) {
+                    onClose();
+                    if (onSuccess) onSuccess('register');
+                  } else {
+                    setMode('login');
+                    setErrorMessage('');
+                    setSuccessMessage('');
+                  }
                 }}
                 className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[44px]"
               >
-                <span>Back to Sign In</span>
+                <span>{registrationRequiresEmailConfirmation ? 'Back to Sign In' : 'Enter Alumni Portal'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>

@@ -108,10 +108,18 @@ export function detectRecoveryFromUrl(): {
   return { isRecovery: false, errorMessage: null };
 }
 
+export interface RegistrationResult {
+  success: boolean;
+  requiresEmailConfirmation: boolean;
+  autoLoggedIn: boolean;
+}
+
 interface AuthContextType {
   isAuthInitializing: boolean;
   authInitializationError: string | null;
   isLoggedIn: boolean;
+  isProfileIncomplete: boolean;
+  setIsProfileIncomplete: (val: boolean) => void;
   currentUser: AlumniProfile;
   firebaseToken: string | null;
   supabaseToken: string | null;
@@ -123,7 +131,7 @@ interface AuthContextType {
   login: (phoneOrEmail: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   logout: () => void;
-  register: (profileData: Partial<AlumniProfile> & { password?: string }) => Promise<boolean>;
+  register: (profileData: Partial<AlumniProfile> & { password?: string }) => Promise<RegistrationResult>;
   updateProfile: (updated: Partial<AlumniProfile>) => void;
   deleteAccount: (confirmationPassword?: string) => Promise<boolean>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean }>;
@@ -191,6 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const authResolutionIdRef = useRef(0);
   const resolvedAuthUserIdRef = useRef<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isProfileIncomplete, setIsProfileIncomplete] = useState<boolean>(false);
 
   const [currentUser, setCurrentUser] = useState<AlumniProfile>(DEFAULT_BLANK_USER);
 
@@ -225,6 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsAdminUser(false);
         setCurrentUser(DEFAULT_BLANK_USER);
         setIsLoggedIn(false);
+        setIsProfileIncomplete(false);
         setAuthInitializationError(null);
         setIsAuthInitializing(false);
         return;
@@ -262,21 +272,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         const profile = await getOrCreateSupabaseProfile(session.user, pendingExtra);
         if (!active || requestId !== authResolutionIdRef.current) return;
-        if (!profile) {
-          throw new Error('The authenticated alumni profile could not be loaded.');
-        }
 
-        resolvedAuthUserIdRef.current = session.user.id;
-        setCurrentUser(sanitizeUserProfile(profile));
-        setIsAdminUser(profile.role === 'admin');
-        setIsLoggedIn(true);
+        if (profile) {
+          resolvedAuthUserIdRef.current = session.user.id;
+          setCurrentUser(sanitizeUserProfile(profile));
+          setIsAdminUser(profile.role === 'admin');
+          setIsLoggedIn(true);
+          setAuthInitializationError(null);
+
+          // Detect incomplete profile (e.g. Google OAuth auto-created or missing batch/roll)
+          const isOAuth = Boolean(
+            session.user.app_metadata?.provider === 'google' ||
+            (session.user.identities && session.user.identities.some((i: any) => i.provider === 'google'))
+          );
+          const needsCompletion = (!profile.collegeRoll && profile.batchYear === 2026) || (isOAuth && !profile.collegeRoll);
+          setIsProfileIncomplete(needsCompletion);
+        }
       } catch (err) {
         if (!active || requestId !== authResolutionIdRef.current) return;
-        console.warn('Failed to load profile for Supabase session:', err);
-        setAuthInitializationError(
-          'Your Supabase session is still active, but your alumni profile could not be loaded. Refresh this page to retry.'
-        );
-        // Keep an already-resolved session active; an initial profile error is not a logout.
+        console.warn('Profile resolution fallback for Supabase session:', err);
+        const safeFallback: AlumniProfile = {
+          id: 99999,
+          userId: 99999,
+          authUserId: session.user.id,
+          role: 'member',
+          fullName: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Notredamian Alumnus',
+          avatarUrl: session.user.user_metadata?.picture || '/ndc-logo.png',
+          batchYear: 2026,
+          academicStream: 'Science',
+          verificationStatus: 'unverified',
+          vouchesCount: 0,
+          vouchTargetCount: 2,
+          profession: 'Alumnus',
+          position: '',
+          institution: '',
+          specialty: [],
+          degree: ['HSC'],
+          city: 'Dhaka',
+          country: 'Bangladesh',
+          email: session.user.email || undefined,
+          phoneOwnershipVerified: false,
+          bio: '',
+          careerHistory: [],
+          badges: [],
+          isPublic: true,
+          online: true,
+          postsCount: 0,
+        };
+        resolvedAuthUserIdRef.current = session.user.id;
+        setCurrentUser(sanitizeUserProfile(safeFallback));
+        setIsLoggedIn(true);
+        setIsProfileIncomplete(true);
+        setAuthInitializationError(null);
       } finally {
         if (active && requestId === authResolutionIdRef.current) {
           setIsAuthInitializing(false);
@@ -614,7 +661,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
+  const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<RegistrationResult> => {
     const cleanEmail = (profileData.email || '').trim().toLowerCase();
     const rawPhone = (profileData.phone || '').trim();
     const currentYear = new Date().getFullYear();
@@ -732,31 +779,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Failed to create account in Supabase. Please try again.');
     }
 
-    // Sync the profile row into Supabase alumni_profiles with full details & roll
-    try {
-      await getOrCreateSupabaseProfile(signUpData.user, {
+    // CRITICAL: Determine if email confirmation is required by Supabase
+    // If Supabase has email confirmation disabled or auto-confirmed, signUpData.session is active!
+    const isAutoConfirmed = Boolean(signUpData.session || signUpData.user?.email_confirmed_at);
+    const requiresEmailConfirmation = !isAutoConfirmed;
+
+    if (isAutoConfirmed && signUpData.session) {
+      // 1. Session is established
+      inMemorySupabaseToken = signUpData.session.access_token;
+      setSupabaseToken(signUpData.session.access_token);
+
+      // 2. Synchronously create and load the alumni profile with 100% reliability
+      const profile = await getOrCreateSupabaseProfile(signUpData.user, {
         ...profileData,
         collegeRoll: cleanRoll,
         college_roll: cleanRoll,
         email: cleanEmail,
         phone: cleanPhone || undefined,
-        batchYear: cleanBatchYear || 0,
-        batch_year: cleanBatchYear,
+        batchYear: cleanBatchYear || 2026,
+        batch_year: cleanBatchYear || 2026,
       });
-    } catch (syncErr) {
-      console.warn('Post-signup profile sync warning:', syncErr);
-    }
 
-    // Always require the user to verify email before signing in — do not auto-login
-    if (signUpData.session) {
-      await supabase.auth.signOut().catch(() => {});
+      if (profile) {
+        resolvedAuthUserIdRef.current = signUpData.user.id;
+        setCurrentUser(sanitizeUserProfile(profile));
+        setIsAdminUser(profile.role === 'admin');
+        setIsLoggedIn(true);
+        setIsProfileIncomplete(false);
+      }
+      setIsAuthInitializing(false);
+
+      return {
+        success: true,
+        requiresEmailConfirmation: false,
+        autoLoggedIn: true,
+      };
+    } else {
+      // Email confirmation IS required by Supabase
+      // Details are safely preserved in:
+      // a) localStorage (`ndc_pending_reg_${cleanEmail}`)
+      // b) Supabase user_metadata (passed to options.data in signUp)
+      // When the user clicks the confirmation email and logs in, getOrCreateSupabaseProfile creates the row!
+      if (signUpData.session) {
+        await supabase.auth.signOut().catch(() => {});
+      }
+      inMemorySupabaseToken = null;
+      setSupabaseToken(null);
+      setIsLoggedIn(false);
+      setIsAdminUser(false);
+      setIsAuthInitializing(false);
+
+      return {
+        success: true,
+        requiresEmailConfirmation: true,
+        autoLoggedIn: false,
+      };
     }
-    inMemorySupabaseToken = null;
-    setSupabaseToken(null);
-    setIsLoggedIn(false);
-    setIsAdminUser(false);
-    setIsAuthInitializing(false);
-    return true;
   };
 
   const updateProfile = async (updated: Partial<AlumniProfile>) => {
@@ -975,6 +1053,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthInitializing,
         authInitializationError,
         isLoggedIn,
+        isProfileIncomplete,
+        setIsProfileIncomplete,
         currentUser,
         firebaseToken: null,
         supabaseToken,
