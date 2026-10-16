@@ -46,6 +46,7 @@ import { banglaDigits } from './DailyQuestion';
 import { DailyStreakCard } from './profile/DailyStreakCard';
 import { PhotoChangeModal, PhotoType } from './PhotoChangeModal';
 import { WhatsAppIcon, FacebookIcon } from './SocialIcons';
+import { NDCLogo } from './NDCLogo';
 import { calculateProfileCompletion } from '../utils/profileCompletion';
 import { INITIAL_OFFLINE_SAVED_POSTS, INITIAL_OFFLINE_DIRECTORY } from '../utils/offlineStorage';
 import { PostLightboxModal } from './PostLightboxModal';
@@ -1079,10 +1080,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2">
                   <span className="px-3 py-1 rounded-full bg-blue-500/15 dark:bg-blue-500/20 border border-blue-400/30 text-blue-700 dark:text-blue-300 font-extrabold backdrop-blur-md">
                     {profile.batchYear && profile.batchYear >= 1949
-                      ? `Notre Dame HSC Year: ${profile.batchYear}`
-                      : 'Notre Dame HSC Year: N/A'}
+                      ? `HSC ${profile.batchYear}${profile.session ? ` (${profile.session})` : ''}`
+                      : 'HSC: N/A'}
                   </span>
-                  <span className="text-slate-700 dark:text-slate-200 font-semibold">{profile.profession}</span>
+                  {(profile.academicGroup || profile.academicStream || profile.group) && (
+                    <span className="px-3 py-1 rounded-full bg-indigo-500/15 dark:bg-indigo-500/20 border border-indigo-400/30 text-indigo-700 dark:text-indigo-300 font-extrabold backdrop-blur-md">
+                      {profile.academicStream || (profile.group?.includes('Science') ? 'Science' : profile.group?.includes('Commerce') ? 'Commerce' : profile.group?.includes('Humanities') ? 'Humanities' : 'Science')}
+                      {profile.academicGroup ? ` • Group ${profile.academicGroup}` : profile.section ? ` • Sec ${profile.section}` : ''}
+                    </span>
+                  )}
+                  {profile.collegeRoll && (
+                    <span className="px-2.5 py-1 rounded-full bg-slate-500/15 border border-slate-400/30 text-slate-700 dark:text-slate-300 font-mono font-bold text-xs">
+                      Roll: {profile.collegeRoll}
+                    </span>
+                  )}
+                  <span className="text-slate-700 dark:text-slate-200 font-semibold">{profile.position || profile.profession}</span>
+                  {profile.institution && <span className="text-slate-500 dark:text-slate-400">@ {profile.institution}</span>}
                   {profile.cadre && <span className="text-slate-500 dark:text-slate-400">· {profile.cadre}</span>}
                   {(donorRecord?.isRegisteredDonor || profile.bloodGroup) && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-400/30 text-rose-600 dark:text-rose-400 text-xs font-extrabold backdrop-blur-md">
@@ -1403,6 +1416,204 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {/* Tab 1: ABOUT (Combined About & Credentials + Career & Education Timeline) */}
       {activeTab === 'about' && (
         <div className="space-y-5">
+          {/* 1. Notre Dame College Institutional Credentials & Batch Identity Card */}
+          <div className="liquid-glass-card p-5 sm:p-6 rounded-3xl border border-blue-200/60 dark:border-blue-500/30 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <NDCLogo className="w-6 h-6 shrink-0" />
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                    Notre Dame College Academic Credentials
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Diligite Lumen Sapientiae • Motijheel, Dhaka-1000
+                  </p>
+                </div>
+              </div>
+              <VerificationStatusBadge
+                profile={profile}
+                onClick={() => onOpenVerificationCenter?.(isMine ? 'status' : 'vouch_classmates')}
+                size="md"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  HSC Batch
+                </span>
+                <span className="text-sm font-black text-blue-600 dark:text-blue-400 block">
+                  {profile.batchYear ? `Batch ${profile.batchYear}` : 'Not Specified'}
+                </span>
+                {profile.session && (
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
+                    Session {profile.session}
+                  </span>
+                )}
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  Academic Stream
+                </span>
+                <span className="text-sm font-black text-slate-900 dark:text-slate-100 block">
+                  {profile.academicStream || (profile.group?.includes('Science') ? 'Science' : profile.group?.includes('Commerce') ? 'Commerce' : profile.group?.includes('Humanities') ? 'Humanities' : 'Science')}
+                </span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
+                  Higher Secondary
+                </span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  Group & Section
+                </span>
+                <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 block">
+                  {profile.academicGroup ? `Group ${profile.academicGroup}` : profile.section ? `Sec ${profile.section}` : profile.group || 'Science 01'}
+                </span>
+                {profile.section && profile.academicGroup && (
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
+                    Sec {profile.section}
+                  </span>
+                )}
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  College Roll
+                </span>
+                <span className="text-sm font-mono font-black text-slate-900 dark:text-slate-100 block">
+                  {profile.collegeRoll || 'N/A'}
+                </span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
+                  Verified Roll
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Contact & Community Network Channels */}
+          <div className="liquid-glass-card p-5 sm:p-6 rounded-3xl border border-slate-200/70 dark:border-slate-800 space-y-4">
+            <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+              <Globe className="w-4 h-4 text-blue-600" />
+              <span>Contact & Network Channels</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 block">Current Location</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100 truncate block">
+                    {profile.city || profile.country ? [profile.city, profile.country].filter(Boolean).join(', ') : 'Not Specified'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <WhatsAppIcon className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 block">WhatsApp</span>
+                  {profile.whatsapp ? (
+                    <a
+                      href={`https://wa.me/${profile.whatsapp.replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-emerald-600 hover:underline truncate block"
+                    >
+                      {profile.whatsapp}
+                    </a>
+                  ) : (
+                    <span className="text-slate-400">Not shared</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <FacebookIcon className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 block">Facebook Profile</span>
+                  {profile.fbLink ? (
+                    <a
+                      href={
+                        /^https?:\/\//i.test(profile.fbLink.trim())
+                          ? profile.fbLink.trim()
+                          : `https://${profile.fbLink.trim().replace(/^(javascript|vbscript|data):/i, '')}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-blue-600 hover:underline truncate block"
+                    >
+                      View Facebook
+                    </a>
+                  ) : (
+                    <span className="text-slate-400">Not linked</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 block">Email Address</span>
+                  {profile.email ? (
+                    <a
+                      href={`mailto:${profile.email}`}
+                      className="font-bold text-indigo-600 hover:underline truncate block"
+                    >
+                      {profile.email}
+                    </a>
+                  ) : (
+                    <span className="text-slate-400">Not provided</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                  <Phone className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 block">Phone</span>
+                  {profile.phone ? (
+                    <a
+                      href={`tel:${profile.phone}`}
+                      className="font-bold text-purple-600 hover:underline truncate block"
+                    >
+                      {profile.phone}
+                    </a>
+                  ) : (
+                    <span className="text-slate-400">Hidden / Not set</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <Heart className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 block">Blood Group</span>
+                  <span className="font-extrabold text-rose-600 dark:text-rose-400">
+                    {profile.bloodGroup || donorRecord?.bloodGroup || 'Not specified'}
+                  </span>
+                  {donorRecord?.isRegisteredDonor && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-semibold">
+                      Registered Blood Donor
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {profile.bio && (
               <div className="liquid-glass-card p-5 rounded-3xl md:col-span-2">

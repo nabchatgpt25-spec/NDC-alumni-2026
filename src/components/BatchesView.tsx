@@ -34,30 +34,133 @@ interface BatchesViewProps {
   onViewProfile?: (profileId: number) => void;
 }
 
+export function normalizeGroupInfo(input?: string | null): {
+  stream?: 'Science' | 'Humanities' | 'Commerce';
+  code?: string;
+  normalizedCode?: string;
+} {
+  if (!input) return {};
+  const s = input.trim();
+  const lower = s.toLowerCase();
+
+  let stream: 'Science' | 'Humanities' | 'Commerce' | undefined;
+  if (lower.includes('science')) stream = 'Science';
+  else if (lower.includes('humanities') || lower.includes('arts')) stream = 'Humanities';
+  else if (lower.includes('commerce') || lower.includes('business')) stream = 'Commerce';
+
+  // Extract digits for Science (e.g. "01", "1", "17")
+  const digitMatch = s.match(/(?:group\s*|section\s*|science\s*|^)0?(\d{1,2})/i);
+  if (digitMatch) {
+    const rawNum = parseInt(digitMatch[1], 10);
+    if (rawNum >= 1 && rawNum <= 17) {
+      const padded = rawNum < 10 ? `0${rawNum}` : `${rawNum}`;
+      return {
+        stream: stream || 'Science',
+        code: `${rawNum}`,
+        normalizedCode: padded,
+      };
+    }
+  }
+
+  // Extract letter for Humanities (G, H, L, W) or Commerce (A - H)
+  const letterMatch = s.match(/(?:group\s*|section\s*|^)([a-zA-Z])(?:\b|$)/i);
+  if (letterMatch) {
+    const letter = letterMatch[1].toUpperCase();
+    if (['G', 'H', 'L', 'W'].includes(letter) && (stream === 'Humanities' || !stream)) {
+      return {
+        stream: 'Humanities',
+        code: letter,
+        normalizedCode: letter,
+      };
+    }
+    if (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(letter) && (stream === 'Commerce' || !stream)) {
+      return {
+        stream: 'Commerce',
+        code: letter,
+        normalizedCode: letter,
+      };
+    }
+    return {
+      stream,
+      code: letter,
+      normalizedCode: letter,
+    };
+  }
+
+  return { stream };
+}
+
 function matchesAcademicGroup(profile: AlumniProfile, groupValue: string): boolean {
-  const gTarget = groupValue.toLowerCase().trim();
-  const acadGrp = (profile.academicGroup || '').toLowerCase().trim();
-  const grp = (profile.group || '').toLowerCase().trim();
+  if (!groupValue || groupValue.trim() === '' || groupValue.toLowerCase() === 'all') return true;
 
-  if (acadGrp === gTarget || acadGrp.padStart(2, '0') === gTarget || gTarget.replace(/^0+/, '') === acadGrp.replace(/^0+/, '')) {
-    return true;
-  }
-  if (grp === gTarget) return true;
-  if (grp.includes(`group ${gTarget}`) || grp.includes(`group 0${gTarget}`)) return true;
-  if (grp.endsWith(` ${gTarget}`) || grp.endsWith(` 0${gTarget}`)) return true;
+  const target = normalizeGroupInfo(groupValue);
+  const targetRaw = groupValue.toLowerCase().trim();
 
-  const scienceMatch = grp.match(/^science\s+0?(\d{1,2})$/);
-  if (scienceMatch && (scienceMatch[1] === gTarget || scienceMatch[1].padStart(2, '0') === gTarget)) {
-    return true;
+  // 1. Gather all group representations from profile
+  const profileStream =
+    profile.academicStream ||
+    (profile.group?.toLowerCase().includes('science')
+      ? 'Science'
+      : profile.group?.toLowerCase().includes('humanities') || profile.group?.toLowerCase().includes('arts')
+        ? 'Humanities'
+        : profile.group?.toLowerCase().includes('commerce') || profile.group?.toLowerCase().includes('business')
+          ? 'Commerce'
+          : undefined);
+
+  const acadGrp = (profile.academicGroup || '').trim();
+  const section = (profile.section || '').trim();
+  const grp = (profile.group || '').trim();
+
+  const profFromAcad = normalizeGroupInfo(acadGrp);
+  const profFromSec = normalizeGroupInfo(section);
+  const profFromGrp = normalizeGroupInfo(grp);
+
+  const candidateCodes = new Set<string>();
+  if (target.normalizedCode) candidateCodes.add(target.normalizedCode.toLowerCase());
+  if (target.code) candidateCodes.add(target.code.toLowerCase());
+
+  // Check stream compatibility if target specifies stream
+  if (target.stream) {
+    const profStream = profileStream || profFromAcad.stream || profFromSec.stream || profFromGrp.stream;
+    if (profStream && profStream.toLowerCase() !== target.stream.toLowerCase()) {
+      return false;
+    }
   }
-  const humMatch = grp.match(/^(?:humanities|arts)\s+([ghlw])$/);
-  if (humMatch && humMatch[1] === gTarget) {
-    return true;
+
+  // Check code match
+  const profileCodes = [
+    acadGrp.toLowerCase(),
+    acadGrp.replace(/^0+/, '').toLowerCase(),
+    profFromAcad.normalizedCode?.toLowerCase(),
+    profFromAcad.code?.toLowerCase(),
+    profFromSec.normalizedCode?.toLowerCase(),
+    profFromSec.code?.toLowerCase(),
+    profFromGrp.normalizedCode?.toLowerCase(),
+    profFromGrp.code?.toLowerCase(),
+  ].filter(Boolean) as string[];
+
+  for (const pc of profileCodes) {
+    if (candidateCodes.has(pc)) return true;
   }
-  const comMatch = grp.match(/^(?:commerce|business studies)\s+([a-h])$/);
-  if (comMatch && comMatch[1] === gTarget) {
-    return true;
+
+  // Fallback string containment checks
+  if (grp.toLowerCase().includes(targetRaw)) return true;
+  if (section.toLowerCase().includes(targetRaw)) return true;
+  if (target.normalizedCode) {
+    const padded = target.normalizedCode.toLowerCase();
+    const rawNum = target.code?.toLowerCase() || padded;
+    if (
+      grp.toLowerCase().includes(`group ${padded}`) ||
+      grp.toLowerCase().includes(`group ${rawNum}`) ||
+      section.toLowerCase().includes(`group ${padded}`) ||
+      section.toLowerCase().includes(`group ${rawNum}`) ||
+      section.toLowerCase().includes(`section ${padded}`) ||
+      section.toLowerCase().includes(`section ${rawNum}`)
+    ) {
+      return true;
+    }
   }
+
   return false;
 }
 
@@ -69,6 +172,7 @@ function getGroupAlumniList(
   return profiles.filter((p) => {
     const isBatchMatch = p.batchYear === batch.batchYear;
     if (!isBatchMatch) return false;
+    if (!groupValue || groupValue.trim() === '' || groupValue.toLowerCase() === 'all') return true;
     return matchesAcademicGroup(p, groupValue);
   });
 }
@@ -94,7 +198,7 @@ function computeBatchGroupCounts(batch: BatchSummary, profiles: AlumniProfile[])
   for (const profile of realBatchProfiles) {
     let matched = false;
     for (const code of SCIENCE_GROUPS) {
-      if (matchesAcademicGroup(profile, code)) {
+      if (matchesAcademicGroup(profile, `Science ${code}`)) {
         scienceCounts[code] += 1;
         matched = true;
         break;
@@ -102,7 +206,7 @@ function computeBatchGroupCounts(batch: BatchSummary, profiles: AlumniProfile[])
     }
     if (!matched) {
       for (const code of HUMANITIES_GROUPS) {
-        if (matchesAcademicGroup(profile, code)) {
+        if (matchesAcademicGroup(profile, `Humanities ${code}`)) {
           humanitiesCounts[code] += 1;
           matched = true;
           break;
@@ -111,7 +215,7 @@ function computeBatchGroupCounts(batch: BatchSummary, profiles: AlumniProfile[])
     }
     if (!matched) {
       for (const code of COMMERCE_GROUPS) {
-        if (matchesAcademicGroup(profile, code)) {
+        if (matchesAcademicGroup(profile, `Commerce ${code}`)) {
           commerceCounts[code] += 1;
           matched = true;
           break;
@@ -214,13 +318,19 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
       };
     }
 
-    fetchBatchAlumniProfilesFromDb(activeBatchYear).then((profiles) => {
-      if (isMounted) setBatchAlumniProfiles(profiles);
+    fetchBatchAlumniProfilesFromDb(activeBatchYear).then((dbProfiles) => {
+      if (isMounted) {
+        const localProfiles = allDirectoryProfiles.filter((p) => p.batchYear === activeBatchYear);
+        const combined = [...(dbProfiles || []), ...localProfiles].filter(
+          (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+        );
+        setBatchAlumniProfiles(combined);
+      }
     });
     return () => {
       isMounted = false;
     };
-  }, [activeBatchYear]);
+  }, [activeBatchYear, allDirectoryProfiles]);
 
   const activeBatchGroupStats = useMemo(() => {
     if (!activeBatch) return null;
@@ -228,8 +338,12 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
   }, [activeBatch, batchAlumniProfiles]);
 
   const selectedGroupAlumni = useMemo(() => {
-    if (!activeBatch || !activeBatchGroupStats || !selectedGroup) return [];
-    const list = getGroupAlumniList(activeBatch, selectedGroup, batchAlumniProfiles);
+    if (!activeBatch || !activeBatchGroupStats) return [];
+    // If a group is selected, filter by that group; otherwise show all alumni for the batch
+    const list = selectedGroup
+      ? getGroupAlumniList(activeBatch, selectedGroup, batchAlumniProfiles)
+      : batchAlumniProfiles;
+
     if (!groupSearch.trim()) return list;
     const q = groupSearch.toLowerCase().trim();
     return list.filter(
@@ -238,26 +352,71 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
         (p.collegeRoll && p.collegeRoll.toLowerCase().includes(q)) ||
         p.institution.toLowerCase().includes(q) ||
         p.position.toLowerCase().includes(q) ||
-        p.city.toLowerCase().includes(q)
+        p.city.toLowerCase().includes(q) ||
+        (p.academicGroup && p.academicGroup.toLowerCase().includes(q)) ||
+        (p.section && p.section.toLowerCase().includes(q))
     );
   }, [activeBatch, activeBatchGroupStats, selectedGroup, groupSearch, batchAlumniProfiles]);
 
-  // Resolve direct quick-jump target batch when user types a batch number (1-78) or 4-digit HSC year (e.g. 2016)
-  const quickJumpBatch = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase().replace(/^batch\s*/i, '').replace(/^hsc\s*/i, '');
-    if (!q) return null;
-    const num = Number(q);
-    if (!Number.isNaN(num)) {
-      if (num >= 1949 && num <= 2100) {
-        return batchesList.find((b) => b.batchYear === num) || null;
+  // Resolve direct quick-jump target batch and optional section when user types a batch number, HSC year, or section/group
+  const quickJumpInfo = useMemo(() => {
+    const raw = searchTerm.trim().toLowerCase();
+    if (!raw) return null;
+
+    // Check for 4-digit HSC year (1949-2100) or batch number (1-78)
+    const yearMatch = raw.match(/\b(19\d{2}|20\d{2})\b/);
+    const batchNumMatch = raw.match(/\bbatch\s*(\d{1,2})\b/i);
+
+    let targetBatchYear: number | null = null;
+    if (yearMatch) {
+      targetBatchYear = parseInt(yearMatch[1], 10);
+    } else if (batchNumMatch) {
+      const bNum = parseInt(batchNumMatch[1], 10);
+      targetBatchYear = 1950 + bNum;
+    } else {
+      const numOnly = Number(raw.replace(/^(?:batch|hsc)\s*/i, ''));
+      if (!Number.isNaN(numOnly)) {
+        if (numOnly >= 1949 && numOnly <= 2100) {
+          targetBatchYear = numOnly;
+        } else if (numOnly >= 1 && numOnly <= 78) {
+          targetBatchYear = 1950 + numOnly;
+        }
       }
     }
-    return null;
+
+    if (!targetBatchYear) return null;
+    const batch = batchesList.find((b) => b.batchYear === targetBatchYear) || null;
+    if (!batch) return null;
+
+    // Check for group / section in search query (e.g. "group 1", "section 01", "science 1", "commerce a", "humanities g")
+    let targetGroup: string | null = null;
+    const groupMatch = raw.match(/(?:group|section|sec|grp|science|humanities|commerce|arts)\s*([0-9]{1,2}|[a-zA-Z])\b/i);
+    if (groupMatch) {
+      const codeOrToken = groupMatch[1].toUpperCase();
+      const num = parseInt(codeOrToken, 10);
+      if (!Number.isNaN(num) && num >= 1 && num <= 17) {
+        targetGroup = `Science ${num < 10 ? `0${num}` : num}`;
+      } else if (HUMANITIES_GROUPS.includes(codeOrToken) && (raw.includes('hum') || raw.includes('art'))) {
+        targetGroup = `Humanities ${codeOrToken}`;
+      } else if (COMMERCE_GROUPS.includes(codeOrToken)) {
+        targetGroup = `Commerce ${codeOrToken}`;
+      } else if (HUMANITIES_GROUPS.includes(codeOrToken)) {
+        targetGroup = `Humanities ${codeOrToken}`;
+      }
+    }
+
+    return { batch, targetGroup };
   }, [searchTerm, batchesList]);
+
+  const quickJumpBatch = quickJumpInfo?.batch || null;
 
   // Filter batches
   const filteredBatches = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
+
+    if (quickJumpInfo?.batch) {
+      return [quickJumpInfo.batch];
+    }
 
     const list = batchesList.filter((b) => {
       // When not searching, apply range filter; when searching, search across all 78 batches
@@ -728,71 +887,92 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
               </div>
             </motion.div>
 
-            {/* Alumni List for Selected Group */}
-            <AnimatePresence mode="wait">
-              {selectedGroup && (
-                <motion.div
-                  key={selectedGroup}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 6 }}
-                  transition={{ duration: 0.28 }}
-                  className="pt-2 space-y-4"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50/60 dark:bg-blue-950/25 border border-blue-200/70 dark:border-blue-900/50 rounded-2xl p-3.5">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-black text-slate-900 dark:text-slate-100">
-                          Batch {activeBatch.batchYear} • {selectedGroup} Alumni
-                        </span>
-                        <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">
-                          ({selectedGroupAlumni.length} Members)
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        Showing all alumni members from {selectedGroup} in Batch {activeBatch.batchYear} {activeBatch.session}.
-                      </p>
-                    </div>
-
-                    <div className="relative w-full sm:w-64">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder={`Search in ${selectedGroup} (name, roll, org)...`}
-                        value={groupSearch}
-                        onChange={(e) => setGroupSearch(e.target.value)}
-                        className="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                      />
-                      {groupSearch && (
-                        <button
-                          type="button"
-                          onClick={() => setGroupSearch('')}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
+            {/* Alumni List for Active Batch & Selected Group */}
+            <div className="pt-2 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50/60 dark:bg-blue-950/25 border border-blue-200/70 dark:border-blue-900/50 rounded-2xl p-3.5">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-slate-900 dark:text-slate-100">
+                      {selectedGroup
+                        ? `Batch ${activeBatch.batchYear} • ${selectedGroup} Alumni`
+                        : `Batch ${activeBatch.batchYear} • All Sections`}
+                    </span>
+                    <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">
+                      ({selectedGroupAlumni.length} Members)
+                    </span>
+                    {selectedGroup && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGroup('')}
+                        className="text-xs font-bold px-2 py-0.5 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer"
+                      >
+                        Show All Sections ({batchAlumniProfiles.length})
+                      </button>
+                    )}
                   </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {selectedGroup
+                      ? `Showing alumni members from ${selectedGroup} in Batch ${activeBatch.batchYear} ${activeBatch.session}.`
+                      : `Showing all registered alumni in Batch ${activeBatch.batchYear} ${activeBatch.session}. Click any group above to filter by section.`}
+                  </p>
+                </div>
 
-                  {/* Alumni Cards Grid */}
-                  {selectedGroupAlumni.length === 0 ? (
-                    <div className="p-8 text-center bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
-                      <Users className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                        No registered alumni in this section yet
-                      </p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        Notredamians from Batch {activeBatch.batchYear} ({selectedGroup}) will appear here as they register on the portal.
-                      </p>
-                    </div>
-                  ) : (
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder={
+                      selectedGroup
+                        ? `Search in ${selectedGroup} (name, roll, org)...`
+                        : `Search in Batch ${activeBatch.batchYear}...`
+                    }
+                    value={groupSearch}
+                    onChange={(e) => setGroupSearch(e.target.value)}
+                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                  />
+                  {groupSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setGroupSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Alumni Cards Grid */}
+              {selectedGroupAlumni.length === 0 ? (
+                <div className="p-8 text-center bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                  <Users className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {selectedGroup
+                      ? `No registered alumni in ${selectedGroup} yet`
+                      : `No registered alumni in Batch ${activeBatch.batchYear} yet`}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {selectedGroup
+                      ? `Notredamians from Batch ${activeBatch.batchYear} (${selectedGroup}) will appear here as they register.`
+                      : `Be the first to claim and register your verified profile for Batch ${activeBatch.batchYear}!`}
+                  </p>
+                  {selectedGroup && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGroup('')}
+                      className="mt-3 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 cursor-pointer transition-colors"
+                    >
+                      View All Batch {activeBatch.batchYear} Alumni ({batchAlumniProfiles.length})
+                    </button>
+                  )}
+                </div>
+              ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[540px] overflow-y-auto pr-1">
                       {selectedGroupAlumni.map((alumnus) => (
                         <div
                           key={alumnus.id}
                           onClick={() => {
-                            if (alumnus.id < 900000 && onViewProfile) {
+                            if (onViewProfile) {
                               onViewProfile(alumnus.id);
                             } else {
                               setPreviewAlumnus(alumnus);
@@ -842,9 +1022,7 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                       ))}
                     </div>
                   )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -883,9 +1061,18 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                     <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5">
                       Batch {previewAlumnus.batchYear} {previewAlumnus.session} • {previewAlumnus.group}
                     </p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      College Roll: {previewAlumnus.collegeRoll}
-                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {previewAlumnus.collegeRoll && (
+                        <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                          Roll: {previewAlumnus.collegeRoll}
+                        </p>
+                      )}
+                      {previewAlumnus.bloodGroup && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200/50">
+                          Blood: {previewAlumnus.bloodGroup}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button
@@ -897,9 +1084,11 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                 </button>
               </div>
 
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl">
-                {previewAlumnus.bio}
-              </p>
+              {previewAlumnus.bio && (
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl">
+                  {previewAlumnus.bio}
+                </p>
+              )}
 
               <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
                 <div className="flex items-center gap-2">
@@ -922,25 +1111,51 @@ export const BatchesView: React.FC<BatchesViewProps> = ({ onSelectBatch, onViewP
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                {previewAlumnus.phone && (
-                  <a
-                    href={`tel:${previewAlumnus.phone}`}
-                    className="py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                {onViewProfile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = previewAlumnus.id;
+                      setPreviewAlumnus(null);
+                      onViewProfile(id);
+                    }}
+                    className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>Call Alumnus</span>
-                  </a>
+                    <span>View Complete Profile</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 )}
-                {previewAlumnus.email && (
-                  <a
-                    href={`mailto:${previewAlumnus.email}`}
-                    className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                    <span>Send Email</span>
-                  </a>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {previewAlumnus.whatsapp && (
+                    <a
+                      href={`https://wa.me/${previewAlumnus.whatsapp.replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <span>WhatsApp</span>
+                    </a>
+                  )}
+                  {previewAlumnus.phone && (
+                    <a
+                      href={`tel:${previewAlumnus.phone}`}
+                      className="flex-1 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Phone className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Call</span>
+                    </a>
+                  )}
+                  {previewAlumnus.email && (
+                    <a
+                      href={`mailto:${previewAlumnus.email}`}
+                      className="flex-1 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Mail className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Email</span>
+                    </a>
+                  )}
+                </div>
               </div>
             </motion.div>
           </motion.div>

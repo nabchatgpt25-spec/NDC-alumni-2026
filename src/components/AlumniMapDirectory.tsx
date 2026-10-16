@@ -31,31 +31,221 @@ import { ALUMNI_PROFILES, loadStoredAlumniProfiles } from '../data/mockData';
 import { getCachedDirectory } from '../utils/offlineStorage';
 import { fetchAlumniProfilesFromDb } from '../services/supabaseService';
 
-const CITY_COORDINATES: Record<string, [number, number]> = {
-  dhaka: [23.7314, 90.4193],
+export const CITY_COORDINATES: Record<string, [number, number]> = {
+  // Bangladesh Divisions, Major Districts & Hubs
+  bogura: [24.8465, 89.3777],
+  bogra: [24.8465, 89.3777],
+  dhaka: [23.7808, 90.4152],
   motijheel: [23.7314, 90.4193],
   chittagong: [22.3569, 91.7832],
-  sylhet: [24.8949, 91.8687],
+  chattogram: [22.3569, 91.7832],
   rajshahi: [24.3636, 88.6241],
+  sylhet: [24.8949, 91.8687],
+  khulna: [22.8456, 89.5403],
+  barishal: [22.7010, 90.3535],
+  barisal: [22.7010, 90.3535],
+  rangpur: [25.7439, 89.2752],
+  mymensingh: [24.7471, 90.4203],
+  comilla: [23.4682, 91.1788],
+  cumilla: [23.4682, 91.1788],
+  dinajpur: [25.6217, 88.6355],
+  gazipur: [23.9999, 90.4203],
+  narayanganj: [23.6238, 90.5000],
+  tangail: [24.2513, 89.9167],
+  jessore: [23.1664, 89.2081],
+  jashore: [23.1664, 89.2081],
+  kushtia: [23.9013, 89.1205],
+  pabna: [24.0125, 89.2575],
+  faridpur: [23.6071, 89.8429],
+  "cox's bazar": [21.4272, 92.0058],
+  "coxs bazar": [21.4272, 92.0058],
+  feni: [23.0186, 91.3966],
+  brahmanbaria: [23.9571, 91.1119],
+  noakhali: [22.8696, 91.0994],
+  sunamganj: [25.0658, 91.3950],
+  habiganj: [24.3749, 91.4155],
+  moulvibazar: [24.4829, 91.7774],
+  sirajganj: [24.4534, 89.7008],
+  natore: [24.4206, 88.9324],
+  naogaon: [24.7936, 88.9318],
+  chapainawabganj: [24.5965, 88.2775],
+  joypurhat: [25.1015, 89.0277],
+  kurigram: [25.8054, 89.6362],
+  lalmonirhat: [25.9923, 89.2847],
+  nilphamari: [25.9318, 88.8560],
+  gaibandha: [25.3288, 89.5430],
+  thakurgaon: [26.0337, 88.4617],
+  panchagarh: [26.3411, 88.5542],
+  jamalpur: [24.9375, 89.9378],
+  sherpur: [25.0205, 90.0153],
+  netrokona: [24.8710, 90.7279],
+  kishoreganj: [24.4449, 90.7766],
+  manikganj: [23.8644, 90.0047],
+  munshiganj: [23.5422, 90.5305],
+  narsingdi: [23.9322, 90.7154],
+  gopalganj: [23.0051, 89.8266],
+  madaripur: [23.1641, 90.1897],
+  rajbari: [23.7574, 89.6445],
+  shariatpur: [23.2423, 90.3541],
+  bagerhat: [22.6516, 89.7859],
+  chuadanga: [23.6402, 88.8418],
+  jhenaidah: [23.5448, 89.1539],
+  magura: [23.4873, 89.4199],
+  meherpur: [23.7622, 88.6318],
+  narail: [23.1725, 89.5127],
+  satkhira: [22.7185, 89.0705],
+  barguna: [22.0953, 90.1121],
+  bhola: [22.6859, 90.6481],
+  jhalokati: [22.6406, 90.1987],
+  patuakhali: [22.3596, 90.3297],
+  pirojpur: [22.5841, 89.9720],
+  bandarban: [22.1953, 92.2184],
+  chandpur: [23.2333, 90.6667],
+  khagrachhari: [23.1193, 91.9847],
+  lakshmipur: [22.9425, 90.8412],
+  rangamati: [22.6533, 92.1753],
+  savar: [23.8583, 90.2667],
+  uttara: [23.8759, 90.3795],
+  mirpur: [23.8223, 90.3654],
+  dhanmondi: [23.7461, 90.3742],
+  gulshan: [23.7925, 90.4078],
+  banani: [23.7937, 90.4043],
+  mohammadpur: [23.7658, 90.3584],
+  keraniganj: [23.6844, 90.3167],
+
+  // International Cities where Notredamians reside
   london: [51.5074, -0.1278],
   oxford: [51.752, -1.2577],
+  cambridge: [52.2053, 0.1218],
+  manchester: [53.4808, -2.2426],
+  birmingham: [52.4862, -1.8904],
+  edinburgh: [55.9533, -3.1883],
   berlin: [52.52, 13.405],
+  munich: [48.1351, 11.582],
+  frankfurt: [50.1109, 8.6821],
   dublin: [53.3498, -6.2603],
+  paris: [48.8566, 2.3522],
+  amsterdam: [52.3676, 4.9041],
+  zurich: [47.3769, 8.5417],
+  geneva: [46.2044, 6.1432],
+  stockholm: [59.3293, 18.0686],
+  helsinki: [60.1699, 24.9384],
+  oslo: [59.9139, 10.7522],
+  copenhagen: [55.6761, 12.5683],
   'new york': [40.7128, -74.006],
   'mountain view': [37.3861, -122.0839],
   'san francisco': [37.7749, -122.4194],
+  'san jose': [37.3382, -121.8863],
   seattle: [47.6062, -122.3321],
+  chicago: [41.8781, -87.6298],
+  austin: [30.2672, -97.7431],
+  dallas: [32.7767, -96.797],
+  houston: [29.7604, -95.3698],
   boston: [42.3601, -71.0589],
+  'los angeles': [34.0522, -118.2437],
+  washington: [38.9072, -77.0369],
+  atlanta: [33.749, -84.388],
   toronto: [43.6532, -79.3832],
+  vancouver: [49.2827, -123.1207],
+  montreal: [45.5017, -73.5673],
+  calgary: [51.0447, -114.0719],
+  ottawa: [45.4215, -75.6972],
   dubai: [25.2048, 55.2708],
+  'abu dhabi': [24.4539, 54.3773],
+  sharjah: [25.3463, 55.4209],
   riyadh: [24.7136, 46.6753],
+  jeddah: [21.4858, 39.1925],
+  dammam: [26.4207, 50.0888],
   doha: [25.2854, 51.531],
+  muscat: [23.588, 58.3829],
+  manama: [26.2285, 50.586],
+  kuwait: [29.3759, 47.9774],
+  'kuwait city': [29.3759, 47.9774],
   singapore: [1.3521, 103.8198],
+  'kuala lumpur': [3.139, 101.6869],
   sydney: [-33.8688, 151.2093],
   melbourne: [-37.8136, 144.9631],
+  brisbane: [-27.4698, 153.0251],
+  perth: [-31.9505, 115.8605],
+  auckland: [-36.8485, 174.7633],
   tokyo: [35.6762, 139.6503],
-  'kuala lumpur': [3.139, 101.6869],
+  seoul: [37.5665, 126.978],
+  beijing: [39.9042, 116.4074],
+  shanghai: [31.2304, 121.4737],
+  'hong kong': [22.3193, 114.1694],
+  taipei: [25.033, 121.5654],
+  bangkok: [13.7563, 100.5018],
+  jakarta: [-6.2088, 106.8456],
+  manila: [14.5995, 120.9842],
+  'new delhi': [28.6139, 77.209],
+  delhi: [28.6139, 77.209],
+  kolkata: [22.5726, 88.3639],
+  mumbai: [19.076, 72.8777],
+  bangalore: [12.9716, 77.5946],
+  bengaluru: [12.9716, 77.5946],
+  hyderabad: [17.385, 78.4867],
+  chennai: [13.0827, 80.2707],
+  pune: [18.5204, 73.8567],
+  lahore: [31.5204, 74.3587],
+  karachi: [24.8607, 67.0011],
+  islamabad: [33.6844, 73.0479],
+  kathmandu: [27.7172, 85.324],
+  colombo: [6.9271, 79.8612],
 };
+
+export const COUNTRY_COORDINATES: Record<string, [number, number]> = {
+  bangladesh: [23.685, 90.3563],
+  'united states': [39.8283, -98.5795],
+  usa: [39.8283, -98.5795],
+  'united kingdom': [54.5, -2.5],
+  uk: [54.5, -2.5],
+  canada: [56.13, -106.34],
+  australia: [-25.27, 133.77],
+  germany: [51.16, 10.45],
+  ireland: [53.14, -7.69],
+  'saudi arabia': [23.88, 45.07],
+  'united arab emirates': [23.42, 53.84],
+  uae: [23.42, 53.84],
+  qatar: [25.35, 51.18],
+  singapore: [1.3521, 103.8198],
+  malaysia: [4.21, 101.97],
+  japan: [36.2, 138.25],
+  india: [20.59, 78.96],
+  sweden: [60.12, 18.64],
+  switzerland: [46.81, 8.22],
+  netherlands: [52.13, 5.29],
+  france: [46.22, 2.21],
+};
+
+export function resolveCityCoordinates(city?: string, country?: string): [number, number] {
+  if (city) {
+    const cleanCity = city.toLowerCase().trim();
+    if (CITY_COORDINATES[cleanCity]) {
+      return CITY_COORDINATES[cleanCity];
+    }
+    // Substring match for known cities
+    for (const [k, coords] of Object.entries(CITY_COORDINATES)) {
+      if (cleanCity.includes(k) || k.includes(cleanCity)) {
+        return coords;
+      }
+    }
+  }
+
+  if (country) {
+    const cleanCountry = country.toLowerCase().trim();
+    if (COUNTRY_COORDINATES[cleanCountry]) {
+      return COUNTRY_COORDINATES[cleanCountry];
+    }
+    for (const [k, coords] of Object.entries(COUNTRY_COORDINATES)) {
+      if (cleanCountry.includes(k) || k.includes(cleanCountry)) {
+        return coords;
+      }
+    }
+  }
+
+  // Motijheel NDC campus default
+  return [23.7314, 90.4193];
+}
 
 const DEFAULT_MAP_ALUMNI: AlumniProfile[] = [];
 
@@ -105,11 +295,17 @@ export const GEOGRAPHIC_REGIONS: GeographicRegion[] = [
     countries: ['Bangladesh'],
     subRegions: [
       { id: 'all_bd', name: 'All Bangladesh', city: 'all', center: [23.95, 89.9], zoom: 7.2 },
+      { id: 'bogura', name: 'Bogura (North Bengal Hub)', city: 'Bogura', center: [24.8465, 89.3777], zoom: 12 },
       { id: 'motijheel', name: 'Dhaka (NDC Motijheel Campus)', city: 'Dhaka', center: [23.7314, 90.4193], zoom: 14 },
       { id: 'dhaka_div', name: 'Greater Dhaka', city: 'Dhaka', center: [23.78, 90.40], zoom: 11 },
       { id: 'chittagong', name: 'Chittagong Division', city: 'Chittagong', center: [22.3569, 91.7832], zoom: 11 },
       { id: 'sylhet', name: 'Sylhet Division', city: 'Sylhet', center: [24.8949, 91.8687], zoom: 11 },
       { id: 'rajshahi', name: 'Rajshahi Division', city: 'Rajshahi', center: [24.3636, 88.6241], zoom: 11 },
+      { id: 'khulna', name: 'Khulna Division', city: 'Khulna', center: [22.8456, 89.5403], zoom: 11 },
+      { id: 'barishal', name: 'Barishal Division', city: 'Barishal', center: [22.7010, 90.3535], zoom: 11 },
+      { id: 'rangpur', name: 'Rangpur Division', city: 'Rangpur', center: [25.7439, 89.2752], zoom: 11 },
+      { id: 'mymensingh', name: 'Mymensingh Division', city: 'Mymensingh', center: [24.7471, 90.4203], zoom: 11 },
+      { id: 'comilla', name: 'Cumilla / Comilla', city: 'Comilla', center: [23.4682, 91.1788], zoom: 12 },
     ],
   },
   {
@@ -325,8 +521,18 @@ export function matchAlumnusToRegion(
     return false;
   }
 
-  if (subRegionCity && subRegionCity !== 'all' && profile.city.toLowerCase() !== subRegionCity.toLowerCase()) {
-    return false;
+  if (subRegionCity && subRegionCity !== 'all') {
+    const profCity = (profile.city || '').toLowerCase().trim();
+    const targetCity = subRegionCity.toLowerCase().trim();
+    const isCityMatch =
+      profCity === targetCity ||
+      profCity.includes(targetCity) ||
+      targetCity.includes(profCity) ||
+      (targetCity === 'bogura' && (profCity.includes('bogra') || profCity.includes('bogura'))) ||
+      (targetCity === 'chittagong' && (profCity.includes('chattogram') || profCity.includes('ctg'))) ||
+      (targetCity === 'comilla' && (profCity.includes('cumilla') || profCity.includes('comilla'))) ||
+      (targetCity === 'barishal' && (profCity.includes('barisal') || profCity.includes('barishal')));
+    if (!isCityMatch) return false;
   }
 
   return true;
@@ -354,8 +560,10 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const geoPinRef = useRef<L.Marker | null>(null);
+  const profileMarkersMapRef = useRef<Map<number, L.Marker>>(new Map());
 
   const [dbAlumni, setDbAlumni] = useState<AlumniProfile[]>([]);
+  const [pinDisplayMode, setPinDisplayMode] = useState<'individual' | 'cluster'>('individual');
 
   useEffect(() => {
     let isMounted = true;
@@ -381,15 +589,38 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
       (v, i, a) => a.findIndex((t) => t.id === v.id) === i
     );
     return combined.map((p, idx) => {
-      if (p.latitude !== undefined && p.longitude !== undefined) return p;
-      if (p.lat !== undefined && p.lng !== undefined) {
-        return { ...p, latitude: p.lat, longitude: p.lng };
+      // 1. If profile already has valid numerical coordinates (not null, not 0, not NaN)
+      const validProfileLat =
+        typeof p.latitude === 'number' && !isNaN(p.latitude) && Math.abs(p.latitude) > 0.1
+          ? p.latitude
+          : typeof p.lat === 'number' && !isNaN(p.lat) && Math.abs(p.lat) > 0.1
+          ? p.lat
+          : null;
+      const validProfileLng =
+        typeof p.longitude === 'number' && !isNaN(p.longitude) && Math.abs(p.longitude) > 0.1
+          ? p.longitude
+          : typeof p.lng === 'number' && !isNaN(p.lng) && Math.abs(p.lng) > 0.1
+          ? p.lng
+          : null;
+
+      if (validProfileLat !== null && validProfileLng !== null) {
+        return {
+          ...p,
+          latitude: validProfileLat,
+          longitude: validProfileLng,
+        };
       }
-      const cityKey = (p.city || 'dhaka').toLowerCase().trim();
-      const baseCoords = CITY_COORDINATES[cityKey] || [23.7314, 90.4193];
-      // Slight deterministic offset so multiple people in same city don't overlap identically
-      const offsetLat = ((idx % 5) - 2) * 0.004;
-      const offsetLng = (((idx * 3) % 5) - 2) * 0.004;
+
+      // 2. Resolve accurate coordinates based on city & country
+      const baseCoords = resolveCityCoordinates(p.city, p.country);
+
+      // Deterministic distinct geographic spread offset so alumni in the same city each get a visible, distinct pin
+      const salt = (Number(p.id) || idx + 1) * 2654435761;
+      const angle = (Math.abs(salt) % 360) * (Math.PI / 180);
+      const ring = ((Math.abs(salt) % 6) + 1) * 0.0035; // ~350m - 2.1km distinct local spread
+      const offsetLat = Math.cos(angle) * ring;
+      const offsetLng = Math.sin(angle) * ring * 1.15;
+
       return {
         ...p,
         latitude: baseCoords[0] + offsetLat,
@@ -791,6 +1022,7 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
     });
 
     const marker = L.marker([lat, lng], { icon: customIcon });
+    profileMarkersMapRef.current.set(safeId, marker);
 
     const popupDiv = document.createElement('div');
     popupDiv.className = 'ndc-map-popup p-1 min-w-[250px] max-w-[290px] font-sans text-slate-900';
@@ -837,11 +1069,7 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
       if (btn) {
         btn.onclick = (e) => {
           e.preventDefault();
-          if (alumnus.id < 800000) {
-            onViewProfile(alumnus.id);
-          } else {
-            setSelectedMapAlumnus(alumnus);
-          }
+          onViewProfile(alumnus.id);
         };
       }
     });
@@ -849,14 +1077,28 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
     return marker;
   };
 
-  // Update Markers whenever clusters or expandedClusterKey change
+  // Update Markers whenever clusters, pinDisplayMode, or filteredAlumni change
   useEffect(() => {
     const map = mapInstanceRef.current;
     const markersLayer = markersLayerRef.current;
     if (!map || !markersLayer) return;
 
+    profileMarkersMapRef.current.clear();
     markersLayer.clearLayers();
 
+    // In 'individual' mode or when zoomed in (zoom >= 8), display exact pins for every alumnus!
+    if (pinDisplayMode === 'individual' || mapZoom >= 8) {
+      filteredAlumni.forEach((alumnus) => {
+        const lat = alumnus.latitude ?? alumnus.lat;
+        const lng = alumnus.longitude ?? alumnus.lng;
+        if (lat !== undefined && lng !== undefined) {
+          createAlumnusMarker(alumnus, lat, lng).addTo(markersLayer);
+        }
+      });
+      return;
+    }
+
+    // In cluster mode at low zoom levels:
     clusters.forEach((cluster) => {
       const count = cluster.alumni.length;
 
@@ -915,7 +1157,7 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
         const clusterIcon = L.divIcon({
           className: 'alumni-cluster-marker',
           html: `
-            <div title="Click to expand ${count} alumni in ${safeClusterCity}" class="group relative flex flex-col items-center cursor-pointer transition-transform duration-200 hover:scale-110">
+            <div title="Click to zoom in on ${count} alumni in ${safeClusterCity}" class="group relative flex flex-col items-center cursor-pointer transition-transform duration-200 hover:scale-110">
               <div class="relative flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-tr from-blue-700 to-indigo-600 text-white font-black text-sm ring-4 ring-blue-400/40 shadow-xl border-2 border-white">
                 <span>${count}</span>
                 <span class="absolute -bottom-1 -right-1 flex h-4 w-4">
@@ -936,25 +1178,18 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
 
         const marker = L.marker([cluster.lat, cluster.lng], { icon: clusterIcon });
 
-        // Clicking the count bubble expands the cluster into individual alumni markers
+        // Clicking the count bubble flies in to show individual alumni markers
         marker.on('click', () => {
-          if (map.getZoom() < 8) {
-            map.flyTo([cluster.lat, cluster.lng], Math.min(map.getZoom() + 3, 11), {
-              animate: true,
-              duration: 0.7,
-            });
-            setTimeout(() => {
-              setExpandedClusterKey(cluster.key);
-            }, 750);
-          } else {
-            setExpandedClusterKey(cluster.key);
-          }
+          map.flyTo([cluster.lat, cluster.lng], Math.max(map.getZoom() + 2.5, 9), {
+            animate: true,
+            duration: 0.7,
+          });
         });
 
         marker.addTo(markersLayer);
       }
     });
-  }, [clusters, expandedClusterKey, onViewProfile]);
+  }, [clusters, expandedClusterKey, onViewProfile, pinDisplayMode, mapZoom, filteredAlumni]);
 
   // Handler: Change Region
   const handleSelectRegion = (regionId: string) => {
@@ -1018,7 +1253,50 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
         </div>
 
         {/* Global Action Controls */}
-        <div className="flex items-center gap-2 self-start sm:self-center">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+          <button
+            type="button"
+            onClick={() => setIsFilterPanelOpen((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+              isFilterPanelOpen
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+            }`}
+            title="Toggle directory list and detailed filter panel"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>{isFilterPanelOpen ? 'Hide Directory List' : 'Directory List'}</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+              isFilterPanelOpen ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300'
+            }`}>
+              {filteredAlumni.length}
+            </span>
+          </button>
+
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setPinDisplayMode('individual')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                pinDisplayMode === 'individual'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              📍 Individual Pins ({filteredAlumni.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setPinDisplayMode('cluster')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                pinDisplayMode === 'cluster'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Grouped Hubs
+            </button>
+          </div>
           {(selectedRegionId !== 'all' ||
             selectedDepartmentId !== 'all' ||
             selectedBatch !== 'All' ||
@@ -1161,14 +1439,24 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={handleResetAll}
-              className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetAll}
+                className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFilterPanelOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                title="Close directory list"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Panel Controls */}
@@ -1326,7 +1614,13 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
                           const lat = alumnus.latitude ?? alumnus.lat;
                           const lng = alumnus.longitude ?? alumnus.lng;
                           if (lat && lng && mapInstanceRef.current) {
-                            mapInstanceRef.current.setView([lat, lng], 13, { animate: true });
+                            mapInstanceRef.current.flyTo([lat, lng], 14, { animate: true, duration: 0.8 });
+                            setTimeout(() => {
+                              const marker = profileMarkersMapRef.current.get(Number(alumnus.id));
+                              if (marker) {
+                                marker.openPopup();
+                              }
+                            }, 450);
                           }
                         }}
                         className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2 cursor-pointer transition-colors"
@@ -1363,13 +1657,9 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (alumnus.id < 800000) {
-                              onViewProfile(alumnus.id);
-                            } else {
-                              setSelectedMapAlumnus(alumnus);
-                            }
+                            onViewProfile(alumnus.id);
                           }}
-                          className="px-2 py-1 bg-white dark:bg-slate-800 hover:bg-blue-600 hover:text-white border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[10px] rounded-lg transition-colors shrink-0 cursor-pointer"
+                          className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-blue-600 hover:text-white border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 font-bold text-[10px] rounded-lg transition-colors shrink-0 cursor-pointer shadow-2xs"
                         >
                           Profile
                         </button>
@@ -1641,6 +1931,51 @@ export const AlumniMapDirectory: React.FC<AlumniMapDirectoryProps> = ({ onViewPr
                   {selectedMapAlumnus.city}, {selectedMapAlumnus.country}
                 </span>
               </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const id = selectedMapAlumnus.id;
+                  setSelectedMapAlumnus(null);
+                  onViewProfile(id);
+                }}
+                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>View Complete Profile</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              {(selectedMapAlumnus.phone || selectedMapAlumnus.email || selectedMapAlumnus.whatsapp) && (
+                <div className="flex items-center gap-2">
+                  {selectedMapAlumnus.whatsapp && (
+                    <a
+                      href={`https://wa.me/${selectedMapAlumnus.whatsapp.replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 py-1.5 px-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 rounded-xl text-[11px] font-bold text-center hover:bg-emerald-100 transition-colors"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
+                  {selectedMapAlumnus.phone && (
+                    <a
+                      href={`tel:${selectedMapAlumnus.phone}`}
+                      className="flex-1 py-1.5 px-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-[11px] font-bold text-center hover:bg-slate-200 transition-colors"
+                    >
+                      Call
+                    </a>
+                  )}
+                  {selectedMapAlumnus.email && (
+                    <a
+                      href={`mailto:${selectedMapAlumnus.email}`}
+                      className="flex-1 py-1.5 px-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-[11px] font-bold text-center hover:bg-slate-200 transition-colors"
+                    >
+                      Email
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
