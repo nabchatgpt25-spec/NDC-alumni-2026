@@ -21,6 +21,7 @@ import { formatToE164Phone, normalizePhoneNumber } from '../utils/phone';
 import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
 import { isExecutiveCouncilEmail } from '../services/executiveCouncilService';
 import { checkIsProfileIncomplete } from '../utils/profileCompletion';
+import { isSmallAdminEmail } from '../services/smallAdminService';
 
 export { formatToE164Phone, normalizePhoneNumber };
 
@@ -125,6 +126,8 @@ interface AuthContextType {
   firebaseToken: string | null;
   supabaseToken: string | null;
   isAdminUser: boolean;
+  isSuperAdmin: boolean;
+  isSmallAdmin: boolean;
   isPasswordRecovery: boolean;
   recoveryError: string | null;
   recoveryEmail: string | null;
@@ -172,7 +175,12 @@ function sanitizeUserProfile(profile: AlumniProfile): AlumniProfile {
   }
   const cleanEmail = (profile.email || '').toLowerCase().trim();
   const isAdminByEmail = ADMIN_EMAILS_SET.has(cleanEmail) || isExecutiveCouncilEmail(cleanEmail);
-  const resolvedRole = isAdminByEmail ? 'admin' : (profile.role || 'member');
+  const isSmallAdminByEmail = isSmallAdminEmail(cleanEmail);
+  const resolvedRole = isAdminByEmail
+    ? 'admin'
+    : isSmallAdminByEmail
+      ? 'moderator'
+      : (profile.role || 'member');
 
   return {
     ...profile,
@@ -1019,6 +1027,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   };
 
+  const cleanCurrentEmail = (currentUser.email || '').toLowerCase().trim();
+  const isSuperAdmin =
+    currentUser.role === 'admin' ||
+    ADMIN_EMAILS_SET.has(cleanCurrentEmail) ||
+    isExecutiveCouncilEmail(cleanCurrentEmail);
+
+  const isSmallAdmin =
+    !isSuperAdmin &&
+    (currentUser.role === 'moderator' || isSmallAdminEmail(cleanCurrentEmail));
+
+  const resolvedIsAdminUser = isSuperAdmin || isSmallAdmin || currentUser.role === 'admin' || currentUser.role === 'moderator';
+
   return (
     <AuthContext.Provider
       value={{
@@ -1030,7 +1050,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         currentUser,
         firebaseToken: null,
         supabaseToken,
-        isAdminUser,
+        isAdminUser: resolvedIsAdminUser,
+        isSuperAdmin,
+        isSmallAdmin,
         isPasswordRecovery,
         recoveryError,
         recoveryEmail,

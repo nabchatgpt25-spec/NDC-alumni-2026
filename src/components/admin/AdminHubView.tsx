@@ -56,6 +56,7 @@ import { NDCLogo } from '../NDCLogo';
 import { AdminCommandCenterView } from './AdminCommandCenterView';
 import { AdminFeaturedAlumniManager } from './AdminFeaturedAlumniManager';
 import { AdminSiteCustomizer } from './AdminSiteCustomizer';
+import { AdminSmallAdminsManager } from './AdminSmallAdminsManager';
 
 interface AdminHubViewProps {
   onNavigate: (route: string) => void;
@@ -70,7 +71,8 @@ type AdminTab =
   | 'moderation'
   | 'audit'
   | 'command_center'
-  | 'featured_alumni';
+  | 'featured_alumni'
+  | 'small_admins';
 
 export const AdminHubView: React.FC<AdminHubViewProps> = ({
   onNavigate,
@@ -590,6 +592,22 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
             <Sparkles className="w-4 h-4 text-amber-400" />
             <span>⚡ 100k Command Center</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('small_admins')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'small_admins'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md font-black ring-2 ring-white/30'
+                : 'text-emerald-300 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-300" />
+            <span>🛡️ Appoint Small Admins</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-400 text-slate-950">
+              Delegation
+            </span>
+          </button>
         </div>
       </div>
 
@@ -756,6 +774,24 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Role Delegation</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Promote trusted alumni to Moderators or Super Admins with audit logs.
+              </p>
+            </div>
+
+            <div
+              onClick={() => setActiveTab('small_admins')}
+              className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-emerald-500 transition-all cursor-pointer shadow-sm group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 group-hover:scale-110 transition-transform">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold text-emerald-600 group-hover:translate-x-1 transition-transform">
+                  Appoint →
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Appoint Small Admins</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Delegate verification &amp; post deletion to emails like nurulanambashir25@.
               </p>
             </div>
 
@@ -1918,6 +1954,16 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
       {/* ===================================================================== */}
       {activeTab === 'featured_alumni' && (
         <AdminFeaturedAlumniManager onViewProfile={onViewProfile} />
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 8: SMALL ADMIN MAKING SYSTEM                                      */}
+      {/* ===================================================================== */}
+      {activeTab === 'small_admins' && (
+        <AdminSmallAdminsManager
+          onNavigateToSmallAdmin={() => onNavigate('small-admin')}
+          showToast={showToast}
+        />
       )}
 
       {/* Full-Screen Document Inspection Modal */}
