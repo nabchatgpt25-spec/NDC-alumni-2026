@@ -137,26 +137,8 @@ export async function getOrCreateSupabaseProfile(
       if (extraData?.profession && (!existingProfile.profession || existingProfile.profession === 'Alumnus' || existingProfile.profession === 'Not Specified')) {
         patchPayload.profession = extraData.profession;
       }
-      if (extraData?.position && !existingProfile.position) {
-        patchPayload.position = extraData.position;
-      }
       if (extraData?.institution && !existingProfile.institution) {
         patchPayload.institution = extraData.institution;
-      }
-      if (Array.isArray(extraData?.specialty) && extraData.specialty.length > 0 && (!existingProfile.specialty || existingProfile.specialty.length === 0)) {
-        patchPayload.specialty = extraData.specialty;
-      }
-      if (Array.isArray(extraData?.degree) && extraData.degree.length > 0 && (!existingProfile.degree || existingProfile.degree.length === 0 || (existingProfile.degree.length === 1 && existingProfile.degree[0] === 'HSC'))) {
-        patchPayload.degree = extraData.degree;
-      }
-      if (extraData?.whatsapp && !existingProfile.whatsapp) {
-        patchPayload.whatsapp = extraData.whatsapp;
-      }
-      if (extraData?.city && (!existingProfile.city || existingProfile.city === 'Dhaka')) {
-        patchPayload.city = extraData.city;
-      }
-      if (extraData?.country && (!existingProfile.country || existingProfile.country === 'Bangladesh')) {
-        patchPayload.country = extraData.country;
       }
 
       if (Object.keys(patchPayload).length > 0) {
@@ -318,8 +300,6 @@ export async function getOrCreateSupabaseProfile(
       profession: extraData?.profession || meta.profession || 'Alumnus',
       position: extraData?.position || meta.position || '',
       institution: extraData?.institution || meta.institution || '',
-      specialty: Array.isArray(extraData?.specialty) && extraData.specialty.length > 0 ? extraData.specialty : (Array.isArray(meta.specialty) ? meta.specialty : []),
-      degree: Array.isArray(extraData?.degree) && extraData.degree.length > 0 ? extraData.degree : (Array.isArray(meta.degree) && meta.degree.length > 0 ? meta.degree : ['HSC']),
       city: extraData?.city || meta.city || 'Dhaka',
       country: extraData?.country || meta.country || 'Bangladesh',
       email: cleanEmail || null,

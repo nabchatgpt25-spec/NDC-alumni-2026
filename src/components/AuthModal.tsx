@@ -25,8 +25,10 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { BATCH_LIST } from '../data/mockData';
 import { NDCLogo } from './NDCLogo';
+import { compressImageFileToDataUrl } from '../utils/mediaStorage';
 import { formatToE164Phone } from '../utils/phone';
 import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
+import { uploadVerificationDocumentToStorage, submitAdminDocSubmissionInDb } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 
 interface AuthModalProps {
@@ -98,7 +100,14 @@ interface RegistrationFormDraft {
   academicGroup?: string;
   collegeRoll?: string;
   bmdcNumber?: string;
+  position?: string;
+  institution?: string;
+  specialtyInput?: string;
+  degreeInput?: string;
+  city?: string;
+  country?: string;
   phone?: string;
+  whatsapp?: string;
   email?: string;
 }
 
@@ -177,11 +186,39 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const [academicGroup, setAcademicGroup] = useState<string>(initialDraft.academicGroup || '');
   const [bmdcNumber, setBmdcNumber] = useState(initialDraft.collegeRoll || initialDraft.bmdcNumber || '');
+  const [selectedAvatar] = useState<string>('/ndc-logo.png');
+  const [position, setPosition] = useState(initialDraft.position || '');
+  const [institution, setInstitution] = useState(initialDraft.institution || '');
+  const [specialtyInput, setSpecialtyInput] = useState(initialDraft.specialtyInput || '');
+  const [degreeInput, setDegreeInput] = useState(initialDraft.degreeInput || '');
+  const [city, setCity] = useState(initialDraft.city || '');
+  const [country, setCountry] = useState(initialDraft.country || '');
   const [phone, setPhone] = useState(initialDraft.phone || '');
+  const [whatsapp, setWhatsapp] = useState(initialDraft.whatsapp || '');
   const [email, setEmail] = useState(initialDraft.email || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [verificationMethod, setVerificationMethod] = useState<'two_vouches' | 'id_card_upload'>('two_vouches');
+  const [idProofFile, setIdProofFile] = useState<File | null>(null);
+  const [idProofPreview, setIdProofPreview] = useState<string>('');
+
+  const handleIdProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setErrorMessage('Please upload a valid image file (JPG, PNG, or WEBP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('Document file size must be less than 5MB.');
+      return;
+    }
+    setIdProofFile(file);
+    const blobUrl = URL.createObjectURL(file);
+    setIdProofPreview(blobUrl);
+  };
 
   // Auto-save registration form progress to localStorage
   React.useEffect(() => {
@@ -193,7 +230,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         academicGroup,
         collegeRoll: bmdcNumber,
         bmdcNumber,
+        position,
+        institution,
+        specialtyInput,
+        degreeInput,
+        city,
+        country,
         phone,
+        whatsapp,
         email,
       };
       localStorage.setItem(REGISTRATION_DRAFT_STORAGE_KEY, JSON.stringify(draft));
@@ -205,7 +249,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     batchYear,
     academicGroup,
     bmdcNumber,
+    position,
+    institution,
+    specialtyInput,
+    degreeInput,
+    city,
+    country,
     phone,
+    whatsapp,
     email,
   ]);
 
@@ -284,8 +335,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState(initialSuccessMessage || '');
   const [isRegistrationSuccess, setIsRegistrationSuccess] = useState(false);
-  const [registrationRequiresEmailConfirmation, setRegistrationRequiresEmailConfirmation] = useState(false);
-  const [registrationAutoLoggedIn, setRegistrationAutoLoggedIn] = useState(false);
 
   // Handle Google OAuth Sign-In (Task 1)
   const handleGoogleLogin = async () => {
@@ -352,6 +401,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMessage(`Please enter a valid 4-digit Notre Dame HSC Year between ${minAllowedHscYear} and ${maxAllowedHscYear} (e.g., 2024).`);
       return;
     }
+    if (!phone.trim()) {
+      setErrorMessage('Please provide your Mobile Number.');
+      return;
+    }
     if (!email.trim()) {
       setErrorMessage('Please provide your Email Address.');
       return;
@@ -367,41 +420,80 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     setLoading(true);
     try {
-      const formattedPhone = phone.trim() ? formatToE164Phone(phone) : undefined;
+      const formattedPhone = formatToE164Phone(phone);
+
+      const degreeArray = degreeInput
+        .split(',')
+        .map((d) => d.trim())
+        .filter(Boolean);
+
+      const specialtyArray = specialtyInput
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const cleanWhatsapp = whatsapp.trim() ? formatToE164Phone(whatsapp) : '';
       const streamGroup = normalizeAcademicStreamAndGroup(academicGroup);
 
-      const regRes = await register({
+      await register({
         fullName: fullName.trim(),
-        avatarUrl: '/ndc-logo.png',
+        avatarUrl: selectedAvatar,
         batchYear: parsedYear,
         academicStream: streamGroup.academicStream,
         academicGroup: streamGroup.academicGroup,
         group: streamGroup.academicStream,
         section: streamGroup.academicGroup ? `Group ${streamGroup.academicGroup}` : 'Section A',
-        collegeRoll: bmdcNumber.trim() || undefined,
-        verificationMethod: 'two_vouches',
+        collegeRoll: bmdcNumber.trim(),
+        verificationMethod,
         verificationStatus: 'unverified',
         vouchesCount: 0,
         vouchTargetCount: 2,
         badges: [],
-        profession: 'Alumnus',
-        position: '',
-        institution: '',
-        specialty: [],
-        degree: ['HSC'],
-        city: 'Dhaka',
-        country: 'Bangladesh',
+        profession: '',
+        position: position.trim(),
+        institution: institution.trim(),
+        specialty: specialtyArray,
+        degree: degreeArray,
+        city: city.trim(),
+        country: country.trim(),
         phone: formattedPhone,
-        whatsapp: undefined,
+        whatsapp: cleanWhatsapp,
         email: email.trim(),
         bio: '',
         password,
       });
 
-      const requiresConfirm = Boolean(regRes && typeof regRes === 'object' && regRes.requiresEmailConfirmation);
-      const autoLogged = Boolean(regRes && typeof regRes === 'object' && regRes.autoLoggedIn);
-      setRegistrationRequiresEmailConfirmation(requiresConfirm);
-      setRegistrationAutoLoggedIn(autoLogged);
+      // Securely upload ID document to private storage and record in admin_doc_submissions
+      if (verificationMethod === 'id_card_upload' && idProofFile) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            const uploadRes = await uploadVerificationDocumentToStorage(idProofFile, session.user.id);
+            if (uploadRes?.storagePath) {
+              const { data: profileRow } = await supabase
+                .from('alumni_profiles')
+                .select('id')
+                .eq('auth_user_id', session.user.id)
+                .maybeSingle();
+
+              if (profileRow?.id) {
+                await submitAdminDocSubmissionInDb({
+                  userId: profileRow.id,
+                  batchYear: parsedYear,
+                  collegeRoll: bmdcNumber.trim(),
+                  academicStream: streamGroup.academicStream,
+                  academicGroup: streamGroup.academicGroup,
+                  docType: 'id_card',
+                  docTypeLabel: 'Notre Dame College ID Card',
+                  storageObjectPath: uploadRes.storagePath,
+                });
+              }
+            }
+          }
+        } catch (uploadErr) {
+          console.warn('Post-registration document submission warning:', uploadErr);
+        }
+      }
 
       if (typeof window !== 'undefined') {
         try {
@@ -741,55 +833,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {mode === 'register' && isRegistrationSuccess && (
             <div className="py-6 px-4 text-center max-w-md mx-auto space-y-5 animate-in fade-in duration-300">
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
-                {registrationRequiresEmailConfirmation ? <Mail className="w-8 h-8" /> : <Check className="w-8 h-8" />}
+                <Mail className="w-8 h-8" />
               </div>
 
               <div>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                  {registrationRequiresEmailConfirmation ? 'Account Created Successfully' : 'Account Created & Profile Activated!'}
+                  Account Created Successfully
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {registrationRequiresEmailConfirmation ? 'Email verification required before sign in' : 'Your alumni account and profile are ready'}
+                  Email verification required before sign in
                 </p>
               </div>
 
               <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-slate-800 dark:text-slate-200 text-xs sm:text-sm text-left space-y-3 leading-relaxed shadow-xs">
                 <p className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>
-                    {registrationRequiresEmailConfirmation
-                      ? 'Your account has been created successfully!'
-                      : 'Welcome to the Notre Dame College Alumni Network!'}
-                  </span>
+                  <span>Your account has been created successfully!</span>
                 </p>
                 <p className="text-slate-700 dark:text-slate-300">
-                  {registrationRequiresEmailConfirmation
-                    ? 'Please check your email inbox to verify your email address before signing in.'
-                    : 'Your alumni profile has been saved and your session is active. You can now explore the portal.'}
+                  Please check your email inbox to verify your email address before signing in.
                 </p>
-                {registrationRequiresEmailConfirmation && (
-                  <p className="text-xs text-slate-600 dark:text-slate-400 border-t border-emerald-200/60 dark:border-emerald-800/40 pt-2.5">
-                    If you cannot find the verification email, please check your Spam or Junk folder.
-                  </p>
-                )}
+                <p className="text-xs text-slate-600 dark:text-slate-400 border-t border-emerald-200/60 dark:border-emerald-800/40 pt-2.5">
+                  If you cannot find the verification email, please check your Spam or Junk folder.
+                </p>
               </div>
 
               <button
                 type="button"
                 onClick={() => {
                   setIsRegistrationSuccess(false);
-                  if (registrationAutoLoggedIn) {
-                    onClose();
-                    if (onSuccess) onSuccess('register');
-                  } else {
-                    setMode('login');
-                    setErrorMessage('');
-                    setSuccessMessage('');
-                  }
+                  setMode('login');
+                  setErrorMessage('');
+                  setSuccessMessage('');
                 }}
                 className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[44px]"
               >
-                <span>{registrationRequiresEmailConfirmation ? 'Back to Sign In' : 'Enter Alumni Portal'}</span>
+                <span>Back to Sign In</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -1070,10 +1149,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </motion.div>
                 )}
 
-                {/* 4. Mobile Number (Optional) */}
+                {/* 4. Mobile Number * */}
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    Mobile Number <span className="text-slate-400 font-normal">(Optional)</span>
+                    Mobile Number <span className="text-rose-500">*</span>
                   </label>
                   <div className="flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all overflow-hidden">
                     <div className="px-3 py-2.5 bg-white/40 dark:bg-white/10 border-r border-white/50 dark:border-white/15 text-slate-700 dark:text-slate-200 text-xs font-bold flex-shrink-0 select-none">
@@ -1085,6 +1164,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                      required
                     />
                   </div>
                 </div>
@@ -1110,14 +1190,60 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </motion.div>
 
-              {/* Password & Confirm Password */}
+              {/* SECTION 2: Location */}
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: 0.18 }}
                 className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-white/35 dark:border-white/10"
               >
-                {/* Password * */}
+                {/* City */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    City
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <MapPin className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Dhaka"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Country */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Country
+                  </label>
+                  <div className="relative flex items-center rounded-2xl bg-white/45 dark:bg-white/[0.07] backdrop-blur-md border border-white/60 dark:border-white/15 focus-within:border-blue-500 transition-all">
+                    <div className="pl-3 text-slate-500 dark:text-slate-400">
+                      <Globe className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Bangladesh"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="w-full px-2.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* SECTION 3: Security & Password */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.28 }}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-white/35 dark:border-white/10"
+              >
+                {/* 13. Password * */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -1171,7 +1297,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                 </div>
 
-                {/* Confirm Password * */}
+                {/* 14. Confirm Password * */}
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Confirm Password <span className="text-rose-500">*</span>
@@ -1190,6 +1316,105 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     />
                   </div>
                 </div>
+              </motion.div>
+
+              {/* SECTION 4: Notredamian Trust & Verification Protocol */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.32 }}
+                className="pt-3 border-t border-white/35 dark:border-white/10 space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Verification Protocol (Choose Method)</span>
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25">
+                    3-Tier Trust Active
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setVerificationMethod('two_vouches')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      verificationMethod === 'two_vouches'
+                        ? 'bg-blue-600/15 dark:bg-blue-500/20 border-blue-500 ring-1 ring-blue-500/30'
+                        : 'bg-white/45 dark:bg-white/[0.06] border-white/60 dark:border-white/15 hover:border-blue-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                        Method A: 2-Brother Vouch
+                      </span>
+                      {verificationMethod === 'two_vouches' && (
+                        <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 stroke-[3]" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                      Request 2 verified batchmates to vouch for your roll in the Verification Center.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVerificationMethod('id_card_upload')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      verificationMethod === 'id_card_upload'
+                        ? 'bg-emerald-600/15 dark:bg-emerald-500/20 border-emerald-500 ring-1 ring-emerald-500/30'
+                        : 'bg-white/45 dark:bg-white/[0.06] border-white/60 dark:border-white/15 hover:border-emerald-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                        Method B: NDC ID / Souvenir
+                      </span>
+                      {verificationMethod === 'id_card_upload' && (
+                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                      Submit your NDC ID card, HSC slip, or souvenir for verification by network administrators.
+                    </p>
+                  </button>
+                </div>
+
+                {verificationMethod === 'id_card_upload' && (
+                  <div className="p-3 rounded-2xl bg-white/50 dark:bg-slate-900/50 border border-dashed border-emerald-500/50 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {idProofPreview ? (
+                        <img
+                          src={idProofPreview}
+                          alt="ID Proof"
+                          className="w-10 h-10 rounded-xl object-cover border border-emerald-500/40 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <Camera className="w-5 h-5" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {idProofPreview ? 'NDC Document Attached (Pending Review)' : 'Attach NDC ID / HSC Slip / Souvenir Photo'}
+                        </div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {idProofPreview ? 'Will be submitted for administrator review on sign up' : 'Or upload later from the Verification Center'}
+                        </div>
+                      </div>
+                    </div>
+                    <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer shrink-0 transition-colors">
+                      <span>{idProofPreview ? 'Change' : 'Upload Photo'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleIdProofUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
               </motion.div>
 
               {/* Submit Button */}

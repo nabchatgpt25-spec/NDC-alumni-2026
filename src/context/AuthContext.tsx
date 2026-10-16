@@ -633,7 +633,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<RegistrationResult> => {
+  const register = async (profileData: Partial<AlumniProfile> & { password?: string }): Promise<boolean> => {
     const cleanEmail = (profileData.email || '').trim().toLowerCase();
     const rawPhone = (profileData.phone || '').trim();
     const currentYear = new Date().getFullYear();
