@@ -20,9 +20,15 @@ export function apiUrl(path: string): string {
     return path;
   }
 
-  // 1. Unfurl OpenGraph crawler proxy: served by our Express server
+  // 1. Unfurl OpenGraph crawler proxy -> Supabase 'unfurl' Edge Function
   if (path.startsWith('/api/unfurl')) {
-    return path;
+    const [_, queryString] = path.split('?');
+    const params = new URLSearchParams(queryString || '');
+    if (SUPABASE_ANON_KEY && !params.has('apikey')) {
+      params.set('apikey', SUPABASE_ANON_KEY);
+    }
+    const query = params.toString();
+    return `${getEdgeFunctionUrl('unfurl')}${query ? `?${query}` : ''}`;
   }
 
   // 2. Unified phone login -> Supabase 'unified-phone-login' Edge Function
