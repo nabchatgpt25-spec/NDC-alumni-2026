@@ -33,6 +33,7 @@ const ContactUsView = React.lazy(() => import('./components/ContactUsView').then
 const SavedPostsView = React.lazy(() => import('./components/SavedPostsView').then(m => ({ default: m.SavedPostsView })));
 const BloodNetworkView = React.lazy(() => import('./components/BloodNetworkView').then(m => ({ default: m.BloodNetworkView })));
 const VerificationCenterModal = React.lazy(() => import('./components/verification/VerificationCenterModal').then(m => ({ default: m.VerificationCenterModal })));
+const ProfileCompletionModal = React.lazy(() => import('./components/ProfileCompletionModal').then(m => ({ default: m.ProfileCompletionModal })));
 const SettingsView = React.lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
 const AdminHubView = React.lazy(() => import('./components/admin/AdminHubView').then(m => ({ default: m.AdminHubView })));
 const ExecutiveCouncilHubView = React.lazy(() => import('./components/admin/ExecutiveCouncilHubView').then(m => ({ default: m.ExecutiveCouncilHubView })));
@@ -146,6 +147,15 @@ function AlumniAppContent() {
 
   // Auth modal state
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'forgot' | null>(null);
+
+  // Profile completion modal state
+  const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (isLoggedIn && isProfileIncomplete) {
+      setIsCompletionModalOpen(true);
+    }
+  }, [isLoggedIn, isProfileIncomplete]);
 
   // Verification Center Modal state
   const [verificationModalState, setVerificationModalState] = useState<{
@@ -552,7 +562,7 @@ function AlumniAppContent() {
 
         {/* View Router with Smooth Cinematic Page Transitions */}
         <main className="flex-1 px-2.5 sm:px-5 lg:px-8 py-3 sm:py-6 lg:py-8 max-w-[1500px] w-full mx-auto pb-24 lg:pb-8 min-w-0">
-          {isLoggedIn && isProfileIncomplete && route !== 'profile' && (
+          {isLoggedIn && isProfileIncomplete && (
             <div className="mb-4 sm:mb-6 p-4 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-blue-500/30 animate-in fade-in slide-in-from-top-2">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
@@ -560,14 +570,11 @@ function AlumniAppContent() {
                 </div>
                 <div>
                   <p className="font-bold text-sm sm:text-base">Complete Your Alumnus Profile</p>
-                  <p className="text-xs text-blue-100">Confirm your Notre Dame HSC Batch Year and Roll to connect with batchmates and request verified status.</p>
+                  <p className="text-xs text-blue-100">Confirm your Notre Dame HSC Batch Year and Full Name to unlock all portal features.</p>
                 </div>
               </div>
               <button
-                onClick={() => {
-                  setSelectedProfileId(currentUser.id);
-                  navigateTo('profile');
-                }}
+                onClick={() => setIsCompletionModalOpen(true)}
                 className="px-4 py-2 rounded-xl bg-white text-blue-900 font-extrabold text-xs hover:bg-blue-50 transition-all shrink-0 cursor-pointer shadow-md"
               >
                 Complete Profile
@@ -889,6 +896,17 @@ function AlumniAppContent() {
             isOpen={verificationModalState.isOpen}
             onClose={() => setVerificationModalState((prev) => ({ ...prev, isOpen: false }))}
             initialTab={verificationModalState.initialTab}
+          />
+        </React.Suspense>
+      )}
+
+      {/* Profile Onboarding / Completion Modal */}
+      {isLoggedIn && isProfileIncomplete && isCompletionModalOpen && (
+        <React.Suspense fallback={null}>
+          <ProfileCompletionModal
+            isOpen={isCompletionModalOpen}
+            onClose={() => setIsCompletionModalOpen(false)}
+            onSuccess={() => setIsCompletionModalOpen(false)}
           />
         </React.Suspense>
       )}

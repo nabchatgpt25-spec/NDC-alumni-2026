@@ -331,178 +331,55 @@ export async function getOrCreateSupabaseProfile(
       show_contact_to_verified: true,
     };
 
-    let inserted: any = null;
-    let insertErr: any = null;
-
-    // Pass 1: Standard insert
-    const pass1 = await supabase
+    // Create the alumni_profiles row once, in one place
+    const { data: inserted, error: insertErr } = await supabase
       .from('alumni_profiles')
       .insert(initialRecord)
       .select(ALUMNI_PUBLIC_COLUMNS)
       .maybeSingle();
-    inserted = pass1.data;
-    insertErr = pass1.error;
 
-    // Pass 2: Handle foreign key constraints on academic_group or batch_year
-    if (insertErr && (insertErr.code === '23503' || insertErr.message?.includes('foreign key') || insertErr.message?.includes('stream_group') || insertErr.message?.includes('academic_group'))) {
-      console.warn('Retrying profile insert with academic_group = null due to foreign key constraint');
-      initialRecord.academic_group = null;
-      const pass2 = await supabase
-        .from('alumni_profiles')
-        .insert(initialRecord)
-        .select(ALUMNI_PUBLIC_COLUMNS)
-        .maybeSingle();
-      inserted = pass2.data;
-      insertErr = pass2.error;
-    }
-
-    // Pass 3: Handle unique key conflicts (e.g. phone or email collision with test/seed data)
-    if (insertErr && (insertErr.code === '23505' || insertErr.message?.includes('duplicate key') || insertErr.message?.includes('unique'))) {
-      if (insertErr.message?.includes('phone')) {
-        console.warn('Retrying profile insert with phone = null due to unique conflict');
-        initialRecord.phone = null;
-      }
-      if (insertErr.message?.includes('email')) {
-        console.warn('Retrying profile insert with email = null due to unique conflict');
-        initialRecord.email = null;
-      }
-      const pass3 = await supabase
-        .from('alumni_profiles')
-        .insert(initialRecord)
-        .select(ALUMNI_PUBLIC_COLUMNS)
-        .maybeSingle();
-      inserted = pass3.data;
-      insertErr = pass3.error;
-    }
-
-    // Pass 4: Concurrent insert recovery (another request inserted for this auth_user_id)
     if (insertErr) {
-      const { data: secondFetch } = await supabase
+      // Check if a concurrent request already inserted the record
+      const { data: concurrentRecord } = await supabase
         .from('alumni_profiles')
         .select(ALUMNI_PUBLIC_COLUMNS)
         .eq('auth_user_id', authUser.id)
         .maybeSingle();
-      if (secondFetch) {
-        if (!(secondFetch as any).college_roll && targetRoll) {
-          (secondFetch as any).college_roll = targetRoll;
+
+      if (concurrentRecord) {
+        if (!(concurrentRecord as any).college_roll && targetRoll) {
+          (concurrentRecord as any).college_roll = targetRoll;
         }
-        return mapSupabaseRowToAlumniProfile(secondFetch);
-      }
-    }
-
-    // Pass 5: Minimal guaranteed insert with essential NOT NULL fields only
-    if (insertErr && !inserted) {
-      console.warn('Executing minimal guaranteed profile insert due to error:', insertErr.message);
-      const minimalRecord = {
-        auth_user_id: authUser.id,
-        role: 'member',
-        verification_status: 'unverified',
-        full_name: validFullName,
-        avatar_url: validAvatar,
-        batch_year: effectiveBatchYear,
-        academic_stream: 'Science',
-        academic_group: null,
-        profession: 'Alumnus',
-        position: '',
-        institution: '',
-        city: 'Dhaka',
-        country: 'Bangladesh',
-        is_public: true,
-      };
-      const pass5 = await supabase
-        .from('alumni_profiles')
-        .insert(minimalRecord)
-        .select(ALUMNI_PUBLIC_COLUMNS)
-        .maybeSingle();
-      inserted = pass5.data;
-      insertErr = pass5.error;
-    }
-
-    if (inserted) {
-      try {
-        const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
-          p_profile_id: (inserted as any).id,
-        });
-        if (contacts && contacts[0]) {
-          Object.assign(inserted, contacts[0]);
-        }
-      } catch {}
-
-      if (!(inserted as any).college_roll && targetRoll) {
-        (inserted as any).college_roll = targetRoll;
+        return mapSupabaseRowToAlumniProfile(concurrentRecord);
       }
 
-      return mapSupabaseRowToAlumniProfile(inserted);
+      const errorMessage = `Failed to create alumni profile: ${insertErr.message || 'Database insert failed'}`;
+      console.error(errorMessage, insertErr);
+      throw new Error(errorMessage);
     }
 
-    // Fallback: If network or database was unreachable, construct in-memory profile
-    // so the authenticated user is NEVER blocked by "Supabase session is active but alumni profile could not be loaded"
-    console.error('All database insert attempts failed. Creating in-memory profile fallback:', insertErr?.message);
-    const fallbackProfile: AlumniProfile = {
-      id: 99999,
-      userId: 99999,
-      authUserId: authUser.id,
-      role: 'member',
-      fullName: validFullName,
-      avatarUrl: validAvatar,
-      batchYear: effectiveBatchYear,
-      collegeRoll: targetRoll || undefined,
-      academicStream: streamGroup.academicStream || 'Science',
-      academicGroup: undefined,
-      group: streamGroup.academicStream || 'Science',
-      section: 'Section A',
-      verificationStatus: 'unverified',
-      vouchesCount: 0,
-      vouchTargetCount: 2,
-      profession: 'Alumnus',
-      position: '',
-      institution: '',
-      specialty: [],
-      degree: ['HSC'],
-      city: 'Dhaka',
-      country: 'Bangladesh',
-      email: cleanEmail || undefined,
-      phone: validPhone || undefined,
-      phoneOwnershipVerified: false,
-      whatsapp: validWhatsapp || undefined,
-      bio: '',
-      careerHistory: [],
-      badges: [],
-      isPublic: true,
-      online: true,
-      postsCount: 0,
-    };
-    return fallbackProfile;
+    if (!inserted) {
+      const errorMessage = 'Failed to create alumni profile: No data returned from database insert.';
+      console.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    try {
+      const { data: contacts } = await supabase.rpc('get_alumni_contact_details', {
+        p_profile_id: (inserted as any).id,
+      });
+      if (contacts && contacts[0]) {
+        Object.assign(inserted, contacts[0]);
+      }
+    } catch {}
+
+    if (!(inserted as any).college_roll && targetRoll) {
+      (inserted as any).college_roll = targetRoll;
+    }
+
+    return mapSupabaseRowToAlumniProfile(inserted);
   } catch (err) {
-    console.warn('Unhandled exception during getOrCreateSupabaseProfile:', err);
-    // Never crash or return null for a valid authUser
-    return {
-      id: 99999,
-      userId: 99999,
-      authUserId: authUser.id,
-      role: 'member',
-      fullName: authUser.email ? authUser.email.split('@')[0] : 'Notredamian Alumnus',
-      avatarUrl: '/ndc-logo.png',
-      batchYear: 2026,
-      academicStream: 'Science',
-      verificationStatus: 'unverified',
-      vouchesCount: 0,
-      vouchTargetCount: 2,
-      profession: 'Alumnus',
-      position: '',
-      institution: '',
-      specialty: [],
-      degree: ['HSC'],
-      city: 'Dhaka',
-      country: 'Bangladesh',
-      email: cleanEmail || undefined,
-      phoneOwnershipVerified: false,
-      bio: '',
-      careerHistory: [],
-      badges: [],
-      isPublic: true,
-      online: true,
-      postsCount: 0,
-    };
+    console.error('getOrCreateSupabaseProfile failed:', err);
+    throw err;
   }
 }

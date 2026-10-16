@@ -15,7 +15,38 @@ export interface ProfileCompletionResult {
   registrationTotalCount: number;
   editProfileCompletedCount: number;
   editProfileTotalCount: number;
+  isIncomplete: boolean;
   fields: ProfileFieldCompletionItem[];
+}
+
+/**
+ * Single authoritative rule for whether an alumnus profile is considered incomplete
+ * (e.g. newly created via Google OAuth with placeholder values or missing mandatory identity fields).
+ *
+ * Rule: Requires a valid, confirmed HSC Batch Year (1949..currentYear+1, excluding 2026 placeholder)
+ * and a non-placeholder Full Name.
+ * College Roll is strictly OPTIONAL and does not block profile completeness.
+ */
+export function checkIsProfileIncomplete(profile: Partial<AlumniProfile> | null | undefined): boolean {
+  if (!profile) return true;
+
+  const currentYear = new Date().getFullYear();
+  const rawBatchNum = Number(profile.batchYear);
+  const hasValidBatch =
+    profile.batchYear !== undefined &&
+    profile.batchYear !== null &&
+    !isNaN(rawBatchNum) &&
+    rawBatchNum >= 1949 &&
+    rawBatchNum <= currentYear + 1 &&
+    rawBatchNum !== 2026;
+
+  const hasFullName = Boolean(
+    profile.fullName &&
+    profile.fullName.trim().length > 0 &&
+    profile.fullName.trim() !== 'Notredamian Alumnus'
+  );
+
+  return !hasValidBatch || !hasFullName;
 }
 
 export function calculateProfileCompletion(
@@ -28,7 +59,8 @@ export function calculateProfileCompletion(
     profile.batchYear !== null &&
     !isNaN(rawBatchNum) &&
     rawBatchNum >= 1949 &&
-    rawBatchNum <= currentYear + 1;
+    rawBatchNum <= currentYear + 1 &&
+    rawBatchNum !== 2026;
 
   const hasSpecialty =
     Array.isArray(profile.specialty) &&
@@ -38,20 +70,25 @@ export function calculateProfileCompletion(
     Array.isArray(profile.degree) &&
     profile.degree.map((d) => d.trim()).filter(Boolean).length > 0;
 
-  const hasBadges =
-    Array.isArray(profile.badges) &&
-    profile.badges.map((b) => b.trim()).filter(Boolean).length > 0;
-
   const hasCareerHistory =
     Array.isArray(profile.careerHistory) &&
     profile.careerHistory.map((c) => c.trim()).filter(Boolean).length > 0;
 
+  const hasAcademicGroup = Boolean(
+    (profile.academicGroup && profile.academicGroup.trim().length > 0) ||
+    (profile.group && profile.group.trim().length > 0)
+  );
+
   const fields: ProfileFieldCompletionItem[] = [
-    // 12 Registration Form Fields
+    // Core Registration Form Fields
     {
       key: 'fullName',
       label: 'Full Name',
-      filled: Boolean(profile.fullName && profile.fullName.trim().length > 0),
+      filled: Boolean(
+        profile.fullName &&
+        profile.fullName.trim().length > 0 &&
+        profile.fullName.trim() !== 'Notredamian Alumnus'
+      ),
       source: 'registration',
     },
     {
@@ -61,9 +98,9 @@ export function calculateProfileCompletion(
       source: 'registration',
     },
     {
-      key: 'collegeRoll',
-      label: 'College Roll / Registration ID',
-      filled: Boolean(profile.collegeRoll && profile.collegeRoll.trim().length > 0),
+      key: 'email',
+      label: 'Email Address',
+      filled: Boolean(profile.email && profile.email.trim().length > 0),
       source: 'registration',
     },
     {
@@ -73,55 +110,67 @@ export function calculateProfileCompletion(
       source: 'registration',
     },
     {
-      key: 'email',
-      label: 'Email Address',
-      filled: Boolean(profile.email && profile.email.trim().length > 0),
+      key: 'collegeRoll',
+      label: 'College Roll / Registration ID',
+      filled: Boolean(profile.collegeRoll && profile.collegeRoll.trim().length > 0),
       source: 'registration',
     },
+    {
+      key: 'academicGroup',
+      label: 'Academic Group / Stream',
+      filled: hasAcademicGroup,
+      source: 'registration',
+    },
+
+    // Additional Profile Details
     {
       key: 'position',
       label: 'Current Profession / Role',
       filled: Boolean(profile.position && profile.position.trim().length > 0),
-      source: 'registration',
+      source: 'edit_profile',
     },
     {
       key: 'institution',
       label: 'Organization / Workplace',
       filled: Boolean(profile.institution && profile.institution.trim().length > 0),
-      source: 'registration',
+      source: 'edit_profile',
     },
     {
       key: 'specialty',
       label: 'Field / Specialty',
       filled: hasSpecialty,
-      source: 'registration',
+      source: 'edit_profile',
     },
     {
       key: 'degree',
       label: 'Degrees & Qualifications',
       filled: hasDegree,
-      source: 'registration',
+      source: 'edit_profile',
     },
     {
       key: 'city',
       label: 'City',
       filled: Boolean(profile.city && profile.city.trim().length > 0),
-      source: 'registration',
+      source: 'edit_profile',
     },
     {
       key: 'country',
       label: 'Country',
       filled: Boolean(profile.country && profile.country.trim().length > 0),
-      source: 'registration',
+      source: 'edit_profile',
     },
     {
       key: 'whatsapp',
       label: 'WhatsApp Number',
       filled: Boolean(profile.whatsapp && profile.whatsapp.trim().length > 0),
-      source: 'registration',
+      source: 'edit_profile',
     },
-
-    // 6 Additional Edit Profile Full Form Fields
+    {
+      key: 'bloodGroup',
+      label: 'Blood Group',
+      filled: Boolean(profile.bloodGroup && profile.bloodGroup.trim().length > 0),
+      source: 'edit_profile',
+    },
     {
       key: 'bio',
       label: 'Biography / About Me',
@@ -163,6 +212,7 @@ export function calculateProfileCompletion(
   const completedCount = registrationCompletedCount + editProfileCompletedCount;
   const totalCount = fields.length;
   const percentage = Math.round((completedCount / totalCount) * 100);
+  const isIncomplete = checkIsProfileIncomplete(profile);
 
   return {
     percentage,
@@ -172,6 +222,7 @@ export function calculateProfileCompletion(
     registrationTotalCount: registrationFields.length,
     editProfileCompletedCount,
     editProfileTotalCount: editProfileFields.length,
+    isIncomplete,
     fields,
   };
 }

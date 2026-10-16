@@ -20,6 +20,7 @@ import campusHeroImg from '../assets/images/ndc_campus_hero_1790233370828.jpg';
 import { formatToE164Phone, normalizePhoneNumber } from '../utils/phone';
 import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
 import { isExecutiveCouncilEmail } from '../services/executiveCouncilService';
+import { checkIsProfileIncomplete } from '../utils/profileCompletion';
 
 export { formatToE164Phone, normalizePhoneNumber };
 
@@ -280,50 +281,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsLoggedIn(true);
           setAuthInitializationError(null);
 
-          // Detect incomplete profile (e.g. Google OAuth auto-created or missing batch/roll)
-          const isOAuth = Boolean(
-            session.user.app_metadata?.provider === 'google' ||
-            (session.user.identities && session.user.identities.some((i: any) => i.provider === 'google'))
-          );
-          const needsCompletion = (!profile.collegeRoll && profile.batchYear === 2026) || (isOAuth && !profile.collegeRoll);
+          // Unified completion gate: only batch_year and full_name are mandatory; college_roll is optional
+          const needsCompletion = checkIsProfileIncomplete(profile);
           setIsProfileIncomplete(needsCompletion);
         }
       } catch (err) {
         if (!active || requestId !== authResolutionIdRef.current) return;
-        console.warn('Profile resolution fallback for Supabase session:', err);
-        const safeFallback: AlumniProfile = {
-          id: 99999,
-          userId: 99999,
-          authUserId: session.user.id,
-          role: 'member',
-          fullName: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Notredamian Alumnus',
-          avatarUrl: session.user.user_metadata?.picture || '/ndc-logo.png',
-          batchYear: 2026,
-          academicStream: 'Science',
-          verificationStatus: 'unverified',
-          vouchesCount: 0,
-          vouchTargetCount: 2,
-          profession: 'Alumnus',
-          position: '',
-          institution: '',
-          specialty: [],
-          degree: ['HSC'],
-          city: 'Dhaka',
-          country: 'Bangladesh',
-          email: session.user.email || undefined,
-          phoneOwnershipVerified: false,
-          bio: '',
-          careerHistory: [],
-          badges: [],
-          isPublic: true,
-          online: true,
-          postsCount: 0,
-        };
-        resolvedAuthUserIdRef.current = session.user.id;
-        setCurrentUser(sanitizeUserProfile(safeFallback));
-        setIsLoggedIn(true);
-        setIsProfileIncomplete(true);
-        setAuthInitializationError(null);
+        console.error('Profile resolution failed for Supabase session:', err);
+        resolvedAuthUserIdRef.current = null;
+        setIsAdminUser(false);
+        setCurrentUser(DEFAULT_BLANK_USER);
+        setIsLoggedIn(false);
+        setIsProfileIncomplete(false);
+        setAuthInitializationError(
+          (err as Error)?.message || 'Your alumni profile could not be loaded. Please refresh the page to retry.'
+        );
       } finally {
         if (active && requestId === authResolutionIdRef.current) {
           setIsAuthInitializing(false);
@@ -680,30 +652,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!cleanEmail || !profileData.password) {
       throw new Error('Please provide your email address and a password.');
     }
-    if (!rawPhone) {
-      throw new Error('Please provide your mobile number.');
-    }
 
-    const phoneNorm = normalizePhoneNumber(rawPhone);
-    if (!phoneNorm.isValid) {
-      throw new Error(
-        phoneNorm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx or +8801xxxxxxxx).'
+    let cleanPhone: string | undefined = undefined;
+    if (rawPhone) {
+      const phoneNorm = normalizePhoneNumber(rawPhone);
+      if (!phoneNorm.isValid) {
+        throw new Error(
+          phoneNorm.error || 'Please enter a valid mobile number (e.g. 017xxxxxxxx or +8801xxxxxxxx).'
+        );
+      }
+      cleanPhone = phoneNorm.formatted;
+
+      // This check is rate-limited in PostgreSQL; the normalized unique index is
+      // still authoritative if two registrations race after this preflight.
+      const { data: phoneAvailable, error: phoneAvailabilityError } = await supabase.rpc(
+        'check_phone_available',
+        { p_phone: cleanPhone }
       );
-    }
-    const cleanPhone = phoneNorm.formatted;
-
-    // This check is rate-limited in PostgreSQL; the normalized unique index is
-    // still authoritative if two registrations race after this preflight.
-    const { data: phoneAvailable, error: phoneAvailabilityError } = await supabase.rpc(
-      'check_phone_available',
-      { p_phone: cleanPhone }
-    );
-    if (phoneAvailabilityError) {
-      console.warn('Phone availability check failed:', phoneAvailabilityError.message);
-      throw new Error('Mobile number availability could not be checked. Please try again shortly.');
-    }
-    if (phoneAvailable !== true) {
-      throw new Error('This mobile number is already registered or could not be checked. Please verify it or try again shortly.');
+      if (phoneAvailabilityError) {
+        console.warn('Phone availability check failed:', phoneAvailabilityError.message);
+        throw new Error('Mobile number availability could not be checked. Please try again shortly.');
+      }
+      if (phoneAvailable !== true) {
+        throw new Error('This mobile number is already registered or could not be checked. Please verify it or try again shortly.');
+      }
     }
 
     const rawGroupInput = profileData.academicGroup || profileData.group || profileData.academicStream;
@@ -805,7 +777,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setCurrentUser(sanitizeUserProfile(profile));
         setIsAdminUser(profile.role === 'admin');
         setIsLoggedIn(true);
-        setIsProfileIncomplete(false);
+        setIsProfileIncomplete(checkIsProfileIncomplete(profile));
       }
       setIsAuthInitializing(false);
 
