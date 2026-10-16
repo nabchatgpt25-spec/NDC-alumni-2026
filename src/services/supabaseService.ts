@@ -19,6 +19,7 @@ import {
   loadStoredAlumniProfiles,
 } from '../data/mockData';
 import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
+import { convertDataUrlToBlobFast } from '../utils/mediaStorage';
 
 export { loadStoredAlumniProfiles };
 
@@ -280,12 +281,20 @@ function mapRowToFeedPost(row: any, currentUserId?: number): PostItem {
     authorBatch: author.batch_year || 0,
     authorRole: 'Alumnus',
     verified: author.verification_status === 'verified',
+    profession: author.profession || '',
+    institution: author.institution || '',
     timestamp: row.created_at || new Date().toISOString(),
     likes: Number(row.likes_count) || (row.post_likes?.length ?? 0),
     liked: isLiked,
     commentsList: comments,
     shares: 0,
   } as unknown as PostItem;
+}
+
+let cachedFeedPage0: { data: PostItem[]; expiresAt: number; userId?: number } | null = null;
+
+export function invalidateFeedCache(): void {
+  cachedFeedPage0 = null;
 }
 
 export async function fetchFeedPostsFromDb(
@@ -299,6 +308,17 @@ export async function fetchFeedPostsFromDb(
 
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 12;
   const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+
+  // Instant response for initial page load if warm cache is available
+  if (
+    safeOffset === 0 &&
+    cachedFeedPage0 &&
+    cachedFeedPage0.expiresAt > Date.now() &&
+    cachedFeedPage0.userId === currentUserId &&
+    cachedFeedPage0.data.length > 0
+  ) {
+    return cachedFeedPage0.data;
+  }
 
   try {
     // Defensively query posts with tiered column fallbacks:
@@ -529,7 +549,7 @@ export async function fetchFeedPostsFromDb(
     likesResult.data.forEach((like: any) => userLikesSet.add(Number(like.post_id)));
   }
 
-    return postsData
+    const mappedPosts = postsData
       .map((row: any) => {
         const postId = Number(row.id);
         const author = authorMap.get(Number(row.author_id)) || {};
@@ -547,6 +567,16 @@ export async function fetchFeedPostsFromDb(
         );
       })
       .filter((p) => !isProfilePhotoPost(p));
+
+    if (safeOffset === 0 && mappedPosts.length > 0) {
+      cachedFeedPage0 = {
+        data: mappedPosts,
+        expiresAt: Date.now() + 45 * 1000,
+        userId: currentUserId,
+      };
+    }
+
+    return mappedPosts;
   } catch (outerErr: any) {
     console.warn('Silently caught fetchFeedPostsFromDb error (returning []):', outerErr?.message || outerErr);
     return [];
@@ -752,14 +782,9 @@ async function resolveAndUploadMediaToStorage(
     let ext = mediaType === 'video' ? 'mp4' : 'jpg';
 
     if (urlOrData.startsWith('data:')) {
-      const commaIdx = urlOrData.indexOf(',');
-      if (commaIdx !== -1) {
-        const header = urlOrData.slice(0, commaIdx);
-        const base64Str = urlOrData.slice(commaIdx + 1);
-        const mimeMatch = header.match(/:(.*?);/);
-        if (mimeMatch && mimeMatch[1]) {
-          mimeType = mimeMatch[1];
-        }
+      blob = await convertDataUrlToBlobFast(urlOrData);
+      if (blob.type) {
+        mimeType = blob.type;
         if (mimeType.includes('png')) ext = 'png';
         else if (mimeType.includes('webp')) ext = 'webp';
         else if (mimeType.includes('gif')) ext = 'gif';
@@ -767,13 +792,6 @@ async function resolveAndUploadMediaToStorage(
         else if (mimeType.includes('mp4')) ext = 'mp4';
         else if (mimeType.includes('webm')) ext = 'webm';
         else if (mimeType.includes('quicktime') || mimeType.includes('mov')) ext = 'mov';
-
-        const binary = atob(base64Str);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i);
-        }
-        blob = new Blob([bytes], { type: mimeType });
       }
     } else if (urlOrData.startsWith('blob:')) {
       const res = await fetch(urlOrData);
@@ -846,7 +864,9 @@ export async function createFeedPostInDb(params: {
   videos?: string[];
   linked_url?: string;
   link_metadata?: any;
+  onProgress?: (progressPercent: number, statusText: string) => void;
 }): Promise<{ success: boolean; post?: PostItem; error?: string }> {
+  params.onProgress?.(12, 'Verifying alumni credentials...');
   if (!isSupabaseConfigured) {
     const fallbackId = Date.now();
     const fallbackPost: PostItem = {
@@ -877,10 +897,12 @@ export async function createFeedPostInDb(params: {
       commentsList: [],
       shares: 0,
     } as unknown as PostItem;
+    params.onProgress?.(100, 'Published successfully!');
     return { success: true, post: fallbackPost };
   }
 
   try {
+    params.onProgress?.(20, 'Authenticating session...');
     // 1. Get authenticated Supabase user (checking server user first, then active session)
     let { data: authData } = await supabase.auth.getUser();
     let authUser = authData?.user;
@@ -965,32 +987,56 @@ export async function createFeedPostInDb(params: {
 
     const realAuthorId = Number(profileRow.id);
 
-    // 3. Resolve and upload attached media (photos and videos) to Supabase Storage 'post-media' bucket
-    const uploadedImages: string[] = [];
-    if (Array.isArray(params.images)) {
-      for (const img of params.images) {
-        if (!img) continue;
-        if (img.startsWith('data:') || img.startsWith('blob:')) {
-          const uploadedUrl = await resolveAndUploadMediaToStorage(img, realAuthorId, 'image');
-          uploadedImages.push(uploadedUrl);
-        } else {
-          uploadedImages.push(img);
-        }
-      }
-    }
+    // 3. Resolve and upload attached media in PARALLEL with progress reporting
+    const imageCount = params.images?.length || 0;
+    const videoCount = params.videos?.length || 0;
+    const totalMediaCount = imageCount + videoCount;
+    let completedMediaCount = 0;
 
-    const uploadedVideos: string[] = [];
-    if (Array.isArray(params.videos)) {
-      for (const vid of params.videos) {
-        if (!vid) continue;
-        if (vid.startsWith('data:') || vid.startsWith('blob:')) {
-          const uploadedUrl = await resolveAndUploadMediaToStorage(vid, realAuthorId, 'video');
-          uploadedVideos.push(uploadedUrl);
-        } else {
-          uploadedVideos.push(vid);
-        }
+    params.onProgress?.(
+      30,
+      totalMediaCount > 0
+        ? `Preparing and optimizing ${totalMediaCount} media item(s)...`
+        : 'Formatting post...'
+    );
+
+    const uploadImageTask = async (img: string, idx: number): Promise<string> => {
+      if (!img) return '';
+      if (img.startsWith('data:') || img.startsWith('blob:')) {
+        const uploadedUrl = await resolveAndUploadMediaToStorage(img, realAuthorId, 'image');
+        completedMediaCount++;
+        const pct = Math.min(84, Math.round(30 + (completedMediaCount / Math.max(1, totalMediaCount)) * 52));
+        params.onProgress?.(pct, `Uploading photo ${completedMediaCount} of ${totalMediaCount}...`);
+        return uploadedUrl;
       }
-    }
+      completedMediaCount++;
+      return img;
+    };
+
+    const uploadVideoTask = async (vid: string, idx: number): Promise<string> => {
+      if (!vid) return '';
+      if (vid.startsWith('data:') || vid.startsWith('blob:')) {
+        const uploadedUrl = await resolveAndUploadMediaToStorage(vid, realAuthorId, 'video');
+        completedMediaCount++;
+        const pct = Math.min(84, Math.round(30 + (completedMediaCount / Math.max(1, totalMediaCount)) * 52));
+        params.onProgress?.(pct, `Uploading video ${completedMediaCount} of ${totalMediaCount}...`);
+        return uploadedUrl;
+      }
+      completedMediaCount++;
+      return vid;
+    };
+
+    // Parallel concurrent upload
+    const [uploadedImages, uploadedVideos] = await Promise.all([
+      params.images && params.images.length > 0
+        ? Promise.all(params.images.map(uploadImageTask)).then((r) => r.filter(Boolean))
+        : Promise.resolve([] as string[]),
+      params.videos && params.videos.length > 0
+        ? Promise.all(params.videos.map(uploadVideoTask)).then((r) => r.filter(Boolean))
+        : Promise.resolve([] as string[]),
+    ]);
+
+    params.onProgress?.(86, 'Publishing to alumni network...');
 
     // 4. Validate and sanitize content and category to satisfy schema constraints
     const validCategories = [
@@ -1137,6 +1183,8 @@ export async function createFeedPostInDb(params: {
       };
     }
 
+    invalidateFeedCache();
+    params.onProgress?.(100, 'Post published successfully!');
     const postItem = mapRowToFeedPost({ ...insertedRow, author: profileRow }, realAuthorId);
     return { success: true, post: postItem };
   } catch (err: any) {
@@ -1909,6 +1957,7 @@ export async function editFeedPostInDb(params: {
         updated_at: new Date().toISOString(),
       })
       .eq('id', params.postId);
+    if (!error) invalidateFeedCache();
     return !error;
   } catch {
     return false;
@@ -1925,6 +1974,7 @@ export async function deleteFeedPostInDb(postId: number): Promise<boolean> {
       .select('id');
 
     if (!updateErr && updateData && updateData.length > 0) {
+      invalidateFeedCache();
       return true;
     }
 

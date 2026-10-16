@@ -121,7 +121,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             const parsed: PostItem[] = JSON.parse(local);
             const localForAuthor = parsed.filter(
               (p) =>
-                (p.userId === profileId || p.userId === currentUser.id) &&
+                (Number(p.userId) === Number(profileId) || Number((p as any).authorId) === Number(profileId)) &&
                 !isProfilePhotoPost(p) &&
                 !fetched.some((f) => f.id === p.id)
             );
@@ -144,7 +144,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (!custom.detail?.post) return;
       const newPost = custom.detail.post;
       if (isProfilePhotoPost(newPost)) return;
-      if (newPost.userId === profileId || newPost.userId === currentUser.id) {
+      // Strictly match this respective profile
+      if (Number(newPost.userId) === Number(profileId) || Number((newPost as any).authorId) === Number(profileId)) {
         setAllPosts((prev) => {
           if (custom.detail.replaceTempId) {
             return prev.map((p) =>

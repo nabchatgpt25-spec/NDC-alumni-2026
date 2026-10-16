@@ -59,7 +59,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { playSound } from '../utils/audio';
 import { PostLightboxModal } from './PostLightboxModal';
-import { compressImageFileToDataUrl } from '../utils/mediaStorage';
+import { compressImageFileToDataUrl, compressMultipleImageFiles } from '../utils/mediaStorage';
 import {
   extractUrlsFromText,
   extractFirstValidUrl,
@@ -97,6 +97,7 @@ import {
   editFeedPostInDb,
   deleteFeedPostInDb,
   createNotificationInDb,
+  invalidateFeedCache,
 } from '../services/supabaseService';
 import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
 import { formatFacebookTime, getFullFacebookTimestamp } from '../utils/facebookTime';
@@ -160,6 +161,32 @@ const normalizeFeedPost = (p: PostItem): PostItem => ({
   commentsCount: typeof p.commentsCount === 'number' ? p.commentsCount : (p.comments?.length || 0),
   likesCount: typeof p.likesCount === 'number' ? p.likesCount : 0,
 });
+
+/**
+ * Strict chronological sort for alumni feed posts (newest at top, pinned posts first)
+ */
+const sortFeedPostsChronologically = (postList: PostItem[]): PostItem[] => {
+  return [...postList].sort((a, b) => {
+    // 1. Pinned posts come first
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+
+    // 2. Exact timestamp parse
+    const rawTimeA = a.createdAt || (a as any).timestamp;
+    const rawTimeB = b.createdAt || (b as any).timestamp;
+    const timeA = rawTimeA ? new Date(rawTimeA).getTime() : 0;
+    const timeB = rawTimeB ? new Date(rawTimeB).getTime() : 0;
+
+    if (timeA && timeB && !isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+      return timeB - timeA;
+    }
+
+    // 3. Fallback to positive numeric ID
+    const idA = typeof a.id === 'number' && a.id > 0 ? a.id : 0;
+    const idB = typeof b.id === 'number' && b.id > 0 ? b.id : 0;
+    return idB - idA;
+  });
+};
 
 const CATEGORIES: CategoryItem[] = [
   {
@@ -351,8 +378,21 @@ export const FeedView: React.FC<FeedViewProps> = ({
   const nextFeedOffsetRef = useRef(0);
   const loadMoreInFlightRef = useRef(false);
   const [isSubmittingPost, setIsSubmittingPost] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    active: boolean;
+    percent: number;
+    message: string;
+    stage: string;
+    totalFiles: number;
+  }>({
+    active: false,
+    percent: 0,
+    message: '',
+    stage: '',
+    totalFiles: 0,
+  });
 
-  // Supabase is the ONLY source of truth: load the first page from Supabase on mount.
+  // Supabase is the authoritative source of truth: load the first page from Supabase on mount.
   useEffect(() => {
     let isMounted = true;
     nextFeedOffsetRef.current = 0;
@@ -365,23 +405,21 @@ export const FeedView: React.FC<FeedViewProps> = ({
       .then((dbPosts) => {
         if (!isMounted) return;
         const loadedPosts = (dbPosts || []).filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
+        let finalPosts = loadedPosts;
         try {
           const local = localStorage.getItem('ndc_alumni_posts');
           if (local) {
             const parsed: PostItem[] = JSON.parse(local);
-            const cleanedLocal = parsed.filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
-            try {
-              localStorage.setItem('ndc_alumni_posts', JSON.stringify(cleanedLocal));
-            } catch {}
-            const merged = [...cleanedLocal.filter((p) => !loadedPosts.some((lp) => lp.id === p.id)), ...loadedPosts];
-            nextFeedOffsetRef.current = merged.length;
-            setPosts(merged);
-            setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
-            return;
+            // Only merge temporary unsynced offline drafts (negative IDs)
+            const offlineDrafts = parsed.filter((p) => p.id < 0 && !isProfilePhotoPost(p)).map(normalizeFeedPost);
+            if (offlineDrafts.length > 0) {
+              finalPosts = [...offlineDrafts, ...loadedPosts.filter((lp) => !offlineDrafts.some((od) => od.id === lp.id))];
+            }
           }
         } catch {}
+        const sorted = sortFeedPostsChronologically(finalPosts);
         nextFeedOffsetRef.current = loadedPosts.length;
-        setPosts(loadedPosts);
+        setPosts(sorted);
         setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
       })
       .catch((err) => {
@@ -392,7 +430,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
             if (local) {
               const parsed: PostItem[] = JSON.parse(local);
               const cleanedLocal = parsed.filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
-              setPosts(cleanedLocal);
+              setPosts(sortFeedPostsChronologically(cleanedLocal));
               return;
             }
           } catch {}
@@ -414,11 +452,15 @@ export const FeedView: React.FC<FeedViewProps> = ({
       const newPost = normalizeFeedPost(custom.detail.post);
       if (isProfilePhotoPost(newPost)) return;
       setPosts((prev) => {
+        let updated: PostItem[];
         if (custom.detail.replaceTempId) {
-          return prev.map((p) => (p.id === custom.detail.replaceTempId ? newPost : p));
+          updated = prev.map((p) => (p.id === custom.detail.replaceTempId ? newPost : p));
+        } else if (prev.some((p) => p.id === newPost.id)) {
+          updated = prev.map((p) => (p.id === newPost.id ? newPost : p));
+        } else {
+          updated = [newPost, ...prev];
         }
-        if (prev.some((p) => p.id === newPost.id)) return prev;
-        return [newPost, ...prev];
+        return sortFeedPostsChronologically(updated);
       });
     };
     window.addEventListener('ndc_post_created', handlePostCreated);
@@ -709,12 +751,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
   };
 
   // Process uploaded files (photos and videos) from input, drag-and-drop, or clipboard paste
-  const processUploadedFiles = (files: FileList | File[]) => {
+  const processUploadedFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
 
-    let addedPhotos = 0;
-    let addedVideos = 0;
+    const imageFiles: File[] = [];
+    const videoFiles: File[] = [];
 
     fileArray.forEach((file: File) => {
       const isImage =
@@ -727,39 +769,55 @@ export const FeedView: React.FC<FeedViewProps> = ({
         /\.(mp4|webm|ogg|mov|m4v|mkv)$/i.test(file.name);
 
       if (isImage) {
-        if (file.size > 15 * 1024 * 1024) {
-          showToast('Each photo must be smaller than 15 MB.');
-          return;
+        if (file.size > 20 * 1024 * 1024) {
+          showToast(`Photo ${file.name} is too large (> 20 MB).`);
+        } else {
+          imageFiles.push(file);
         }
-        addedPhotos += 1;
-        compressImageFileToDataUrl(file)
-          .then((result) => {
-            if (result) {
-              setAttachedImages((prev) => [...prev, result]);
-            }
-          })
-          .catch(() => {
-            const reader = new FileReader();
-            reader.onload = (uploadEvent) => {
-              const result = uploadEvent.target?.result as string;
-              if (result) {
-                setAttachedImages((prev) => [...prev, result]);
-              }
-            };
-            reader.readAsDataURL(file);
-          });
       } else if (isVideo) {
-        if (file.size > 100 * 1024 * 1024) {
-          showToast('Each video must be smaller than 100 MB.');
-          return;
+        if (file.size > 150 * 1024 * 1024) {
+          showToast(`Video ${file.name} is too large (> 150 MB).`);
+        } else {
+          videoFiles.push(file);
         }
-        addedVideos += 1;
-        if (file.size <= 15 * 1024 * 1024) {
+      }
+    });
+
+    // 1. Process all photos in PARALLEL with high speed
+    if (imageFiles.length > 0) {
+      if (imageFiles.length > 1) {
+        showToast(`Optimizing ${imageFiles.length} photos at high speed...`);
+      }
+      try {
+        const compressedUrls = await compressMultipleImageFiles(imageFiles);
+        if (compressedUrls.length > 0) {
+          setAttachedImages((prev) => [...prev, ...compressedUrls]);
+          showToast(
+            `${compressedUrls.length} photo${compressedUrls.length > 1 ? 's' : ''} ready to post!`
+          );
+        }
+      } catch {
+        // Fallback
+        imageFiles.forEach((f) => {
           const reader = new FileReader();
-          reader.onload = (uploadEvent) => {
-            const result = uploadEvent.target?.result as string;
-            if (result) {
-              setAttachedVideos((prev) => [...prev, result]);
+          reader.onload = (e) => {
+            if (typeof e.target?.result === 'string') {
+              setAttachedImages((prev) => [...prev, e.target!.result as string]);
+            }
+          };
+          reader.readAsDataURL(f);
+        });
+      }
+    }
+
+    // 2. Process all videos in parallel
+    if (videoFiles.length > 0) {
+      videoFiles.forEach((file) => {
+        if (file.size <= 20 * 1024 * 1024) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            if (typeof e.target?.result === 'string') {
+              setAttachedVideos((prev) => [...prev, e.target!.result as string]);
             }
           };
           reader.readAsDataURL(file);
@@ -767,17 +825,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
           const objectUrl = URL.createObjectURL(file);
           setAttachedVideos((prev) => [...prev, objectUrl]);
         }
-      } else {
-        showToast('Supported formats: JPG, PNG, WEBP, GIF photos and MP4, WEBM, MOV videos.');
-      }
-    });
-
-    if (addedPhotos > 0 && addedVideos > 0) {
-      showToast(`Added ${addedPhotos} photo(s) and ${addedVideos} video(s) to your post!`);
-    } else if (addedPhotos > 0) {
-      showToast(`${addedPhotos} photo${addedPhotos > 1 ? 's' : ''} added to your post!`);
-    } else if (addedVideos > 0) {
-      showToast(`${addedVideos} video${addedVideos > 1 ? 's' : ''} added to your post!`);
+      });
+      showToast(`${videoFiles.length} video(s) attached to post.`);
     }
   };
 
@@ -1052,6 +1101,15 @@ export const FeedView: React.FC<FeedViewProps> = ({
     const resolvedLinkMetadata = composerLinkMetadata || undefined;
 
     setIsSubmittingPost(true);
+    const totalMedia = attachedImages.length + finalVideos.length;
+    setUploadProgress({
+      active: true,
+      percent: 10,
+      message: totalMedia > 0 ? `Preparing ${totalMedia} media item(s)...` : 'Formatting post...',
+      stage: 'preparing',
+      totalFiles: totalMedia,
+    });
+
     const tempPostId = -Date.now();
     const optimisticPost: PostItem = {
       id: tempPostId,
@@ -1066,7 +1124,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
       link_metadata: resolvedLinkMetadata,
       likesCount: 0,
       commentsCount: 0,
-      createdAt: 'Just now',
+      createdAt: new Date().toISOString(),
       likedByMe: false,
       comments: [],
       category: selectedCategory,
@@ -1077,7 +1135,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
       authorBatch: currentUser.batchYear || 68,
       authorRole: 'Alumnus',
       verified: currentUser.verificationStatus === 'verified',
-      timestamp: 'Just now',
+      profession: currentUser.profession || '',
+      institution: currentUser.institution || '',
+      timestamp: new Date().toISOString(),
       likes: 0,
       liked: false,
       commentsList: [],
@@ -1085,10 +1145,10 @@ export const FeedView: React.FC<FeedViewProps> = ({
     } as unknown as PostItem;
 
     // Show optimistic post immediately for instant responsiveness
-    setPosts((prev) => [optimisticPost, ...prev]);
+    setPosts((prev) => sortFeedPostsChronologically([optimisticPost, ...prev]));
 
     try {
-      // Persist directly to Supabase Database (Single Source of Truth)
+      // Persist directly to Supabase Database (Single Source of Truth) with progress feedback
       const res = await createFeedPostInDb({
         authorId: currentUser.id,
         content: finalContent,
@@ -1097,35 +1157,77 @@ export const FeedView: React.FC<FeedViewProps> = ({
         videos: finalVideos,
         linked_url: resolvedLinkedUrl,
         link_metadata: resolvedLinkMetadata,
+        onProgress: (percent, message) => {
+          setUploadProgress((prev) => ({
+            ...prev,
+            active: true,
+            percent,
+            message,
+          }));
+        },
       });
 
       if (!res.success || !res.post) {
         // Rollback optimistic post immediately when database insert fails
         setPosts((prev) => prev.filter((p) => p.id !== tempPostId));
+        setUploadProgress({ active: false, percent: 0, message: '', stage: '', totalFiles: 0 });
         showToast(res.error || 'Failed to publish post to Supabase database.');
         return;
       }
 
-      // Prepend the real database-persisted post with its assigned ID and clear temp
-      setPosts((prev) => [res.post!, ...prev.filter((p) => p.id !== tempPostId && p.id !== res.post!.id)]);
-      setPostContent('');
-      setAttachedImages([]);
-      setAttachedVideos([]);
-      setVideoUrlInput('');
-      setShowVideoUrlInput(false);
-      setDetectedLinkUrl(null);
-      setComposerLinkMetadata(null);
-      setSelectedCategory('General Update');
-      setPostBackground('default');
-      setPostFeeling(null);
-      setPostLocation(null);
-      setShowPhotoDropzone(false);
-      setIsCreateModalOpen(false);
+      setUploadProgress({
+        active: true,
+        percent: 100,
+        message: 'Post published successfully!',
+        stage: 'complete',
+        totalFiles: totalMedia,
+      });
+
+      // Prepend the real database-persisted post with strict chronological sort
+      setPosts((prev) =>
+        sortFeedPostsChronologically([
+          res.post!,
+          ...prev.filter((p) => p.id !== tempPostId && p.id !== res.post!.id),
+        ])
+      );
+
+      // Broadcast globally so other open components/profiles receive update
+      window.dispatchEvent(
+        new CustomEvent('ndc_post_created', { detail: { post: res.post } })
+      );
+
+      // Cache to localStorage for offline access
+      try {
+        const stored = localStorage.getItem('ndc_alumni_posts');
+        const parsed: PostItem[] = stored ? JSON.parse(stored) : [];
+        const updated = [res.post!, ...parsed.filter((p) => p.id !== res.post!.id && p.id !== tempPostId)].slice(0, 50);
+        localStorage.setItem('ndc_alumni_posts', JSON.stringify(updated));
+      } catch {}
+
+      // Short delay for user satisfaction of 100% complete
+      setTimeout(() => {
+        setUploadProgress({ active: false, percent: 0, message: '', stage: '', totalFiles: 0 });
+        setPostContent('');
+        setAttachedImages([]);
+        setAttachedVideos([]);
+        setVideoUrlInput('');
+        setShowVideoUrlInput(false);
+        setDetectedLinkUrl(null);
+        setComposerLinkMetadata(null);
+        setSelectedCategory('General Update');
+        setPostBackground('default');
+        setPostFeeling(null);
+        setPostLocation(null);
+        setShowPhotoDropzone(false);
+        setIsCreateModalOpen(false);
+      }, 500);
+
       playSound('post');
       showToast('Post published successfully to the alumni feed!');
     } catch (err: any) {
       // Rollback optimistic post on unexpected network or database error
       setPosts((prev) => prev.filter((p) => p.id !== tempPostId));
+      setUploadProgress({ active: false, percent: 0, message: '', stage: '', totalFiles: 0 });
       console.error('Error creating feed post in Supabase:', err);
       showToast(err.message || 'Error publishing post');
     } finally {
@@ -1240,13 +1342,15 @@ export const FeedView: React.FC<FeedViewProps> = ({
     setFeedError(null);
     setIsLoadingPosts(true);
     try {
+      invalidateFeedCache();
       const dbPosts = await fetchFeedPostsFromDb(FEED_PAGE_SIZE, currentUser.id, 0);
       const loadedPosts = (dbPosts || []).filter((p) => !isProfilePhotoPost(p)).map(normalizeFeedPost);
+      const sorted = sortFeedPostsChronologically(loadedPosts);
       nextFeedOffsetRef.current = loadedPosts.length;
-      setPosts(loadedPosts);
+      setPosts(sorted);
       setHasMorePosts(loadedPosts.length === FEED_PAGE_SIZE);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast('Feed refreshed from Supabase!');
+      showToast('Feed refreshed with latest alumni posts!');
     } catch (err) {
       console.error('FeedView: failed to refresh Supabase posts:', err);
       if (posts.length === 0) {
@@ -1272,7 +1376,8 @@ export const FeedView: React.FC<FeedViewProps> = ({
       nextFeedOffsetRef.current = offset + nextPage.length;
       setPosts((previousPosts) => {
         const existingIds = new Set(previousPosts.map((post) => post.id));
-        return [...previousPosts, ...nextPage.filter((post) => !existingIds.has(post.id))];
+        const combined = [...previousPosts, ...nextPage.filter((post) => !existingIds.has(post.id))];
+        return sortFeedPostsChronologically(combined);
       });
       setHasMorePosts(nextPage.length === FEED_PAGE_SIZE);
     } catch (err) {
@@ -1437,6 +1542,38 @@ export const FeedView: React.FC<FeedViewProps> = ({
       <DailyQuestion
         onViewProfile={onViewProfile}
       />
+
+      {/* Interactive Upload Progress Banner for Feed */}
+      {uploadProgress.active && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-blue-300 dark:border-blue-700 shadow-sm space-y-2.5 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-100">
+            <span className="flex items-center gap-2 min-w-0">
+              <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin shrink-0" />
+              <span className="truncate">{uploadProgress.message || 'Publishing to alumni network...'}</span>
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-xs font-black tracking-wider shrink-0 shadow-xs">
+              {uploadProgress.percent}%
+            </span>
+          </div>
+          <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500 transition-all duration-300 ease-out relative"
+              style={{ width: `${Math.max(6, uploadProgress.percent)}%` }}
+            >
+              <div className="absolute inset-0 bg-white/30 animate-pulse" />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>Accelerated parallel cloud upload active</span>
+            </span>
+            {uploadProgress.totalFiles > 0 && (
+              <span className="font-bold text-blue-600 dark:text-blue-400">{uploadProgress.totalFiles} media item(s)</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Create Post Card (Facebook-Style Trigger Bar -> Opens "New Post" Modal on Click) */}
       <div
@@ -2475,6 +2612,38 @@ export const FeedView: React.FC<FeedViewProps> = ({
               </div>
             </div>
 
+            {/* Interactive Upload Progress Bar inside New Post Modal */}
+            {uploadProgress.active && (
+              <div className="px-5 py-3.5 bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-emerald-50/80 dark:from-slate-800 dark:via-blue-950/40 dark:to-slate-800 border-t border-blue-200/80 dark:border-blue-800/80 space-y-2 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-100">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <RefreshCw className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 animate-spin shrink-0" />
+                    <span className="truncate">{uploadProgress.message || 'Publishing post...'}</span>
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-[11px] font-black tracking-wider shrink-0 shadow-xs">
+                    {uploadProgress.percent}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200/80 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden p-0.5">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500 transition-all duration-300 ease-out relative"
+                    style={{ width: `${Math.max(6, uploadProgress.percent)}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/30 animate-pulse" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
+                    <span>High-speed parallel cloud upload active</span>
+                  </span>
+                  {uploadProgress.totalFiles > 0 && (
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">{uploadProgress.totalFiles} media item(s)</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* 4. Bottom Sticky Bar: Audience/Category Summary Pill + Blue "Post" Button */}
             <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 shrink-0">
               <button
@@ -2764,22 +2933,33 @@ export const FeedView: React.FC<FeedViewProps> = ({
                 )}
 
                 {/* Post Header */}
-                <div className="flex items-center justify-between mb-3.5">
+                <div className="flex items-start justify-between mb-3.5 gap-2">
                   <div
-                    className="flex items-center gap-3 cursor-pointer group"
+                    className="flex items-center gap-3 cursor-pointer group min-w-0"
                     onClick={() => onViewProfile && onViewProfile(post.userId)}
                   >
                     <img
-                      src={post.avatarUrl}
+                      src={post.avatarUrl || '/ndc-logo.png'}
                       alt={post.fullName}
-                      className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100 dark:ring-slate-800 group-hover:ring-blue-500 transition-all"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = '/ndc-logo.png';
+                      }}
+                      className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100 dark:ring-slate-800 group-hover:ring-blue-500 transition-all shrink-0"
                     />
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                        <span className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
                           {post.fullName}
                         </span>
                         <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+
+                        {/* Domain-Native Post Category Badge */}
+                        {post.category && post.category !== 'General Update' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/80 dark:border-blue-900/60 shadow-2xs shrink-0">
+                            {post.category}
+                          </span>
+                        )}
+
                         {isProfilePhotoPost(post) && (
                           <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
                             {post.link_metadata?.isFirstUpload
@@ -2805,9 +2985,23 @@ export const FeedView: React.FC<FeedViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-2">
-                        <span>Batch {post.batchYear}</span>
-                        <span>·</span>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1.5 flex-wrap mt-0.5">
+                        {post.batchYear && post.batchYear > 0 ? (
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            Batch '{String(post.batchYear).slice(-2)}
+                          </span>
+                        ) : (
+                          <span className="font-semibold text-slate-600 dark:text-slate-400">NDC Alumnus</span>
+                        )}
+                        {(post.profession || post.institution) && (
+                          <>
+                            <span className="text-slate-300 dark:text-slate-600">·</span>
+                            <span className="truncate max-w-[240px] text-slate-600 dark:text-slate-400 font-normal">
+                              {[post.profession, post.institution].filter(Boolean).join(' at ')}
+                            </span>
+                          </>
+                        )}
+                        <span className="text-slate-300 dark:text-slate-600">·</span>
                         <span
                           className="hover:underline cursor-pointer inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                           title={getFullFacebookTimestamp(post.createdAt || (post as any).timestamp)}

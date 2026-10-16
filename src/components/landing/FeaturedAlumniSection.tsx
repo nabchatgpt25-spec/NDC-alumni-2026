@@ -293,7 +293,7 @@ export const FeaturedAlumniSection: React.FC<FeaturedAlumniSectionProps> = ({
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formPosition.trim() || !formInstitution.trim()) {
-      alert('Please fill in Name, Position, and Institution.');
+      showToast('Please fill in Name, Position, and Institution.');
       return;
     }
 

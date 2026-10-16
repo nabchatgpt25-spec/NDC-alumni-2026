@@ -289,6 +289,10 @@ export interface PostItem {
   postType?: 'standard' | 'profile_photo_update' | 'cover_photo_update' | 'blood_request' | 'gallery_album';
   linked_url?: string;
   link_metadata?: any;
+  profession?: string;
+  institution?: string;
+  pinned?: boolean;
+  authorRole?: string;
 }
 
 export interface NotificationItem {
