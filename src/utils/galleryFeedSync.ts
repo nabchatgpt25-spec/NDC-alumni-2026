@@ -94,9 +94,25 @@ export async function syncNewAlbumToQuadFeed({
     images: newPost.images,
     linked_url: newPost.linked_url,
     link_metadata: newPost.link_metadata,
-  }).catch((err) => {
-    console.warn('createFeedPostInDb for new album sync fallback:', err);
-  });
+  })
+    .then((res) => {
+      if (res.success && res.post && typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('ndc_alumni_posts');
+          const posts: PostItem[] = stored ? JSON.parse(stored) : [];
+          const updated = posts.map((p) => (p.id === newPostId ? res.post! : p));
+          localStorage.setItem('ndc_alumni_posts', JSON.stringify(updated));
+        } catch {}
+        window.dispatchEvent(
+          new CustomEvent('ndc_post_created', {
+            detail: { post: res.post, replaceTempId: newPostId },
+          })
+        );
+      }
+    })
+    .catch((err) => {
+      console.warn('createFeedPostInDb for new album sync fallback:', err);
+    });
 
   return newPost;
 }
@@ -192,9 +208,25 @@ export async function syncUploadedPhotosToQuadFeed({
     images: newPost.images,
     linked_url: newPost.linked_url,
     link_metadata: newPost.link_metadata,
-  }).catch((err) => {
-    console.warn('createFeedPostInDb for photo upload sync fallback:', err);
-  });
+  })
+    .then((res) => {
+      if (res.success && res.post && typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('ndc_alumni_posts');
+          const posts: PostItem[] = stored ? JSON.parse(stored) : [];
+          const updated = posts.map((p) => (p.id === newPostId ? res.post! : p));
+          localStorage.setItem('ndc_alumni_posts', JSON.stringify(updated));
+        } catch {}
+        window.dispatchEvent(
+          new CustomEvent('ndc_post_created', {
+            detail: { post: res.post, replaceTempId: newPostId },
+          })
+        );
+      }
+    })
+    .catch((err) => {
+      console.warn('createFeedPostInDb for photo upload sync fallback:', err);
+    });
 
   return newPost;
 }

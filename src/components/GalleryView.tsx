@@ -222,50 +222,51 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
   }, [albums]);
 
   // Handlers
-  const handleCreateAlbum = (newAlbum: GalleryAlbum) => {
-    createGalleryAlbumInDb({
-      title: newAlbum.title,
-      description: newAlbum.description,
-      category: newAlbum.category,
-      eventDateLabel: newAlbum.date,
-      location: newAlbum.location,
-      batchYear: newAlbum.batchYear,
-      coverUrl: newAlbum.coverUrl,
-    }).catch((err) => {
-      console.warn('createGalleryAlbumInDb fallback:', err);
-    });
-
+  const handleCreateAlbum = async (newAlbum: GalleryAlbum) => {
+    // 1. Optimistic local update for instant user feedback
     setAlbums((prev) => [newAlbum, ...prev]);
-    setSelectedAlbumId(newAlbum.id); // immediately navigate into showcase
+    setSelectedAlbumId(newAlbum.id);
 
-    // Automatically create activity post in the Quad Feed
-    if (currentUser) {
-      syncNewAlbumToQuadFeed({
-        album: newAlbum,
-        author: currentUser,
-      }).catch((err) => {
-        console.warn('Failed to sync new album to Quad Feed:', err);
+    try {
+      // 2. Persist to Supabase Database
+      const dbId = await createGalleryAlbumInDb({
+        title: newAlbum.title,
+        description: newAlbum.description,
+        category: newAlbum.category,
+        eventDateLabel: newAlbum.date,
+        location: newAlbum.location,
+        batchYear: newAlbum.batchYear,
+        coverUrl: newAlbum.coverUrl,
+        createdById: currentUser?.id,
       });
+
+      const effectiveAlbum: GalleryAlbum = dbId
+        ? { ...newAlbum, id: dbId }
+        : newAlbum;
+
+      if (dbId) {
+        setAlbums((prev) =>
+          prev.map((a) => (a.id === newAlbum.id ? effectiveAlbum : a))
+        );
+        setSelectedAlbumId(dbId);
+      }
+
+      // 3. Automatically create activity post in the Quad Feed with database ID
+      if (currentUser) {
+        syncNewAlbumToQuadFeed({
+          album: effectiveAlbum,
+          author: currentUser,
+        }).catch((err) => {
+          console.warn('Failed to sync new album to Quad Feed:', err);
+        });
+      }
+    } catch (err) {
+      console.warn('createGalleryAlbumInDb fallback:', err);
     }
   };
 
-  const handleUploadPhotos = (albumId: number, newPhotos: GalleryPhoto[]) => {
-    newPhotos.forEach((photo) => {
-      addPhotoToGalleryAlbumInDb({
-        albumId,
-        url: photo.url,
-        caption: photo.caption,
-        batchYear: photo.batchYear,
-        tags: photo.tags,
-        mediaType: photo.mediaType,
-        fileSize: photo.fileSize,
-      }).catch((err) => {
-        console.warn('addPhotoToGalleryAlbumInDb fallback:', err);
-      });
-    });
-
-    const targetAlbum = albums.find((a) => a.id === albumId);
-
+  const handleUploadPhotos = async (albumId: number, newPhotos: GalleryPhoto[]) => {
+    // Optimistically update local view
     setAlbums((prev) =>
       prev.map((alb) => {
         if (alb.id === albumId) {
@@ -280,11 +281,37 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
       })
     );
 
-    // Automatically create activity post in the Quad Feed
+    // Persist each photo to Supabase gallery_photos
+    const syncedPhotos: GalleryPhoto[] = [];
+    for (const photo of newPhotos) {
+      try {
+        const photoId = await addPhotoToGalleryAlbumInDb({
+          albumId,
+          url: photo.url,
+          caption: photo.caption,
+          batchYear: photo.batchYear,
+          tags: photo.tags,
+          mediaType: photo.mediaType,
+          fileSize: photo.fileSize,
+          uploaderId: currentUser?.id,
+        });
+        syncedPhotos.push({
+          ...photo,
+          id: photoId || photo.id,
+        });
+      } catch (err) {
+        console.warn('addPhotoToGalleryAlbumInDb error:', err);
+        syncedPhotos.push(photo);
+      }
+    }
+
+    const targetAlbum = albums.find((a) => a.id === albumId);
+
+    // Automatically create activity post in the Quad Feed with CDN-synced photos
     if (targetAlbum && currentUser) {
       syncUploadedPhotosToQuadFeed({
-        album: targetAlbum,
-        newPhotos,
+        album: { ...targetAlbum, id: albumId },
+        newPhotos: syncedPhotos.length > 0 ? syncedPhotos : newPhotos,
         author: currentUser,
       }).catch((err) => {
         console.warn('Failed to sync uploaded photos to Quad Feed:', err);

@@ -1127,9 +1127,13 @@ export async function createFeedPostInDb(params: {
 
     if (insertError || !insertedRow) {
       console.error('Supabase createFeedPost insert error:', insertError);
+      let errMsg = insertError?.message || 'Failed to save post to Supabase database';
+      if (errMsg.includes('posts_count is server-controlled')) {
+        errMsg = 'Database configuration notice: Please run migration 017 in your Supabase SQL Editor to allow posts.';
+      }
       return {
         success: false,
-        error: insertError?.message || 'Failed to save post to Supabase database',
+        error: errMsg,
       };
     }
 
@@ -2058,6 +2062,15 @@ export async function createGalleryAlbumInDb(params: {
   const category = validCategories.includes(normalizedCategory) ? normalizedCategory : 'campus';
 
   try {
+    let publicCoverUrl = params.coverUrl;
+    if (publicCoverUrl && (publicCoverUrl.startsWith('data:') || publicCoverUrl.startsWith('blob:'))) {
+      try {
+        publicCoverUrl = await resolveAndUploadMediaToStorage(publicCoverUrl, params.createdById || 1, 'image');
+      } catch (e) {
+        console.warn('Failed to resolve gallery cover to storage:', e);
+      }
+    }
+
     const { data, error } = await supabase
       .from('gallery_albums')
       .insert({
@@ -2067,16 +2080,20 @@ export async function createGalleryAlbumInDb(params: {
         event_date_label: params.eventDateLabel,
         location: params.location || null,
         batch_year: params.batchYear || null,
-        cover_url: params.coverUrl,
+        cover_url: publicCoverUrl,
         created_by_id: params.createdById || null,
         is_published: true,
       })
       .select('id')
       .single();
 
-    if (error || !data) return null;
+    if (error || !data) {
+      console.warn('createGalleryAlbumInDb error:', error);
+      return null;
+    }
     return Number(data.id);
-  } catch {
+  } catch (err) {
+    console.warn('createGalleryAlbumInDb exception:', err);
     return null;
   }
 }
@@ -2094,11 +2111,21 @@ export async function addPhotoToGalleryAlbumInDb(params: {
   if (!isSupabaseConfigured) return null;
 
   try {
+    let publicPhotoUrl = params.url;
+    if (publicPhotoUrl && (publicPhotoUrl.startsWith('data:') || publicPhotoUrl.startsWith('blob:'))) {
+      try {
+        const isVideo = params.mediaType === 'video';
+        publicPhotoUrl = await resolveAndUploadMediaToStorage(publicPhotoUrl, params.uploaderId || 1, isVideo ? 'video' : 'image');
+      } catch (e) {
+        console.warn('Failed to resolve gallery photo to storage:', e);
+      }
+    }
+
     const { data, error } = await supabase
       .from('gallery_photos')
       .insert({
         album_id: params.albumId,
-        url: params.url,
+        url: publicPhotoUrl,
         caption: params.caption || null,
         batch_year: params.batchYear || null,
         tags: params.tags || [],
@@ -2110,9 +2137,13 @@ export async function addPhotoToGalleryAlbumInDb(params: {
       .select('id')
       .single();
 
-    if (error || !data) return null;
+    if (error || !data) {
+      console.warn('addPhotoToGalleryAlbumInDb error:', error);
+      return null;
+    }
     return String(data.id);
-  } catch {
+  } catch (err) {
+    console.warn('addPhotoToGalleryAlbumInDb exception:', err);
     return null;
   }
 }
