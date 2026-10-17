@@ -177,13 +177,13 @@ export async function fetchAdminDocSubmissions(
 
     // Collect applicant user IDs to batch-fetch names & avatars safely
     const userIds = Array.from(new Set(submissions.map((s: any) => Number(s.user_id)).filter(Boolean)));
-    const profilesMap = new Map<number, { fullName: string; avatarUrl: string }>();
+    const profilesMap = new Map<number, { fullName: string; avatarUrl: string; verificationStatus?: string }>();
 
     if (userIds.length > 0) {
       try {
         const { data: profiles } = await supabase
           .from('alumni_profiles')
-          .select('id, full_name, avatar_url')
+          .select('id, full_name, avatar_url, verification_status')
           .in('id', userIds);
 
         if (profiles) {
@@ -191,6 +191,7 @@ export async function fetchAdminDocSubmissions(
             profilesMap.set(Number(p.id), {
               fullName: p.full_name || 'Notredamian Alumnus',
               avatarUrl: p.avatar_url || '/ndc-logo.png',
+              verificationStatus: p.verification_status,
             });
           });
         }
@@ -199,9 +200,39 @@ export async function fetchAdminDocSubmissions(
       }
     }
 
+    // Global Check: For pending queue, automatically remove any applicant whose profile
+    // is already verified by ANY administrator to completely eliminate duplicate effort!
+    let filteredSubmissions = submissions;
+    if (statusFilter === 'pending') {
+      filteredSubmissions = submissions.filter((row: any) => {
+        const prof = profilesMap.get(Number(row.user_id));
+        return prof?.verificationStatus !== 'verified';
+      });
+
+      // Background auto-reconciliation: mark orphan pending submissions as approved
+      const alreadyVerifiedIds = submissions
+        .filter((row: any) => profilesMap.get(Number(row.user_id))?.verificationStatus === 'verified')
+        .map((row: any) => row.id);
+
+      if (alreadyVerifiedIds.length > 0) {
+        (async () => {
+          try {
+            await supabase
+              .from('admin_doc_submissions')
+              .update({
+                status: 'approved',
+                admin_note: 'Auto-resolved: Alumnus identity verified by administrator',
+                updated_at: new Date().toISOString(),
+              })
+              .in('id', alreadyVerifiedIds);
+          } catch {}
+        })();
+      }
+    }
+
     // Resolve secure preview URLs (create signed URLs for private storage bucket)
     const result: AdminDocSubmission[] = await Promise.all(
-      submissions.map(async (row: any) => {
+      filteredSubmissions.map(async (row: any) => {
         const userId = Number(row.user_id);
         const profile = profilesMap.get(userId) || {
           fullName: 'Notredamian Alumnus',
@@ -312,6 +343,48 @@ export async function reviewAdminDocSubmission(params: {
     if (updateError) {
       console.warn('reviewAdminDocSubmission error:', updateError.message);
       return { success: false, error: updateError.message };
+    }
+
+    // Global Check: When approved, auto-resolve any other pending submissions
+    // or verification requests for this alumnus to remove them from all admin queues
+    if (status === 'approved') {
+      try {
+        const { data: subRow } = await supabase
+          .from('admin_doc_submissions')
+          .select('user_id')
+          .eq('id', submissionId)
+          .maybeSingle();
+
+        if (subRow?.user_id) {
+          await Promise.all([
+            supabase
+              .from('admin_doc_submissions')
+              .update({
+                status: 'approved',
+                reviewed_by: reviewerProfileId,
+                reviewed_at: new Date().toISOString(),
+                admin_note: adminNote || 'Automatically approved: Alumnus identity verified',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('user_id', subRow.user_id)
+              .eq('status', 'pending'),
+
+            supabase
+              .from('verification_requests')
+              .update({
+                status: 'verified',
+                reviewed_by: reviewerProfileId,
+                reviewed_at: new Date().toISOString(),
+                admin_note: adminNote || 'Automatically verified: Alumnus identity verified',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('requester_id', subRow.user_id)
+              .eq('status', 'pending'),
+          ]);
+        }
+      } catch (cascadeErr) {
+        console.warn('Auto-resolve other pending items error:', cascadeErr);
+      }
     }
 
     return { success: true };

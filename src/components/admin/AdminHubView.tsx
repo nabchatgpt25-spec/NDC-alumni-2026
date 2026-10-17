@@ -52,6 +52,7 @@ import {
   SystemAuditLogItem,
 } from '../../services/adminService';
 import { AdminDocSubmission, UserRole } from '../../types';
+import { cleanupVerifiedAlumniFromPendingQueues } from '../../utils/verificationService';
 import { NDCLogo } from '../NDCLogo';
 import { AdminCommandCenterView } from './AdminCommandCenterView';
 import { AdminFeaturedAlumniManager } from './AdminFeaturedAlumniManager';
@@ -242,6 +243,28 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
     }
   }, [isAdminOrMod]);
 
+  // Global Check: When ANY administrator verifies an alumnus, automatically remove
+  // them from the pending submissions queue for all other administrators immediately
+  useEffect(() => {
+    const handleGlobalVerified = (e: any) => {
+      const verifiedUserId = e?.detail?.userId;
+      if (verifiedUserId) {
+        setSubmissions((prev) => prev.filter((s) => s.userId !== verifiedUserId));
+      }
+      loadStats();
+    };
+
+    window.addEventListener('ndc_alumni_verified_globally', handleGlobalVerified);
+    window.addEventListener('ndc_admin_docs_updated', () => loadSubmissions(docFilter));
+    window.addEventListener('storage', () => loadSubmissions(docFilter));
+
+    return () => {
+      window.removeEventListener('ndc_alumni_verified_globally', handleGlobalVerified);
+      window.removeEventListener('ndc_admin_docs_updated', () => loadSubmissions(docFilter));
+      window.removeEventListener('storage', () => loadSubmissions(docFilter));
+    };
+  }, [docFilter]);
+
   // Tab change effect
   useEffect(() => {
     if (activeTab === 'overview') {
@@ -280,7 +303,17 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
           action === 'approved' ? 'success' : 'info'
         );
 
-        setSubmissions((prev) => prev.filter((s) => s.id !== submissionId));
+        if (action === 'approved') {
+          cleanupVerifiedAlumniFromPendingQueues(
+            submission.userId,
+            currentUser.fullName || 'Admin',
+            note || 'Approved by Admin Secretariat'
+          );
+        }
+
+        setSubmissions((prev) =>
+          prev.filter((s) => s.id !== submissionId && (action === 'approved' ? s.userId !== submission.userId : true))
+        );
         loadStats();
       } else {
         showToast(res.error || 'Review submission failed. Please try again.', 'error');

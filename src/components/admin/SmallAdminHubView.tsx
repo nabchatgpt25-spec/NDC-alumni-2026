@@ -41,7 +41,7 @@ import {
 } from '../../services/adminService';
 import { AdminDocSubmission, AlumniProfile } from '../../types';
 import { loadStoredAlumniProfiles } from '../../data/mockData';
-import { loadVouchRequests } from '../../utils/verificationService';
+import { loadVouchRequests, cleanupVerifiedAlumniFromPendingQueues } from '../../utils/verificationService';
 
 interface SmallAdminHubViewProps {
   onNavigate: (route: string) => void;
@@ -200,6 +200,27 @@ export const SmallAdminHubView: React.FC<SmallAdminHubViewProps> = ({
     }
   }, [activeTab, verifySubTab, postFilter]);
 
+  // Global Check: When any admin verifies an alumni, auto-remove them from this admin's queue
+  useEffect(() => {
+    const handleGlobalVerified = (e: any) => {
+      const verifiedUserId = e?.detail?.userId;
+      if (verifiedUserId) {
+        setUnverifiedList((prev) => prev.filter((item) => item.id !== verifiedUserId));
+        setDocSubmissions((prev) => prev.filter((doc) => doc.userId !== verifiedUserId));
+      }
+    };
+
+    window.addEventListener('ndc_alumni_verified_globally', handleGlobalVerified);
+    window.addEventListener('ndc_admin_docs_updated', loadDocSubmissions);
+    window.addEventListener('storage', loadDocSubmissions);
+
+    return () => {
+      window.removeEventListener('ndc_alumni_verified_globally', handleGlobalVerified);
+      window.removeEventListener('ndc_admin_docs_updated', loadDocSubmissions);
+      window.removeEventListener('storage', loadDocSubmissions);
+    };
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Action: Small Admin Verify Alumnus
   // ---------------------------------------------------------------------------
@@ -217,6 +238,7 @@ export const SmallAdminHubView: React.FC<SmallAdminHubViewProps> = ({
 
       if (res.success) {
         showToast(`🎉 Successfully verified ${alumnus.fullName} (Batch ${alumnus.batchYear || 'NDC'})!`, 'success');
+        cleanupVerifiedAlumniFromPendingQueues(alumnus.id, adminName, 'Verified by Small Admin');
         // Update local state
         setUnverifiedList((prev) => prev.filter((item) => item.id !== alumnus.id));
       } else {
@@ -249,6 +271,10 @@ export const SmallAdminHubView: React.FC<SmallAdminHubViewProps> = ({
             : 'Document rejected with notification sent.',
           status === 'approved' ? 'success' : 'info'
         );
+        const sub = docSubmissions.find((d) => d.id === submissionId);
+        if (status === 'approved' && sub) {
+          cleanupVerifiedAlumniFromPendingQueues(sub.userId, currentUser.fullName || 'Moderator');
+        }
         loadDocSubmissions();
         loadAlumniData();
       } else {

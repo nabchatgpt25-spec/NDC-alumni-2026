@@ -20,6 +20,7 @@ import {
 } from '../data/mockData';
 import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
 import { convertDataUrlToBlobFast } from '../utils/mediaStorage';
+import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
 
 export { loadStoredAlumniProfiles };
 
@@ -1593,7 +1594,8 @@ export async function fetchVerificationRequestsFromDb(batchYear?: number): Promi
           full_name,
           avatar_url,
           batch_year,
-          college_roll
+          college_roll,
+          verification_status
         ),
         peer_vouches (
           id,
@@ -1619,7 +1621,31 @@ export async function fetchVerificationRequestsFromDb(batchYear?: number): Promi
     const { data, error } = await query;
     if (error || !data) return [];
 
-    return data.map((r: any) => ({
+    // Global Check: Once an alumnus is verified by any admin, automatically remove
+    // them from the pending requests queue so other administrators don't duplicate work
+    const pendingOnly = data.filter((r: any) => r.requester?.verification_status !== 'verified');
+
+    // Auto-resolve any verified alumni requests in background
+    const alreadyVerifiedIds = data
+      .filter((r: any) => r.requester?.verification_status === 'verified')
+      .map((r: any) => r.id);
+
+    if (alreadyVerifiedIds.length > 0) {
+      (async () => {
+        try {
+          await supabase
+            .from('verification_requests')
+            .update({
+              status: 'verified',
+              admin_note: 'Auto-resolved: Alumnus identity verified by administrator',
+              updated_at: new Date().toISOString(),
+            })
+            .in('id', alreadyVerifiedIds);
+        } catch {}
+      })();
+    }
+
+    return pendingOnly.map((r: any) => ({
       id: r.id,
       requesterId: Number(r.requester_id),
       requesterName: r.requester?.full_name || 'Notredamian Alumnus',
@@ -1709,14 +1735,15 @@ export async function createVerificationRequestInDb(params: {
       return String(existing.id);
     }
 
+    const streamInfo = normalizeAcademicStreamAndGroup(params.academicStream);
     const { data, error } = await supabase
       .from('verification_requests')
       .insert({
         requester_id: params.requesterId,
         batch_year: params.batchYear,
         college_roll: params.collegeRoll,
-        academic_stream: params.academicStream,
-        academic_group: params.academicGroup || null,
+        academic_stream: streamInfo.academicStream,
+        academic_group: params.academicGroup || streamInfo.academicGroup || null,
         section: params.section || null,
         message: params.message || null,
         target_vouches: params.targetVouches || 2,
@@ -1860,6 +1887,7 @@ export async function submitAdminDocSubmissionInDb(params: {
   const validDocTypes = ['id_card', 'nid_card', 'hsc_slip', 'souvenir'];
   const normalizedDocType = (params.docType || 'id_card').toLowerCase();
   const docType = validDocTypes.includes(normalizedDocType) ? normalizedDocType : 'id_card';
+  const streamInfo = normalizeAcademicStreamAndGroup(params.academicStream);
 
   try {
     const { data, error } = await supabase
@@ -1868,8 +1896,8 @@ export async function submitAdminDocSubmissionInDb(params: {
         user_id: params.userId,
         batch_year: params.batchYear,
         college_roll: params.collegeRoll,
-        academic_stream: params.academicStream,
-        academic_group: params.academicGroup || null,
+        academic_stream: streamInfo.academicStream,
+        academic_group: params.academicGroup || streamInfo.academicGroup || null,
         doc_type: docType,
         doc_type_label: params.docTypeLabel,
         storage_object_path: params.storageObjectPath,

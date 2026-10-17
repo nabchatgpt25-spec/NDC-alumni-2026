@@ -7,6 +7,7 @@ import {
 } from '../types';
 import {
   ALUMNI_PROFILES,
+  DEFAULT_BLANK_USER,
   loadStoredAlumniProfiles,
   saveStoredAlumniProfiles,
 } from '../data/mockData';
@@ -16,6 +17,8 @@ import {
   submitAdminDocSubmissionInDb,
   fetchUserActiveVerificationRequestFromDb,
 } from '../services/supabaseService';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { normalizeAcademicStreamAndGroup } from './academicGroupMapping';
 import { sendSocialNotification } from './notificationService';
 
 export const VOUCH_STORAGE_KEY = 'ndc_vouch_requests';
@@ -71,6 +74,101 @@ export const getWhatsAppVouchShareUrl = (user: AlumniProfile): string => {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 };
 
+/**
+ * Global check: Verifies whether a specific alumnus is already verified across
+ * memory records, stored directory, or active session.
+ */
+export const isAlumnusAlreadyVerified = (userId: number): boolean => {
+  if (!userId) return false;
+  // 1. Check in-memory ALUMNI_PROFILES
+  const mem = ALUMNI_PROFILES.find((p) => p.id === userId || p.userId === userId);
+  if (mem && mem.verificationStatus === 'verified') return true;
+
+  // 2. Check localStorage stores
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = loadStoredAlumniProfiles();
+      const p = stored.find((sp) => sp.id === userId || sp.userId === userId);
+      if (p && p.verificationStatus === 'verified') return true;
+
+      const rawCurrent = localStorage.getItem('ndc_alumni_current_user');
+      if (rawCurrent) {
+        const cur = JSON.parse(rawCurrent);
+        if ((cur?.id === userId || cur?.userId === userId) && cur?.verificationStatus === 'verified') {
+          return true;
+        }
+      }
+    } catch {}
+  }
+  return false;
+};
+
+/**
+ * Global queue cleanup: Once an alumnus is verified by ANY admin, automatically
+ * resolve and remove all their pending requests from every administrator queue.
+ */
+export const cleanupVerifiedAlumniFromPendingQueues = (
+  userId: number,
+  reviewerName: string = 'Administrator',
+  reason: string = 'Automatically resolved: Alumnus identity verified'
+) => {
+  if (typeof window === 'undefined' || !userId) return;
+
+  try {
+    // 1. Auto-resolve any pending document submissions for this user
+    const docSubs = loadAdminDocSubmissions();
+    let docsChanged = false;
+    const updatedDocs = docSubs.map((sub) => {
+      if (sub.userId === userId && sub.status === 'pending') {
+        docsChanged = true;
+        return {
+          ...sub,
+          status: 'approved' as const,
+          reviewedBy: reviewerName,
+          reviewedAt: 'Just now',
+          adminNote: sub.adminNote || reason,
+        };
+      }
+      return sub;
+    });
+
+    if (docsChanged) {
+      localStorage.setItem(ADMIN_DOCS_STORAGE_KEY, JSON.stringify(updatedDocs));
+      window.dispatchEvent(new CustomEvent('ndc_admin_docs_updated'));
+    }
+
+    // 2. Auto-resolve any pending peer vouch requests for this user
+    const vouchReqs = loadVouchRequests();
+    let reqsChanged = false;
+    const updatedReqs = vouchReqs.map((req) => {
+      if (req.requesterId === userId && req.status === 'pending') {
+        reqsChanged = true;
+        return {
+          ...req,
+          status: 'verified' as const,
+          adminNote: req.adminNote || reason,
+        };
+      }
+      return req;
+    });
+
+    if (reqsChanged) {
+      localStorage.setItem(VOUCH_STORAGE_KEY, JSON.stringify(updatedReqs));
+      window.dispatchEvent(new CustomEvent('ndc_vouch_requests_updated'));
+    }
+
+    // 3. Broadcast global synchronization event to all admin views & tabs
+    window.dispatchEvent(
+      new CustomEvent('ndc_alumni_verified_globally', {
+        detail: { userId, reviewerName },
+      })
+    );
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.warn('cleanupVerifiedAlumniFromPendingQueues error:', err);
+  }
+};
+
 export const loadVouchRequests = (): VouchRequest[] => {
   if (typeof window === 'undefined') return [];
   try {
@@ -78,12 +176,24 @@ export const loadVouchRequests = (): VouchRequest[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.filter(
-          (r: VouchRequest) =>
-            r &&
-            r.id &&
-            !r.id.startsWith('demo-')
-        );
+        return parsed
+          .filter(
+            (r: VouchRequest) =>
+              r &&
+              r.id &&
+              !r.id.startsWith('demo-')
+          )
+          .map((r: VouchRequest) => {
+            // Global check: if requester is already verified by any admin, auto-resolve pending state
+            if (r.status === 'pending' && isAlumnusAlreadyVerified(r.requesterId)) {
+              return {
+                ...r,
+                status: 'verified' as const,
+                adminNote: r.adminNote || 'Auto-resolved: Alumnus identity verified',
+              };
+            }
+            return r;
+          });
       }
     }
   } catch (e) {
@@ -110,12 +220,24 @@ export const loadAdminDocSubmissions = (): AdminDocSubmission[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.filter(
-          (d: AdminDocSubmission) =>
-            d &&
-            d.id &&
-            !d.id.startsWith('demo-')
-        );
+        return parsed
+          .filter(
+            (d: AdminDocSubmission) =>
+              d &&
+              d.id &&
+              !d.id.startsWith('demo-')
+          )
+          .map((d: AdminDocSubmission) => {
+            // Global check: if applicant is already verified by any admin, auto-resolve pending state
+            if (d.status === 'pending' && isAlumnusAlreadyVerified(d.userId)) {
+              return {
+                ...d,
+                status: 'approved' as const,
+                adminNote: d.adminNote || 'Auto-resolved: Alumnus identity verified',
+              };
+            }
+            return d;
+          });
       }
     }
   } catch (e) {
@@ -201,18 +323,27 @@ export const submitDocumentForAdminReview = async (
   const existingIdx = submissions.findIndex((s) => s.userId === user.id);
 
   const cleanBatch = user.batchYear && user.batchYear >= 1949 ? user.batchYear : 0;
+  const streamInfo = normalizeAcademicStreamAndGroup(
+    (user.academicStream as string) || (user.group as string) || 'Science'
+  );
 
-  // Persist directly to Supabase admin_doc_submissions table
-  const dbSubmissionId = await submitAdminDocSubmissionInDb({
-    userId: user.id,
-    batchYear: cleanBatch,
-    collegeRoll: user.collegeRoll || '118042',
-    academicStream: (user.academicStream as string) || (user.group as string) || 'Science',
-    academicGroup: user.academicGroup || null,
-    docType,
-    docTypeLabel: DOC_TYPE_LABELS[docType] || 'Identity Document',
-    storageObjectPath: documentUrl,
-  });
+  let dbSubmissionId: string | null = null;
+  if (isSupabaseConfigured) {
+    try {
+      dbSubmissionId = await submitAdminDocSubmissionInDb({
+        userId: user.id,
+        batchYear: cleanBatch,
+        collegeRoll: user.collegeRoll || '118042',
+        academicStream: streamInfo.academicStream,
+        academicGroup: user.academicGroup || streamInfo.academicGroup || null,
+        docType,
+        docTypeLabel: DOC_TYPE_LABELS[docType] || 'Identity Document',
+        storageObjectPath: documentUrl,
+      });
+    } catch (err) {
+      console.warn('submitAdminDocSubmissionInDb fallback:', err);
+    }
+  }
 
   const submission: AdminDocSubmission = {
     id: dbSubmissionId || (existingIdx >= 0 ? submissions[existingIdx].id : `doc-sub-${Date.now()}`),
@@ -313,6 +444,10 @@ export const adminReviewDocumentSubmission = (
 
   syncProfileVerificationInStorage(sub.userId, updatedProfilePartial);
 
+  if (decision === 'approved') {
+    cleanupVerifiedAlumniFromPendingQueues(sub.userId, adminName, updatedSub.adminNote);
+  }
+
   // Send Facebook-style notification to the alumnus
   sendSocialNotification({
     recipientId: sub.userId,
@@ -376,6 +511,12 @@ export const adminApproveVouchRequest = (
     verifiedBy: [`Admin Verified (${adminName})`],
     vouchesCount: 2,
   });
+
+  cleanupVerifiedAlumniFromPendingQueues(
+    req.requesterId,
+    adminName,
+    updatedReq.adminNote || `Directly approved by Administrator (${adminName})`
+  );
 
   return updatedReq;
 };
@@ -488,17 +629,59 @@ export const submitPeerVouch = async (
     throw new Error('You have already vouched for this brother!');
   }
 
-  // 4. Persist peer vouch directly to Supabase peer_vouches table (trigger handles counter & promotion)
-  const dbResult = await submitPeerVouchInDb({
-    verificationRequestId: req.id,
-    requesterId: req.requesterId,
-    voucherId: voucher.id,
-    voucherBatch: voucher.batchYear,
-    comment,
-  });
+  // 4. Persist peer vouch directly to Supabase peer_vouches table if connected
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  let activeRequestId = req.id;
 
-  if (!dbResult.success) {
-    throw new Error(dbResult.error || 'Failed to submit peer vouch on the server.');
+  if (isSupabaseConfigured) {
+    if (!uuidRegex.test(activeRequestId)) {
+      try {
+        const existingDbReq = await fetchUserActiveVerificationRequestFromDb(req.requesterId);
+        if (existingDbReq?.id && uuidRegex.test(existingDbReq.id)) {
+          activeRequestId = existingDbReq.id;
+          req.id = activeRequestId;
+        } else {
+          const newDbId = await createVerificationRequestInDb({
+            requesterId: req.requesterId,
+            batchYear: req.batchYear,
+            collegeRoll: req.collegeRoll,
+            academicStream: req.group,
+            section: req.section,
+            message: req.message,
+          });
+          if (newDbId && uuidRegex.test(newDbId)) {
+            activeRequestId = newDbId;
+            req.id = activeRequestId;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not resolve or create DB verification request:', err);
+      }
+    }
+
+    if (uuidRegex.test(activeRequestId)) {
+      try {
+        const dbResult = await submitPeerVouchInDb({
+          verificationRequestId: activeRequestId,
+          requesterId: req.requesterId,
+          voucherId: voucher.id,
+          voucherBatch: voucher.batchYear,
+          comment,
+        });
+
+        if (!dbResult.success) {
+          if (dbResult.error?.toLowerCase().includes('already vouched') || dbResult.error?.toLowerCase().includes('duplicate')) {
+            throw new Error('You have already vouched for this brother!');
+          }
+          console.warn('DB peer vouch insertion warning:', dbResult.error);
+        }
+      } catch (err: any) {
+        if (err.message?.includes('already vouched')) {
+          throw err;
+        }
+        console.warn('submitPeerVouch database sync exception:', err);
+      }
+    }
   }
 
   const newVouchItem: VouchItem = {
@@ -531,6 +714,14 @@ export const submitPeerVouch = async (
         }
       : {}),
   });
+
+  if (isNowVerified) {
+    cleanupVerifiedAlumniFromPendingQueues(
+      req.requesterId,
+      voucher.fullName,
+      `Completed 2/2 classmate vouches`
+    );
+  }
 
   // Notify the requesting alumnus in their notification bar
   sendSocialNotification({
@@ -567,18 +758,62 @@ export const ensureVouchRequestFromUrlParams = async (params?: {
 
   if (!resolvedId) return null;
 
-  // Resolve active verification request from Supabase
-  const dbReq = await fetchUserActiveVerificationRequestFromDb(resolvedId);
-  if (dbReq) {
-    const requests = loadVouchRequests();
-    const idx = requests.findIndex((r) => r.id === dbReq.id || r.requesterId === dbReq.requesterId);
-    if (idx >= 0) {
-      requests[idx] = dbReq;
-    } else {
-      requests.unshift(dbReq);
+  // 1. Resolve active verification request from Supabase if configured
+  if (isSupabaseConfigured) {
+    try {
+      const dbReq = await fetchUserActiveVerificationRequestFromDb(resolvedId);
+      if (dbReq) {
+        const requests = loadVouchRequests();
+        const idx = requests.findIndex((r) => r.id === dbReq.id || r.requesterId === dbReq.requesterId);
+        if (idx >= 0) {
+          requests[idx] = dbReq;
+        } else {
+          requests.unshift(dbReq);
+        }
+        saveVouchRequests(requests);
+        return dbReq;
+      }
+    } catch (e) {
+      console.warn('fetchUserActiveVerificationRequestFromDb fallback:', e);
     }
-    saveVouchRequests(requests);
-    return dbReq;
+  }
+
+  // 2. Check local requests store
+  const localRequests = loadVouchRequests();
+  const existingLocal = localRequests.find((r) => r.requesterId === resolvedId);
+  if (existingLocal) {
+    return existingLocal;
+  }
+
+  // 3. Fallback: resolve from stored alumni profiles or reconstruct from URL parameters
+  const storedProfiles = loadStoredAlumniProfiles();
+  const matchedProfile = storedProfiles.find((p) => p.id === resolvedId || p.userId === resolvedId);
+
+  if (matchedProfile) {
+    return await registerUserVouchRequest(matchedProfile);
+  }
+
+  // 4. Reconstruct from URL search params if provided
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const nameParam = searchParams?.get('name') || params?.name;
+  const rollParam = searchParams?.get('roll') || params?.roll;
+  const batchParam = searchParams?.get('batch') ? Number(searchParams.get('batch')) : params?.batch;
+
+  if (nameParam) {
+    const tempProfile: AlumniProfile = {
+      ...DEFAULT_BLANK_USER,
+      id: resolvedId,
+      userId: resolvedId,
+      fullName: decodeURIComponent(nameParam),
+      avatarUrl: '/ndc-logo.png',
+      collegeRoll: rollParam ? decodeURIComponent(rollParam) : 'NDC',
+      batchYear: batchParam && batchParam >= 1949 ? batchParam : 2018,
+      group: 'Science',
+      verificationStatus: 'unverified',
+      profession: 'Notredamian Alumnus',
+      isPublic: true,
+    };
+    return await registerUserVouchRequest(tempProfile);
   }
 
   return null;
@@ -642,6 +877,14 @@ export const vouchForAlumniProfile = async (
           ? [...(targetProfile.badges || []), 'Verified Notredamian']
           : targetProfile.badges,
     };
+
+    if (res.isNowVerified) {
+      cleanupVerifiedAlumniFromPendingQueues(
+        targetProfile.id,
+        voucher.fullName,
+        'Completed 2/2 classmate vouches'
+      );
+    }
 
     const message = res.isNowVerified
       ? `You vouched for ${targetProfile.fullName}! They now have 2/2 vouches and are officially Verified!`

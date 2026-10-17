@@ -33,10 +33,13 @@ import {
   getVouchShareLink,
   getWhatsAppVouchShareUrl,
   formatBatchDisplay,
+  isAlumnusAlreadyVerified,
 } from '../../utils/verificationService';
 import { useAuth } from '../../context/AuthContext';
 import { isVideoUrl } from '../../utils/mediaStorage';
 import { WhatsAppIcon } from '../SocialIcons';
+import { reviewAdminDocSubmission } from '../../services/adminService';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface AdminVerificationViewProps {
   onViewProfile?: (profileId: number) => void;
@@ -71,11 +74,18 @@ export const AdminVerificationView: React.FC<AdminVerificationViewProps> = ({
     refreshAll();
     window.addEventListener('ndc_admin_docs_updated', refreshAll);
     window.addEventListener('ndc_vouch_requests_updated', refreshAll);
+    window.addEventListener('ndc_alumni_verified_globally', refreshAll);
     window.addEventListener('storage', refreshAll);
+
+    // Periodic check to keep multi-admin queues in sync
+    const interval = window.setInterval(refreshAll, 12000);
+
     return () => {
       window.removeEventListener('ndc_admin_docs_updated', refreshAll);
       window.removeEventListener('ndc_vouch_requests_updated', refreshAll);
+      window.removeEventListener('ndc_alumni_verified_globally', refreshAll);
       window.removeEventListener('storage', refreshAll);
+      clearInterval(interval);
     };
   }, []);
 
@@ -91,12 +101,25 @@ export const AdminVerificationView: React.FC<AdminVerificationViewProps> = ({
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  const handleAdminDocDecision = (
+  const handleAdminDocDecision = async (
     submission: AdminDocSubmission,
     decision: 'approved' | 'rejected',
     note?: string
   ) => {
     try {
+      if (isSupabaseConfigured) {
+        try {
+          await reviewAdminDocSubmission({
+            submissionId: submission.id,
+            status: decision,
+            adminNote: note,
+            reviewerProfileId: currentUser.id,
+          });
+        } catch (dbErr) {
+          console.warn('reviewAdminDocSubmission DB sync warning:', dbErr);
+        }
+      }
+
       const { updatedProfilePartial } = adminReviewDocumentSubmission(
         submission.id,
         decision,
@@ -119,8 +142,37 @@ export const AdminVerificationView: React.FC<AdminVerificationViewProps> = ({
     }
   };
 
-  const handleAdminDirectVerifyVouch = (req: VouchRequest) => {
+  const handleAdminDirectVerifyVouch = async (req: VouchRequest) => {
     try {
+      if (isSupabaseConfigured) {
+        try {
+          await supabase
+            .from('alumni_profiles')
+            .update({
+              verification_status: 'verified',
+              verification_method: 'admin_verified',
+              verified_at: new Date().toISOString(),
+              verified_by_profile_id: currentUser.id,
+            })
+            .eq('id', req.requesterId);
+
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (uuidRegex.test(req.id)) {
+            await supabase
+              .from('verification_requests')
+              .update({
+                status: 'verified',
+                reviewed_by: currentUser.id,
+                reviewed_at: new Date().toISOString(),
+                admin_note: `Directly approved by Administrator (${currentUser.fullName || 'Admin'})`,
+              })
+              .eq('id', req.id);
+          }
+        } catch (dbErr) {
+          console.warn('handleAdminDirectVerifyVouch DB sync warning:', dbErr);
+        }
+      }
+
       adminApproveVouchRequest(req.id, currentUser.fullName || 'Admin Bashir');
       if (req.requesterId === currentUser.id) {
         updateProfile({
@@ -161,10 +213,21 @@ export const AdminVerificationView: React.FC<AdminVerificationViewProps> = ({
     }
   };
 
-  const pendingDocsCount = docSubmissions.filter((d) => d.status === 'pending').length;
-  const pendingVouchesCount = vouchRequests.filter((r) => r.status === 'pending').length;
+  // Global check: Ensure once an alumni is verified by ANY admin, they are automatically
+  // removed from the 'pending requests' queue for all other administrators to prevent duplicate work.
+  const pendingDocsCount = docSubmissions.filter(
+    (d) => d.status === 'pending' && !isAlumnusAlreadyVerified(d.userId)
+  ).length;
+
+  const pendingVouchesCount = vouchRequests.filter(
+    (r) => r.status === 'pending' && !isAlumnusAlreadyVerified(r.requesterId)
+  ).length;
 
   const filteredDocs = docSubmissions.filter((d) => {
+    // Automatically remove already verified alumni from the pending queue
+    if (d.status === 'pending' && isAlumnusAlreadyVerified(d.userId)) {
+      return false;
+    }
     if (docFilter !== 'all' && d.status !== docFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -179,6 +242,10 @@ export const AdminVerificationView: React.FC<AdminVerificationViewProps> = ({
   });
 
   const filteredVouches = vouchRequests.filter((r) => {
+    // Automatically remove already verified alumni from the pending requests queue
+    if (r.status === 'pending' && isAlumnusAlreadyVerified(r.requesterId)) {
+      return false;
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return (
