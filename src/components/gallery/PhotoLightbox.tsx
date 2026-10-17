@@ -16,9 +16,18 @@ import {
   Film,
   MessageCircle,
   Send,
+  Edit3,
+  Trash2,
+  ShieldCheck,
 } from 'lucide-react';
 import { GalleryPhoto } from '../../types';
 import { isVideoUrl } from '../../utils/mediaStorage';
+import { useAuth } from '../../context/AuthContext';
+import {
+  canEditGalleryPhoto,
+  canDeleteGalleryPhoto,
+  isMainAdmin,
+} from '../../utils/galleryPermissions';
 
 interface PhotoLightboxProps {
   photos: GalleryPhoto[];
@@ -28,6 +37,8 @@ interface PhotoLightboxProps {
   onNavigate: (newIndex: number) => void;
   onToggleLike: (photoId: string) => void;
   onAddComment?: (photoId: string, text: string) => void;
+  onEditPhoto?: (photo: GalleryPhoto) => void;
+  onDeletePhoto?: (photoId: string) => void;
   isPlayingSlideshow: boolean;
   onToggleSlideshow: () => void;
 }
@@ -40,9 +51,12 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
   onNavigate,
   onToggleLike,
   onAddComment,
+  onEditPhoto,
+  onDeletePhoto,
   isPlayingSlideshow,
   onToggleSlideshow,
 }) => {
+  const { currentUser } = useAuth();
   const currentPhoto = photos[currentIndex];
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
@@ -113,11 +127,20 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
     document.body.removeChild(link);
   };
 
+  const isAdmin = isMainAdmin(currentUser);
+  const canEdit = canEditGalleryPhoto(currentPhoto, currentUser);
+  const canDelete = canDeleteGalleryPhoto(currentPhoto, currentUser);
+  const isUploader =
+    (currentPhoto.uploaderId && Number(currentPhoto.uploaderId) === Number(currentUser?.id)) ||
+    (currentPhoto.uploaderName &&
+      currentUser?.fullName &&
+      currentPhoto.uploaderName.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase());
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md select-none">
       {/* Top Header Bar */}
       <div className="absolute top-0 inset-x-0 p-4 sm:p-5 flex items-center justify-between z-20 bg-gradient-to-b from-black/80 to-transparent text-white">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <div className="text-xs font-black uppercase tracking-wider text-blue-400 bg-blue-500/20 px-2.5 py-1 rounded-full border border-blue-500/30">
             Photo {currentIndex + 1} of {photos.length}
           </div>
@@ -126,10 +149,45 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
               Batch {currentPhoto.batchYear} Archive
             </span>
           )}
+          {isAdmin ? (
+            <span className="px-2.5 py-1 rounded-xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm border border-blue-400/40">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Admin Full Access</span>
+            </span>
+          ) : isUploader ? (
+            <span className="px-2.5 py-1 rounded-xl bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider border border-emerald-400/40">
+              Your Photo
+            </span>
+          ) : null}
         </div>
 
         {/* Top Actions */}
         <div className="flex items-center gap-2">
+          {/* Edit Photo (Admin or Owner) */}
+          {canEdit && onEditPhoto && (
+            <button
+              type="button"
+              onClick={() => onEditPhoto(currentPhoto)}
+              title="Edit photo details, caption, tags, or replace image"
+              className="btn-interactive px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit</span>
+            </button>
+          )}
+
+          {/* Delete Photo (Admin or Owner) */}
+          {canDelete && onDeletePhoto && (
+            <button
+              type="button"
+              onClick={() => onDeletePhoto(currentPhoto.id)}
+              title="Delete this photograph from gallery"
+              className="btn-interactive p-2 rounded-xl bg-rose-600/30 hover:bg-rose-600 active:scale-95 text-rose-200 hover:text-white transition-colors cursor-pointer border border-rose-500/40"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Slideshow play/pause */}
           <button
             type="button"

@@ -2091,15 +2091,16 @@ export async function fetchGalleryAlbumsFromDb(): Promise<GalleryAlbum[]> {
 
     return data.map((a: any) => {
       const photos: GalleryPhoto[] = (a.gallery_photos || []).map((p: any) => ({
-        id: p.id,
+        id: String(p.id),
         url: p.url,
         caption: p.caption || '',
         category: a.category,
         batchYear: p.batch_year || a.batch_year,
         year: String(a.batch_year || 2026),
-        uploaderName: 'NDC Archive',
-        likes: Number(p.likes_count) || 0,
-        liked: false,
+        uploaderName: p.uploader_id ? 'Notre Dame Alumnus' : 'NDC Archive',
+        uploaderId: p.uploader_id ? Number(p.uploader_id) : undefined,
+        likesCount: Number(p.likes_count) || 0,
+        likedByMe: false,
         tags: p.tags || [],
         mediaType: p.media_type || 'image',
         fileSize: p.file_size || '1.2 MB',
@@ -2223,6 +2224,117 @@ export async function addPhotoToGalleryAlbumInDb(params: {
   } catch (err) {
     console.warn('addPhotoToGalleryAlbumInDb exception:', err);
     return null;
+  }
+}
+
+export async function updateGalleryPhotoInDb(
+  photoId: string,
+  params: {
+    caption?: string;
+    batchYear?: number;
+    tags?: string[];
+    url?: string;
+    mediaType?: string;
+  }
+): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    const updatePayload: Record<string, any> = {};
+    if (params.caption !== undefined) updatePayload.caption = params.caption;
+    if (params.batchYear !== undefined) updatePayload.batch_year = params.batchYear;
+    if (params.tags !== undefined) updatePayload.tags = params.tags;
+    if (params.url !== undefined) updatePayload.url = params.url;
+    if (params.mediaType !== undefined) updatePayload.media_type = params.mediaType;
+
+    const { error } = await supabase
+      .from('gallery_photos')
+      .update(updatePayload)
+      .eq('id', photoId);
+
+    if (error) {
+      console.warn('updateGalleryPhotoInDb error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('updateGalleryPhotoInDb exception:', err);
+    return false;
+  }
+}
+
+export async function deleteGalleryPhotoInDb(photoId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    const { error } = await supabase
+      .from('gallery_photos')
+      .delete()
+      .eq('id', photoId);
+
+    if (error) {
+      console.warn('deleteGalleryPhotoInDb error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('deleteGalleryPhotoInDb exception:', err);
+    return false;
+  }
+}
+
+export async function updateGalleryAlbumInDb(
+  albumId: number,
+  params: {
+    title?: string;
+    description?: string;
+    category?: string;
+    eventDateLabel?: string;
+    location?: string;
+    batchYear?: number;
+    coverUrl?: string;
+  }
+): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    const updatePayload: Record<string, any> = {};
+    if (params.title !== undefined) updatePayload.title = params.title;
+    if (params.description !== undefined) updatePayload.description = params.description;
+    if (params.category !== undefined) updatePayload.category = params.category;
+    if (params.eventDateLabel !== undefined) updatePayload.event_date_label = params.eventDateLabel;
+    if (params.location !== undefined) updatePayload.location = params.location;
+    if (params.batchYear !== undefined) updatePayload.batch_year = params.batchYear;
+    if (params.coverUrl !== undefined) updatePayload.cover_url = params.coverUrl;
+
+    const { error } = await supabase
+      .from('gallery_albums')
+      .update(updatePayload)
+      .eq('id', albumId);
+
+    if (error) {
+      console.warn('updateGalleryAlbumInDb error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('updateGalleryAlbumInDb exception:', err);
+    return false;
+  }
+}
+
+export async function deleteGalleryAlbumInDb(albumId: number): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    // Delete associated photos first
+    await supabase.from('gallery_photos').delete().eq('album_id', albumId);
+    // Delete album
+    const { error } = await supabase.from('gallery_albums').delete().eq('id', albumId);
+    if (error) {
+      console.warn('deleteGalleryAlbumInDb error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('deleteGalleryAlbumInDb exception:', err);
+    return false;
   }
 }
 

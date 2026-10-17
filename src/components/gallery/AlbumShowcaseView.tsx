@@ -18,9 +18,19 @@ import {
   Maximize2,
   Eye,
   Camera,
-  Layers
+  Layers,
+  Edit3,
+  Trash2,
+  ShieldCheck,
+  UserCheck,
 } from 'lucide-react';
 import { GalleryAlbum, GalleryPhoto } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import {
+  canEditGalleryPhoto,
+  canDeleteGalleryPhoto,
+  isMainAdmin,
+} from '../../utils/galleryPermissions';
 
 interface AlbumShowcaseViewProps {
   album: GalleryAlbum;
@@ -29,6 +39,10 @@ interface AlbumShowcaseViewProps {
   onToggleLike: (photoId: string) => void;
   onRequestUpload: (albumId: number) => void;
   onStartSlideshow: () => void;
+  onEditPhoto?: (photo: GalleryPhoto) => void;
+  onDeletePhoto?: (photoId: string) => void;
+  onEditAlbum?: (album: GalleryAlbum) => void;
+  onDeleteAlbum?: (albumId: number) => void;
 }
 
 export const AlbumShowcaseView: React.FC<AlbumShowcaseViewProps> = ({
@@ -38,7 +52,13 @@ export const AlbumShowcaseView: React.FC<AlbumShowcaseViewProps> = ({
   onToggleLike,
   onRequestUpload,
   onStartSlideshow,
+  onEditPhoto,
+  onDeletePhoto,
+  onEditAlbum,
+  onDeleteAlbum,
 }) => {
+  const { currentUser } = useAuth();
+  const isAdmin = isMainAdmin(currentUser);
   const [selectedTag, setSelectedTag] = useState<string>('All');
   const [viewLayout, setViewLayout] = useState<'masonry' | 'grid' | 'filmstrip'>('masonry');
   const [filmstripIndex, setFilmstripIndex] = useState<number>(0);
@@ -222,6 +242,51 @@ export const AlbumShowcaseView: React.FC<AlbumShowcaseViewProps> = ({
         </div>
       </div>
 
+      {/* Main Admin Album Management Controls Bar */}
+      {isAdmin && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-3xl bg-gradient-to-r from-blue-900/50 via-slate-900/80 to-purple-900/40 border border-blue-500/40 text-white shadow-lg backdrop-blur-md">
+          <div className="flex items-center gap-2.5">
+            <span className="px-3 py-1 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-blue-900/30">
+              <ShieldCheck className="w-4 h-4" />
+              Main Admin Full Access
+            </span>
+            <span className="text-xs text-slate-200 hidden md:inline">
+              Full control enabled: upload, edit details, replace photos, or remove pictures in this album.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onRequestUpload(album.id)}
+              className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-blue-950/20"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Upload Photos</span>
+            </button>
+            {onEditAlbum && (
+              <button
+                type="button"
+                onClick={() => onEditAlbum(album)}
+                className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-bold border border-white/20 transition-all cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-blue-300" />
+                <span>Edit Album</span>
+              </button>
+            )}
+            {onDeleteAlbum && (
+              <button
+                type="button"
+                onClick={() => onDeleteAlbum(album.id)}
+                className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-600/30 hover:bg-rose-600 active:scale-95 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Album</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ------------------------------------------------------------- */}
       {/* 3. Showcase Controls & Tag Filters */}
       {/* ------------------------------------------------------------- */}
@@ -351,6 +416,14 @@ export const AlbumShowcaseView: React.FC<AlbumShowcaseViewProps> = ({
         >
           {displayedPhotos.map((photo, index) => {
             const originalIndex = album.photos.findIndex((p) => p.id === photo.id);
+            const canEdit = canEditGalleryPhoto(photo, currentUser);
+            const canDelete = canDeleteGalleryPhoto(photo, currentUser);
+            const isUploader =
+              (photo.uploaderId && Number(photo.uploaderId) === Number(currentUser?.id)) ||
+              (photo.uploaderName &&
+                currentUser?.fullName &&
+                photo.uploaderName.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase());
+
             return (
               <div
                 key={photo.id}
@@ -372,6 +445,48 @@ export const AlbumShowcaseView: React.FC<AlbumShowcaseViewProps> = ({
 
                   {/* Gradient Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-80 group-hover:opacity-95 transition-opacity" />
+
+                  {/* Owner / Main Admin Action Overlay */}
+                  {(canEdit || canDelete) && (
+                    <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                      {canEdit && onEditPhoto && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditPhoto(photo);
+                          }}
+                          title="Edit picture caption, tags, batch year, or replace image"
+                          className="px-2.5 py-1 rounded-xl bg-black/60 hover:bg-blue-600 active:scale-95 text-white backdrop-blur-md border border-white/20 text-[11px] font-bold flex items-center gap-1 shadow-md transition-all cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-blue-300" />
+                          <span>Edit</span>
+                        </button>
+                      )}
+                      {canDelete && onDeletePhoto && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeletePhoto(photo.id);
+                          }}
+                          title="Delete this picture"
+                          className="p-1 rounded-xl bg-black/60 hover:bg-rose-600 active:scale-95 text-white backdrop-blur-md border border-white/20 shadow-md transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-300" />
+                        </button>
+                      )}
+                      <span
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-md shadow-xs ${
+                          isAdmin
+                            ? 'bg-blue-600/90 text-white border border-blue-400/40'
+                            : 'bg-emerald-600/90 text-white border border-emerald-400/40'
+                        }`}
+                      >
+                        {isAdmin ? 'Admin' : 'Your Photo'}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Zoom hint on hover */}
                   <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/40 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

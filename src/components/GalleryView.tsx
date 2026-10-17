@@ -13,7 +13,10 @@ import {
   Users,
   Camera,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Edit3,
+  Trash2,
+  ShieldCheck,
 } from 'lucide-react';
 import { GalleryAlbum, GalleryPhoto, PostComment } from '../types';
 import { INITIAL_ALBUMS } from '../data/galleryData';
@@ -21,15 +24,28 @@ import { AlbumShowcaseView } from './gallery/AlbumShowcaseView';
 import { CreateAlbumModal } from './gallery/CreateAlbumModal';
 import { UploadPhotosModal } from './gallery/UploadPhotosModal';
 import { PhotoLightbox } from './gallery/PhotoLightbox';
+import { EditPhotoModal } from './gallery/EditPhotoModal';
+import { EditAlbumModal } from './gallery/EditAlbumModal';
 import {
   fetchGalleryAlbumsFromDb,
   createGalleryAlbumInDb,
   addPhotoToGalleryAlbumInDb,
+  updateGalleryPhotoInDb,
+  deleteGalleryPhotoInDb,
+  updateGalleryAlbumInDb,
+  deleteGalleryAlbumInDb,
 } from '../services/supabaseService';
 import { useAuth } from '../context/AuthContext';
 import { notifyPhotoLike, notifyPhotoComment } from '../utils/notificationService';
 import { playSound } from '../utils/audio';
 import { syncNewAlbumToQuadFeed, syncUploadedPhotosToQuadFeed } from '../utils/galleryFeedSync';
+import {
+  isMainAdmin,
+  canEditGalleryPhoto,
+  canDeleteGalleryPhoto,
+  canEditGalleryAlbum,
+  canDeleteGalleryAlbum,
+} from '../utils/galleryPermissions';
 
 const STORAGE_KEY = 'ndc_alumni_gallery_albums';
 
@@ -40,6 +56,7 @@ export interface GalleryViewProps {
 
 export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavigate }) => {
   const { currentUser } = useAuth();
+  const isAdmin = isMainAdmin(currentUser);
   // Load albums from localStorage or fallback to INITIAL_ALBUMS
   const [albums, setAlbums] = useState<GalleryAlbum[]>(() => {
     try {
@@ -109,6 +126,8 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
   const [isCreateAlbumOpen, setIsCreateAlbumOpen] = useState<boolean>(false);
   const [isUploadPhotosOpen, setIsUploadPhotosOpen] = useState<boolean>(false);
   const [targetAlbumIdForUpload, setTargetAlbumIdForUpload] = useState<number | undefined>(undefined);
+  const [editingPhoto, setEditingPhoto] = useState<{ photo: GalleryPhoto; albumId: number } | null>(null);
+  const [editingAlbum, setEditingAlbum] = useState<GalleryAlbum | null>(null);
 
   // Lightbox state
   const [lightboxState, setLightboxState] = useState<{
@@ -415,6 +434,119 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
     setIsPlayingSlideshow(true);
   };
 
+  const handleOpenEditPhoto = (photo: GalleryPhoto, albumId?: number) => {
+    const targetAlbumId =
+      albumId ||
+      selectedAlbumId ||
+      albums.find((a) => a.photos.some((p) => p.id === photo.id))?.id ||
+      1;
+    setEditingPhoto({ photo, albumId: targetAlbumId });
+  };
+
+  const handleOpenEditAlbum = (album: GalleryAlbum) => {
+    setEditingAlbum(album);
+  };
+
+  const handleSavePhotoUpdates = async (
+    albumId: number,
+    photoId: string,
+    updates: Partial<GalleryPhoto>
+  ) => {
+    setAlbums((prev) =>
+      prev.map((alb) => {
+        if (alb.id === albumId) {
+          return {
+            ...alb,
+            photos: alb.photos.map((p) => (p.id === photoId ? { ...p, ...updates } : p)),
+          };
+        }
+        return alb;
+      })
+    );
+
+    try {
+      await updateGalleryPhotoInDb(photoId, {
+        caption: updates.caption,
+        batchYear: updates.batchYear,
+        tags: updates.tags,
+        url: updates.url,
+        mediaType: updates.mediaType,
+      });
+    } catch (err) {
+      console.warn('updateGalleryPhotoInDb fallback:', err);
+    }
+  };
+
+  const handleDeletePhoto = async (albumId: number, photoId: string) => {
+    setAlbums((prev) =>
+      prev.map((alb) => {
+        if (alb.id === albumId) {
+          const remaining = alb.photos.filter((p) => p.id !== photoId);
+          return {
+            ...alb,
+            photos: remaining,
+            photosCount: remaining.length,
+          };
+        }
+        return alb;
+      })
+    );
+
+    if (lightboxState.isOpen && lightboxState.albumId === albumId) {
+      const alb = albums.find((a) => a.id === albumId);
+      if (alb && alb.photos.length <= 1) {
+        setLightboxState({ isOpen: false, albumId: null, currentIndex: 0 });
+      } else {
+        setLightboxState((prev) => ({
+          ...prev,
+          currentIndex: Math.max(0, prev.currentIndex - 1),
+        }));
+      }
+    }
+
+    try {
+      await deleteGalleryPhotoInDb(photoId);
+    } catch (err) {
+      console.warn('deleteGalleryPhotoInDb fallback:', err);
+    }
+  };
+
+  const handleSaveAlbumUpdates = async (
+    albumId: number,
+    updates: Partial<GalleryAlbum>
+  ) => {
+    setAlbums((prev) =>
+      prev.map((alb) => (alb.id === albumId ? { ...alb, ...updates } : alb))
+    );
+
+    try {
+      await updateGalleryAlbumInDb(albumId, {
+        title: updates.title,
+        description: updates.description,
+        category: updates.category,
+        eventDateLabel: updates.date,
+        location: updates.location,
+        batchYear: updates.batchYear,
+        coverUrl: updates.coverUrl,
+      });
+    } catch (err) {
+      console.warn('updateGalleryAlbumInDb fallback:', err);
+    }
+  };
+
+  const handleDeleteAlbum = async (albumId: number) => {
+    setAlbums((prev) => prev.filter((a) => a.id !== albumId));
+    if (selectedAlbumId === albumId) {
+      setSelectedAlbumId(null);
+    }
+
+    try {
+      await deleteGalleryAlbumInDb(albumId);
+    } catch (err) {
+      console.warn('deleteGalleryAlbumInDb fallback:', err);
+    }
+  };
+
   // If viewing an album showcase:
   if (activeAlbum) {
     return (
@@ -442,6 +574,10 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
           onToggleLike={handleToggleLike}
           onRequestUpload={(albumId) => openUploadModalForAlbum(albumId)}
           onStartSlideshow={() => startAlbumSlideshow(activeAlbum.id)}
+          onEditPhoto={(photo) => handleOpenEditPhoto(photo, activeAlbum.id)}
+          onDeletePhoto={(photoId) => handleDeletePhoto(activeAlbum.id, photoId)}
+          onEditAlbum={(album) => handleOpenEditAlbum(album)}
+          onDeleteAlbum={(albumId) => handleDeleteAlbum(albumId)}
         />
 
         {/* Lightbox */}
@@ -458,6 +594,12 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
           }
           onToggleLike={handleToggleLike}
           onAddComment={handleAddPhotoComment}
+          onEditPhoto={(photo) =>
+            handleOpenEditPhoto(photo, lightboxState.albumId || activeAlbum.id)
+          }
+          onDeletePhoto={(photoId) =>
+            handleDeletePhoto(lightboxState.albumId || activeAlbum.id, photoId)
+          }
           isPlayingSlideshow={isPlayingSlideshow}
           onToggleSlideshow={() => setIsPlayingSlideshow((prev) => !prev)}
         />
@@ -480,6 +622,25 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
           isOpen={isCreateAlbumOpen}
           onClose={() => setIsCreateAlbumOpen(false)}
           onCreateAlbum={handleCreateAlbum}
+        />
+
+        {/* Edit Photo Modal */}
+        <EditPhotoModal
+          photo={editingPhoto?.photo || null}
+          albumId={editingPhoto?.albumId || activeAlbum.id}
+          isOpen={Boolean(editingPhoto)}
+          onClose={() => setEditingPhoto(null)}
+          onSave={handleSavePhotoUpdates}
+          onDelete={handleDeletePhoto}
+        />
+
+        {/* Edit Album Modal */}
+        <EditAlbumModal
+          album={editingAlbum}
+          isOpen={Boolean(editingAlbum)}
+          onClose={() => setEditingAlbum(null)}
+          onSave={handleSaveAlbumUpdates}
+          onDelete={handleDeleteAlbum}
         />
       </>
     );
@@ -526,6 +687,44 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
           </button>
         </div>
       </div>
+
+      {/* Main Admin Full Access Status Banner */}
+      {isAdmin && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-3xl bg-gradient-to-r from-blue-900/60 via-slate-900/80 to-purple-900/50 border border-blue-500/40 text-white shadow-lg backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-900/40 shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-black uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
+                <span>Main Admin Gallery Access Active</span>
+                <span className="px-1.5 py-0.2 rounded bg-blue-500/30 text-[10px] text-blue-200 border border-blue-400/30">Full Control</span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Full authority enabled: you can upload new campus pictures, edit captions/tags, replace photos, and delete images or albums.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCreateAlbumOpen(true)}
+              className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+              <span>+ New Album</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openUploadModalForAlbum()}
+              className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Upload Photos</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------- */}
       {/* 2. Gallery Summary Metrics */}
@@ -648,16 +847,38 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
 
-                {/* Top Badge: Photo Count & Category */}
-                <div className="absolute top-3.5 inset-x-4 flex items-center justify-between">
+                {/* Top Badge: Photo Count & Category & Admin Controls */}
+                <div className="absolute top-3.5 inset-x-4 flex items-center justify-between z-10">
                   <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-blue-600/90 text-white backdrop-blur-md shadow-xs flex items-center gap-1.5">
                     <Camera className="w-3 h-3" />
                     <span>{album.photos.length || album.photosCount} Photos</span>
                   </span>
 
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-black/50 text-slate-200 backdrop-blur-md border border-white/20">
-                    {album.category}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {isAdmin && (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditAlbum(album)}
+                          title="Edit Album Metadata"
+                          className="p-1.5 rounded-full bg-black/60 hover:bg-blue-600 text-white backdrop-blur-md transition-colors border border-white/20 shadow-xs cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-blue-300" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAlbum(album.id)}
+                          title="Delete Album"
+                          className="p-1.5 rounded-full bg-black/60 hover:bg-rose-600 text-white backdrop-blur-md transition-colors border border-white/20 shadow-xs cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-300" />
+                        </button>
+                      </div>
+                    )}
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-black/50 text-slate-200 backdrop-blur-md border border-white/20">
+                      {album.category}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Bottom Title & Details */}
@@ -764,6 +985,25 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
           setIsUploadPhotosOpen(false);
           setIsCreateAlbumOpen(true);
         }}
+      />
+
+      {/* Edit Photo Modal */}
+      <EditPhotoModal
+        photo={editingPhoto?.photo || null}
+        albumId={editingPhoto?.albumId || 1}
+        isOpen={Boolean(editingPhoto)}
+        onClose={() => setEditingPhoto(null)}
+        onSave={handleSavePhotoUpdates}
+        onDelete={handleDeletePhoto}
+      />
+
+      {/* Edit Album Modal */}
+      <EditAlbumModal
+        album={editingAlbum}
+        isOpen={Boolean(editingAlbum)}
+        onClose={() => setEditingAlbum(null)}
+        onSave={handleSaveAlbumUpdates}
+        onDelete={handleDeleteAlbum}
       />
     </div>
   );
