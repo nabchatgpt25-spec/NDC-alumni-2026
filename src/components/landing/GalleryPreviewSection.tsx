@@ -268,17 +268,6 @@ export const GalleryPreviewSection: React.FC<GalleryPreviewSectionProps> = ({
             </div>
 
             <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
-              {currentUser && (
-                <button
-                  type="button"
-                  onClick={() => setIsUploadOpen(true)}
-                  className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-2 sm:px-4 sm:py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-all cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span>Contribute Photo</span>
-                </button>
-              )}
-
               <MagneticWrap>
                 <button
                   type="button"
