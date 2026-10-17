@@ -321,6 +321,22 @@ export async function reviewAdminDocSubmission(params: {
   const { submissionId, status, adminNote, reviewerProfileId } = params;
 
   try {
+    // Self-approval protection pre-check
+    if (reviewerProfileId) {
+      const { data: subRow } = await supabase
+        .from('admin_doc_submissions')
+        .select('user_id')
+        .eq('id', submissionId)
+        .maybeSingle();
+
+      if (subRow && Number(subRow.user_id) === Number(reviewerProfileId)) {
+        return {
+          success: false,
+          error: 'Self-approval protection: You cannot review or approve your own verification document. Another administrator must review your submission.',
+        };
+      }
+    }
+
     const updatePayload: Record<string, any> = {
       status,
       reviewed_by: reviewerProfileId,

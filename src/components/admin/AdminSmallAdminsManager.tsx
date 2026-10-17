@@ -180,10 +180,10 @@ export const AdminSmallAdminsManager: React.FC<AdminSmallAdminsManagerProps> = (
                 <span className="text-xs text-slate-400">Delegated Authority</span>
               </div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-                Small Admin Making System
+                Admin Appointment System
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-2xl">
-                Appoint any email address as a Small Admin. Small Admins can verify registered alumni and delete unwanted or bad posts, without receiving access to system audit logs, site branding customizer, or database configuration.
+                Appoint any email address as an Admin. Admins can verify registered alumni and delete unwanted or bad posts, without receiving access to system audit logs, site branding customizer, or database configuration.
               </p>
             </div>
           </div>
@@ -195,7 +195,7 @@ export const AdminSmallAdminsManager: React.FC<AdminSmallAdminsManagerProps> = (
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm transition-all shadow-md shrink-0 cursor-pointer"
             >
               <ExternalLink className="w-4 h-4" />
-              <span>Launch Small Admin Portal</span>
+              <span>Launch Admin Portal</span>
             </button>
           )}
         </div>
@@ -213,10 +213,10 @@ export const AdminSmallAdminsManager: React.FC<AdminSmallAdminsManagerProps> = (
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Appoint New Small Admin
+                  Appoint New Admin
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Enter an email to grant sub-admin access
+                  Enter an email to grant admin access
                 </p>
               </div>
             </div>
@@ -235,7 +235,7 @@ export const AdminSmallAdminsManager: React.FC<AdminSmallAdminsManagerProps> = (
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  When this user logs in with this email, they will automatically receive Small Admin tools.
+                  When this user logs in with this email, they will automatically receive Admin tools.
                 </p>
               </div>
 

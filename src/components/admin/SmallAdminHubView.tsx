@@ -427,7 +427,7 @@ export const SmallAdminHubView: React.FC<SmallAdminHubViewProps> = ({
               <div className="flex flex-wrap items-center gap-2 mb-1.5">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  Small Admin System
+                  Admin
                 </span>
                 {isSuperAdmin && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -439,7 +439,7 @@ export const SmallAdminHubView: React.FC<SmallAdminHubViewProps> = ({
                 </span>
               </div>
               <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight">
-                NDC Sub-Admin &amp; Moderation Center
+                Admin
               </h1>
               <p className="text-xs sm:text-sm text-blue-200/80 mt-1 max-w-2xl">
                 Dedicated authority for verifying alumni profiles, removing unwanted or inappropriate feed posts, and assisting community members.
@@ -1161,7 +1161,7 @@ export const SmallAdminHubView: React.FC<SmallAdminHubViewProps> = ({
                 Alumni Directory Slight Access
               </h3>
               <p className="text-xs text-slate-500">
-                Quick lookup tools for small admins to inspect profiles, check verification histories, and assist brothers.
+                Quick lookup tools for admins to inspect profiles, check verification histories, and assist brothers.
               </p>
             </div>
           </div>
@@ -1232,7 +1232,7 @@ export const SmallAdminHubView: React.FC<SmallAdminHubViewProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Notre Dame College Small Admin &amp; Moderator Guidelines
+                Notre Dame College Admin &amp; Moderator Guidelines
               </h3>
               <p className="text-xs text-slate-500">
                 Ethical standards, verification criteria, and deletion policy for delegated moderators.
@@ -1261,7 +1261,7 @@ export const SmallAdminHubView: React.FC<SmallAdminHubViewProps> = ({
 
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
               <h4 className="font-bold text-slate-900 dark:text-white text-sm mb-1">
-                3. Founding Small Admin
+                3. Founding Admin
               </h4>
               <p>
                 <span className="font-mono font-bold text-blue-600 dark:text-blue-400">nurulanambashir25@</span> is configured as the first delegated administrator in this system with full verification and post moderation authority.

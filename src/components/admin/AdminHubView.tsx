@@ -636,7 +636,7 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
             }`}
           >
             <ShieldCheck className="w-4 h-4 text-emerald-300" />
-            <span>🛡️ Appoint Small Admins</span>
+            <span>🛡️ Appoint Admins</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-400 text-slate-950">
               Delegation
             </span>
@@ -822,7 +822,7 @@ export const AdminHubView: React.FC<AdminHubViewProps> = ({
                   Appoint →
                 </span>
               </div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Appoint Small Admins</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Appoint Admins</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Delegate verification &amp; post deletion to emails like nurulanambashir25@.
               </p>
