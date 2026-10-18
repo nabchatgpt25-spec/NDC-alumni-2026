@@ -408,6 +408,94 @@ export const saveFeaturedAlumni = (list: AlumniProfile[]): void => {
 };
 
 /**
+ * Fetch featured luminaries directly from Supabase `featured_alumni`
+ * Seeds initial records to Supabase if table is currently empty.
+ */
+export async function fetchFeaturedAlumniFromDb(): Promise<AlumniProfile[]> {
+  const localFallback = loadFeaturedAlumni();
+  if (!isSupabaseConfigured) return localFallback;
+
+  try {
+    const { data, error } = await supabase
+      .from('featured_alumni')
+      .select('*')
+      .order('display_order', { ascending: true })
+      .order('id', { ascending: true });
+
+    if (error) {
+      console.warn('Supabase fetch featured_alumni error:', error.message);
+      return localFallback;
+    }
+
+    if (data && data.length > 0) {
+      const mapped: AlumniProfile[] = data.map((row: any) => ({
+        id: Number(row.id),
+        userId: Number(row.id),
+        fullName: row.full_name,
+        avatarUrl: row.avatar_url || '/ndc-logo.png',
+        coverUrl: row.cover_url || campusHeroImg,
+        batchYear: Number(row.batch_year) || 50,
+        session: row.session || undefined,
+        group: row.academic_group || 'Science',
+        collegeRoll: row.college_roll || undefined,
+        profession: row.profession,
+        position: row.position,
+        institution: row.institution,
+        city: row.city || 'Dhaka',
+        country: row.country || 'Bangladesh',
+        specialty: Array.isArray(row.specialties) ? row.specialties : [],
+        degree: Array.isArray(row.degrees) ? row.degrees : ['HSC (Notre Dame College)'],
+        badges: Array.isArray(row.badges) ? row.badges : [],
+        bio: row.bio || '',
+        careerHistory: Array.isArray(row.career_history) ? row.career_history : [],
+        isPublic: Boolean(row.is_active ?? true),
+        online: false,
+        postsCount: 10,
+      }));
+
+      saveFeaturedAlumni(mapped);
+      return mapped;
+    } else if (data && data.length === 0) {
+      // Supabase table is provisioned but empty: seed initial curated luminaries to cloud
+      (async () => {
+        try {
+          const seeds = INITIAL_FEATURED_ALUMNI.map((p, idx) => ({
+            id: p.id,
+            full_name: p.fullName,
+            avatar_url: p.avatarUrl,
+            cover_url: typeof p.coverUrl === 'string' ? p.coverUrl : '',
+            batch_year: p.batchYear || 50,
+            session: p.session,
+            academic_group: p.group || 'Science',
+            college_roll: p.collegeRoll,
+            profession: p.profession,
+            position: p.position,
+            institution: p.institution,
+            city: p.city,
+            country: p.country,
+            category: 'all',
+            specialties: p.specialty,
+            degrees: p.degree,
+            badges: p.badges,
+            bio: p.bio,
+            career_history: p.careerHistory,
+            display_order: idx,
+            is_active: true,
+          }));
+          await supabase.from('featured_alumni').upsert(seeds, { onConflict: 'id' });
+        } catch (seedErr) {
+          console.warn('Failed to seed featured alumni to Supabase:', seedErr);
+        }
+      })();
+    }
+  } catch (err) {
+    console.warn('Error querying featured_alumni from Supabase:', err);
+  }
+
+  return localFallback;
+}
+
+/**
  * Admin Action: Add a new distinguished alumnus / career position
  */
 export const addFeaturedAlumnus = (data: Partial<AlumniProfile>): AlumniProfile => {

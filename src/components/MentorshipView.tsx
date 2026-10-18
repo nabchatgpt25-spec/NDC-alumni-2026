@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   HelpCircle,
   HeartHandshake,
@@ -81,6 +81,37 @@ export const MentorshipView: React.FC<MentorshipViewProps> = ({
   // Data lists
   const [requests, setRequests] = useState<MentorshipRequest[]>(() => loadMentorshipRequests());
   const [mentors, setMentors] = useState<MentorOffer[]>(() => loadMentorOffers());
+
+  // Cloud sync with Supabase on mount
+  useEffect(() => {
+    let isMounted = true;
+    fetchMentorOffersFromDb().then((data) => {
+      if (isMounted && data && data.length > 0) {
+        setMentors(data);
+      }
+    });
+
+    fetchMentorshipRequestsFromDb().then((data) => {
+      if (isMounted && data && data.length > 0) {
+        setRequests(data);
+      }
+    });
+
+    const handleMentorsUpdate = () => {
+      setMentors(loadMentorOffers());
+    };
+    const handleRequestsUpdate = () => {
+      setRequests(loadMentorshipRequests());
+    };
+
+    window.addEventListener('ndc_mentors_updated', handleMentorsUpdate);
+    window.addEventListener('ndc_mentorship_requests_updated', handleRequestsUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('ndc_mentors_updated', handleMentorsUpdate);
+      window.removeEventListener('ndc_mentorship_requests_updated', handleRequestsUpdate);
+    };
+  }, []);
 
   // Inline answering state
   const [answeringReqId, setAnsweringReqId] = useState<string | null>(null);

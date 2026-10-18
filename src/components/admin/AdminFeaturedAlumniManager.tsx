@@ -24,6 +24,7 @@ import {
 import { AlumniProfile } from '../../types';
 import {
   loadFeaturedAlumni,
+  fetchFeaturedAlumniFromDb,
   addFeaturedAlumnus,
   updateFeaturedAlumnus,
   deleteFeaturedAlumnus,
@@ -76,12 +77,22 @@ export const AdminFeaturedAlumniManager: React.FC<AdminFeaturedAlumniManagerProp
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
-  // Listen to updates from other tabs / storage
+  // Listen to updates from other tabs / storage and sync from Supabase on mount
   useEffect(() => {
+    let isMounted = true;
+    fetchFeaturedAlumniFromDb().then((data) => {
+      if (isMounted && data && data.length > 0) {
+        setLuminaries(data);
+      }
+    });
+
     const unsubscribe = subscribeToFeaturedAlumni((updatedList) => {
       setLuminaries(updatedList);
     });
-    return unsubscribe;
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {

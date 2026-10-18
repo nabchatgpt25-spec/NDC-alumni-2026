@@ -113,13 +113,15 @@ const INITIAL_CAREER_OPPORTUNITIES: CareerOpportunity[] = [
   },
 ];
 
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
 export const loadCareerOpportunities = (): CareerOpportunity[] => {
   if (typeof window === 'undefined') return INITIAL_CAREER_OPPORTUNITIES;
   try {
     const raw = localStorage.getItem(CAREER_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
+      if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed;
       }
     }
@@ -139,13 +141,72 @@ export const saveCareerOpportunities = (opportunities: CareerOpportunity[]): voi
   }
 };
 
+/**
+ * Fetch career opportunities and all submitted applications directly from Supabase
+ */
+export async function fetchCareerOpportunitiesFromDb(): Promise<CareerOpportunity[]> {
+  const localFallback = loadCareerOpportunities();
+  if (!isSupabaseConfigured) return localFallback;
+
+  try {
+    const { data, error } = await supabase
+      .from('career_opportunities')
+      .select('*, career_applications(*)')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Supabase fetch career_opportunities error:', error.message);
+      return localFallback;
+    }
+
+    if (data && data.length > 0) {
+      const mapped: CareerOpportunity[] = data.map((row: any) => ({
+        id: String(row.id),
+        title: row.title,
+        company: row.company,
+        location: row.location,
+        type: row.type as CareerType,
+        description: row.description,
+        posterId: Number(row.poster_id),
+        posterName: row.poster_name,
+        posterBatch: row.poster_batch,
+        posterAvatar: row.poster_avatar || undefined,
+        posterEmail: row.poster_email || undefined,
+        createdAt: row.created_at,
+        status: row.status as 'active' | 'closed',
+        applicants: Array.isArray(row.career_applications)
+          ? row.career_applications.map((app: any) => ({
+              id: String(app.id),
+              applicantId: Number(app.applicant_id),
+              applicantName: app.applicant_name,
+              applicantBatch: app.applicant_batch || undefined,
+              applicantAvatar: app.applicant_avatar || undefined,
+              applicantEmail: app.applicant_email || undefined,
+              applicantPhone: app.applicant_phone || undefined,
+              appliedAt: app.applied_at,
+            }))
+          : [],
+      }));
+
+      // Cache for instant offline access
+      saveCareerOpportunities(mapped);
+      return mapped;
+    }
+  } catch (err) {
+    console.warn('Error querying career_opportunities from Supabase:', err);
+  }
+
+  return localFallback;
+}
+
 export const createCareerOpportunity = (
   data: Omit<CareerOpportunity, 'id' | 'createdAt' | 'applicants' | 'status'>
 ): CareerOpportunity => {
   const currentList = loadCareerOpportunities();
+  const tempId = 'opp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
   const newOpportunity: CareerOpportunity = {
     ...data,
-    id: 'opp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    id: tempId,
     createdAt: new Date().toISOString(),
     status: 'active',
     applicants: [],
@@ -153,6 +214,49 @@ export const createCareerOpportunity = (
 
   const updatedList = [newOpportunity, ...currentList];
   saveCareerOpportunities(updatedList);
+
+  // Sync to Supabase in background
+  if (isSupabaseConfigured) {
+    (async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const authUser = authData?.user;
+
+        const { data: inserted, error } = await supabase
+          .from('career_opportunities')
+          .insert({
+            title: newOpportunity.title,
+            company: newOpportunity.company,
+            location: newOpportunity.location,
+            type: newOpportunity.type,
+            description: newOpportunity.description,
+            poster_id: newOpportunity.posterId,
+            poster_auth_id: authUser?.id || null,
+            poster_name: newOpportunity.posterName,
+            poster_batch: newOpportunity.posterBatch,
+            poster_avatar: newOpportunity.posterAvatar || null,
+            poster_email: newOpportunity.posterEmail || null,
+            status: 'active',
+          })
+          .select('id, created_at')
+          .single();
+
+        if (!error && inserted) {
+          const cloudId = String(inserted.id);
+          const current = loadCareerOpportunities();
+          const replaced = current.map((item) =>
+            item.id === tempId ? { ...item, id: cloudId, createdAt: inserted.created_at } : item
+          );
+          saveCareerOpportunities(replaced);
+        } else if (error) {
+          console.warn('Supabase create career_opportunity error:', error.message);
+        }
+      } catch (err) {
+        console.warn('Failed to sync career opportunity to Supabase:', err);
+      }
+    })();
+  }
+
   return newOpportunity;
 };
 
@@ -178,9 +282,10 @@ export const applyToCareerOpportunity = (
     return { success: false, message: 'আপনি ইতোমধ্যে এই সুযোগটিতে আবেদন করেছেন।', opportunity: target };
   }
 
+  const tempAppId = 'app-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
   const newApplicant: CareerApplicant = {
     ...applicant,
-    id: 'app-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    id: tempAppId,
     appliedAt: new Date().toISOString(),
   };
 
@@ -191,6 +296,37 @@ export const applyToCareerOpportunity = (
 
   currentList[index] = updatedTarget;
   saveCareerOpportunities(currentList);
+
+  // Sync application to Supabase
+  if (isSupabaseConfigured) {
+    (async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const authUser = authData?.user;
+
+        // If opportunityId is UUID, write directly
+        const { error } = await supabase
+          .from('career_applications')
+          .insert({
+            opportunity_id: opportunityId,
+            applicant_id: applicant.applicantId,
+            applicant_auth_id: authUser?.id || null,
+            applicant_name: applicant.applicantName,
+            applicant_batch: applicant.applicantBatch || null,
+            applicant_avatar: applicant.applicantAvatar || null,
+            applicant_email: applicant.applicantEmail || null,
+            applicant_phone: applicant.applicantPhone || null,
+            status: 'submitted',
+          });
+
+        if (error && error.code !== '23505') {
+          console.warn('Supabase apply to career_opportunity error:', error.message);
+        }
+      } catch (err) {
+        console.warn('Failed to sync career application to Supabase:', err);
+      }
+    })();
+  }
 
   return { success: true, message: 'আপনার আবেদন সফলভাবে গৃহীত হয়েছে!', opportunity: updatedTarget };
 };
@@ -210,5 +346,16 @@ export const deleteCareerOpportunity = (
 
   const updatedList = currentList.filter((item) => item.id !== opportunityId);
   saveCareerOpportunities(updatedList);
+
+  if (isSupabaseConfigured) {
+    (async () => {
+      try {
+        await supabase.from('career_opportunities').delete().eq('id', opportunityId);
+      } catch (err) {
+        console.warn('Failed to delete career opportunity from Supabase:', err);
+      }
+    })();
+  }
+
   return true;
 };

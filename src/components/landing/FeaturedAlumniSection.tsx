@@ -36,6 +36,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import {
   loadFeaturedAlumni,
+  fetchFeaturedAlumniFromDb,
   addFeaturedAlumnus,
   updateFeaturedAlumnus,
   deleteFeaturedAlumnus,
@@ -96,8 +97,15 @@ export const FeaturedAlumniSection: React.FC<FeaturedAlumniSectionProps> = ({
   const [formBadges, setFormBadges] = useState('');
   const [formBio, setFormBio] = useState('');
 
-  // Listen to external service updates
+  // Listen to external service updates and pull from Supabase on mount
   useEffect(() => {
+    let isMounted = true;
+    fetchFeaturedAlumniFromDb().then((data) => {
+      if (isMounted && data && data.length > 0) {
+        setLuminaries(data);
+      }
+    });
+
     const handleUpdate = (e: Event) => {
       const custom = e as CustomEvent<{ list: AlumniProfile[] }>;
       if (custom.detail?.list) {
@@ -105,7 +113,10 @@ export const FeaturedAlumniSection: React.FC<FeaturedAlumniSectionProps> = ({
       }
     };
     window.addEventListener('ndc_featured_luminaries_updated', handleUpdate);
-    return () => window.removeEventListener('ndc_featured_luminaries_updated', handleUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('ndc_featured_luminaries_updated', handleUpdate);
+    };
   }, []);
 
   const showToast = (msg: string) => {

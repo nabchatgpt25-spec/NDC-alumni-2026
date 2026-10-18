@@ -23,6 +23,7 @@ import {
   CAREER_FILTER_TYPES,
   getCareerTypeLabel,
   loadCareerOpportunities,
+  fetchCareerOpportunitiesFromDb,
   createCareerOpportunity,
   applyToCareerOpportunity,
   deleteCareerOpportunity,
@@ -78,14 +79,23 @@ export const CareerView: React.FC<CareerViewProps> = ({ onViewProfile, onNavigat
 
   // Load opportunities on mount and sync with events
   useEffect(() => {
+    let isMounted = true;
     const refreshData = () => {
       setOpportunities(loadCareerOpportunities());
     };
     refreshData();
 
+    // Pull real-time cloud listings from Supabase
+    fetchCareerOpportunitiesFromDb().then((data) => {
+      if (isMounted && data && data.length > 0) {
+        setOpportunities(data);
+      }
+    });
+
     window.addEventListener('ndc_careers_updated', refreshData);
     window.addEventListener('storage', refreshData);
     return () => {
+      isMounted = false;
       window.removeEventListener('ndc_careers_updated', refreshData);
       window.removeEventListener('storage', refreshData);
     };
