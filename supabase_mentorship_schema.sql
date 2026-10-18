@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS public.mentorship_requests (
     topic TEXT NOT NULL CHECK (topic IN ('Medical', 'Job', 'Abroad', 'Degree', 'Business', 'Other')),
     question TEXT NOT NULL,
     contact_info TEXT,
-    status TEXT DEFAULT 'open' NOT NULL CHECK (status IN ('open', 'answered', 'closed')),
+    status TEXT DEFAULT 'open' NOT NULL CHECK (status IN ('open', 'answered', 'closed', 'resolved')),
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );

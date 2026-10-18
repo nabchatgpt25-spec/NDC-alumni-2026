@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS public.featured_alumni (
     full_name TEXT NOT NULL,
     avatar_url TEXT NOT NULL DEFAULT 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
     cover_url TEXT DEFAULT '',
-    batch_year INT NOT NULL CHECK (batch_year >= 1 AND batch_year <= 100),
+    batch_year INT NOT NULL CHECK (batch_year >= 1 AND batch_year <= 2100),
     session TEXT,
     academic_group TEXT DEFAULT 'Science',
     college_roll TEXT,

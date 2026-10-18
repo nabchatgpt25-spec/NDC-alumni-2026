@@ -283,14 +283,19 @@ export async function smallAdminVerifyAlumnus(params: {
   // 1. Update Supabase if available
   if (isSupabaseConfigured) {
     try {
+      const updatePayload: Record<string, any> = {
+        verification_status: 'verified',
+        verification_method: 'admin_verified',
+        verified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (params.smallAdminProfileId) {
+        updatePayload.verified_by_profile_id = params.smallAdminProfileId;
+      }
+
       const { error } = await supabase
         .from('alumni_profiles')
-        .update({
-          verification_status: 'verified',
-          verification_method: 'admin_verified',
-          verification_date: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', targetUserId);
 
       if (error) {
