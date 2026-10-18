@@ -64,87 +64,51 @@ export const GalleryPreviewSection: React.FC<GalleryPreviewSectionProps> = ({
     currentUser.role === 'moderator' ||
     ADMIN_EMAILS_SET.has((currentUser.email || '').trim().toLowerCase());
 
-  // Load albums from localStorage or fallback to INITIAL_ALBUMS
-  const [albums, setAlbums] = useState<GalleryAlbum[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return INITIAL_ALBUMS;
-  });
+  // Database is the primary source of truth; INITIAL_ALBUMS acts as fallback / seed
+  const [albums, setAlbums] = useState<GalleryAlbum[]>(INITIAL_ALBUMS);
 
-  // Sync with DB without erasing locally added custom photos
+  // Sync with DB on mount
   useEffect(() => {
     let isMounted = true;
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+
     fetchGalleryAlbumsFromDb()
       .then((dbAlbums) => {
         if (isMounted && dbAlbums && dbAlbums.length > 0) {
-          setAlbums((prev) => {
-            const merged = dbAlbums.map((dbAlb) => {
-              const localAlb = prev.find((p) => p.id === dbAlb.id);
-              if (!localAlb) return dbAlb;
-              const photoMap = new Map<string, GalleryPhoto>();
-              // Keep local custom photos first
-              (localAlb.photos || []).forEach((p) => photoMap.set(p.id, p));
-              // Add any remote db photos if not present
-              (dbAlb.photos || []).forEach((p) => {
-                if (!photoMap.has(p.id)) {
-                  photoMap.set(p.id, p);
-                }
-              });
-              const combinedPhotos = Array.from(photoMap.values());
-              return {
-                ...dbAlb,
-                photos: combinedPhotos,
-                photosCount: combinedPhotos.length,
-              };
-            });
+          setAlbums(() => {
             const dbIds = new Set(dbAlbums.map((a) => a.id));
-            const remainingLocal = prev.filter((a) => !dbIds.has(a.id));
-            return [...remainingLocal, ...merged];
+            const remainingPresets = INITIAL_ALBUMS.filter((a) => !dbIds.has(a.id));
+            return [...dbAlbums, ...remainingPresets];
           });
         }
       })
       .catch(() => {});
+
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Save to localStorage and notify across windows/components
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(albums));
-    } catch {
-      // ignore
-    }
-  }, [albums]);
-
   // Listen to updates from other views (e.g. GalleryView, feeds)
   useEffect(() => {
     const handleUpdate = () => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setAlbums(parsed);
+      fetchGalleryAlbumsFromDb()
+        .then((dbAlbums) => {
+          if (dbAlbums && dbAlbums.length > 0) {
+            setAlbums(() => {
+              const dbIds = new Set(dbAlbums.map((a) => a.id));
+              const remainingPresets = INITIAL_ALBUMS.filter((a) => !dbIds.has(a.id));
+              return [...dbAlbums, ...remainingPresets];
+            });
           }
-        }
-      } catch {}
+        })
+        .catch(() => {});
     };
     window.addEventListener('ndc_gallery_updated', handleUpdate);
-    window.addEventListener('storage', handleUpdate);
     return () => {
       window.removeEventListener('ndc_gallery_updated', handleUpdate);
-      window.removeEventListener('storage', handleUpdate);
     };
   }, []);
 
@@ -322,26 +286,18 @@ export const GalleryPreviewSection: React.FC<GalleryPreviewSectionProps> = ({
       return updated;
     });
 
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      const parsed = saved ? JSON.parse(saved) : albums;
-      const updatedAlbums = parsed.map((alb: GalleryAlbum, idx: number) => {
-        if (alb.id === targetAlbumId || (!parsed.some((a: GalleryAlbum) => a.id === targetAlbumId) && idx === 0)) {
-          return {
-            ...alb,
-            photos: [...newPhotos, ...(alb.photos || [])],
-            photosCount: (alb.photos?.length || 0) + newPhotos.length,
-          };
-        }
-        return alb;
-      });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedAlbums));
-      window.dispatchEvent(new CustomEvent('ndc_gallery_updated'));
-    } catch (err) {
-      console.warn('Storage sync error on photo upload:', err);
-    }
+    // Broadcast update across views
+    window.dispatchEvent(new CustomEvent('ndc_gallery_updated'));
 
     for (const photo of newPhotos) {
+      const isAlreadyPersisted =
+        photo.url.startsWith('http') &&
+        !photo.id.startsWith('pending-') &&
+        !photo.id.startsWith('media-') &&
+        !photo.id.startsWith('p-');
+
+      if (isAlreadyPersisted) continue;
+
       try {
         await addPhotoToGalleryAlbumInDb({
           albumId: targetAlbumId,
@@ -353,8 +309,11 @@ export const GalleryPreviewSection: React.FC<GalleryPreviewSectionProps> = ({
           fileSize: photo.fileSize,
           uploaderId: currentUser?.id,
         });
-      } catch (err) {
-        console.warn('addPhotoToGalleryAlbumInDb error:', err);
+      } catch (err: any) {
+        console.error('addPhotoToGalleryAlbumInDb error:', err);
+        const errMsg = err?.message || String(err);
+        alert(`Failed to save photograph to Supabase:\n\n${errMsg}`);
+        throw err;
       }
     }
   };

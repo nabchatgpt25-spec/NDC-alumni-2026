@@ -21,6 +21,7 @@ import {
 import { isProfilePhotoPost } from '../utils/profilePhotoPostService';
 import { convertDataUrlToBlobFast } from '../utils/mediaStorage';
 import { normalizeAcademicStreamAndGroup } from '../utils/academicGroupMapping';
+import { INITIAL_ALBUMS } from '../data/galleryData';
 
 export { loadStoredAlumniProfiles };
 
@@ -771,7 +772,9 @@ export async function fetchAlumniPostsFromDb(
 async function resolveAndUploadMediaToStorage(
   urlOrData: string,
   authorId: number,
-  mediaType: 'image' | 'video'
+  mediaType: 'image' | 'video',
+  bucket: 'avatars' | 'post-media' | 'gallery' = 'post-media',
+  subFolder?: string
 ): Promise<string> {
   if (!urlOrData || (!urlOrData.startsWith('data:') && !urlOrData.startsWith('blob:'))) {
     return urlOrData;
@@ -811,11 +814,12 @@ async function resolveAndUploadMediaToStorage(
 
     if (blob) {
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+      const folder = subFolder || (bucket === 'gallery' ? `albums/${authorId}` : `posts/${authorId}`);
       try {
         const uploadRes = await uploadMediaToSupabaseStorage(
           blob,
-          'post-media',
-          `posts/${authorId}`,
+          bucket,
+          folder,
           fileName
         );
         if (uploadRes?.publicUrl) {
@@ -2144,7 +2148,7 @@ export async function createGalleryAlbumInDb(params: {
     let publicCoverUrl = params.coverUrl;
     if (publicCoverUrl && (publicCoverUrl.startsWith('data:') || publicCoverUrl.startsWith('blob:'))) {
       try {
-        publicCoverUrl = await resolveAndUploadMediaToStorage(publicCoverUrl, params.createdById || 1, 'image');
+        publicCoverUrl = await resolveAndUploadMediaToStorage(publicCoverUrl, params.createdById || 1, 'image', 'gallery', 'albums/covers');
       } catch (e) {
         console.warn('Failed to resolve gallery cover to storage:', e);
       }
@@ -2177,6 +2181,264 @@ export async function createGalleryAlbumInDb(params: {
   }
 }
 
+/**
+ * Uploads an image or video file directly to the public 'gallery' Supabase Storage bucket.
+ * Throws explicit error if the user is unauthenticated or if the upload fails.
+ */
+export async function uploadGalleryPhotoToStorage(
+  file: File | Blob,
+  albumId: number,
+  customFileName?: string
+): Promise<{ publicUrl: string; storagePath: string }> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase client is not configured.');
+  }
+
+  // 1. Verify user is authenticated with Supabase session
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData?.user) {
+    throw new Error('Authentication required: You must be logged in to upload photographs to the gallery.');
+  }
+
+  let ext = 'jpg';
+  if (file.type) {
+    if (file.type.includes('png')) ext = 'png';
+    else if (file.type.includes('webp')) ext = 'webp';
+    else if (file.type.includes('gif')) ext = 'gif';
+    else if (file.type.includes('svg')) ext = 'svg';
+    else if (file.type.includes('mp4')) ext = 'mp4';
+    else if (file.type.includes('webm')) ext = 'webm';
+    else if (file.type.includes('quicktime') || file.type.includes('mov')) ext = 'mov';
+  } else if ('name' in file && typeof (file as any).name === 'string') {
+    const parts = (file as any).name.split('.');
+    if (parts.length > 1) ext = parts.pop()!.toLowerCase();
+  }
+
+  const name =
+    customFileName || `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+  const storagePath = `albums/${albumId}/${name}`;
+  const contentType = file.type || 'image/jpeg';
+
+  const { error: uploadError } = await supabase.storage
+    .from('gallery')
+    .upload(storagePath, file, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType,
+    });
+
+  if (uploadError) {
+    throw new Error(`Supabase Storage upload to 'gallery' bucket failed: ${uploadError.message}`);
+  }
+
+  const { data: urlData } = supabase.storage.from('gallery').getPublicUrl(storagePath);
+  if (!urlData?.publicUrl) {
+    throw new Error(`Failed to resolve public URL for uploaded photo at ${storagePath}`);
+  }
+
+  return {
+    publicUrl: urlData.publicUrl,
+    storagePath,
+  };
+}
+
+/**
+ * Ensures that the target album exists in `public.gallery_albums` so the foreign key
+ * constraint on `public.gallery_photos(album_id)` is satisfied.
+ * If the album is a local preset that has not yet been seeded to the database, provisions it.
+ */
+export async function ensureGalleryAlbumExistsInDb(
+  albumId: number,
+  fallbackInfo?: Partial<GalleryAlbum>
+): Promise<number> {
+  if (!isSupabaseConfigured) return albumId;
+
+  // 1. Check if album already exists in gallery_albums table
+  const { data: existing } = await supabase
+    .from('gallery_albums')
+    .select('id')
+    .eq('id', albumId)
+    .maybeSingle();
+
+  if (existing?.id) {
+    return Number(existing.id);
+  }
+
+  // 2. If it does not exist, get info from fallbackInfo or INITIAL_ALBUMS
+  const preset = fallbackInfo || INITIAL_ALBUMS.find((a) => a.id === albumId);
+  const title = preset?.title || `Alumni Album ${albumId}`;
+  const category = (preset?.category || 'campus').toLowerCase();
+  const description = preset?.description || '';
+  const eventDateLabel = preset?.date || '2026';
+  const location = preset?.location || 'Motijheel Campus';
+  const coverUrl = preset?.coverUrl || '/ndc-logo.png';
+
+  // Check current authenticated user profile
+  const { data: authData } = await supabase.auth.getUser();
+  const authUser = authData?.user;
+  if (!authUser) {
+    throw new Error('Authentication required: Please sign in to upload to this album.');
+  }
+
+  const { data: profile, error: profileErr } = await supabase
+    .from('alumni_profiles')
+    .select('id, role, verification_status')
+    .eq('auth_user_id', authUser.id)
+    .maybeSingle();
+
+  if (profileErr || !profile?.id) {
+    throw new Error('Alumni profile record not found for the active Supabase account.');
+  }
+
+  const isVerified = profile.verification_status === 'verified';
+  const isAdminOrMod = profile.role === 'admin' || profile.role === 'moderator';
+
+  if (!isVerified && !isAdminOrMod) {
+    throw new Error(
+      `Permission denied: Only verified alumni or administrators can initialize albums (your status: "${profile.verification_status || 'unverified'}").`
+    );
+  }
+
+  const { data: createdAlbum, error: createError } = await supabase
+    .from('gallery_albums')
+    .insert({
+      title,
+      description: description || null,
+      category,
+      event_date_label: eventDateLabel,
+      location: location || null,
+      cover_url: coverUrl,
+      created_by_id: profile.id,
+      is_published: true,
+    })
+    .select('id')
+    .single();
+
+  if (createError || !createdAlbum) {
+    throw new Error(
+      `Database error creating album in 'gallery_albums': ${createError?.message || 'Unknown error'}`
+    );
+  }
+
+  return Number(createdAlbum.id);
+}
+
+/**
+ * Uploads a photo to Supabase Storage ('gallery' bucket) and inserts the metadata row
+ * into 'public.gallery_photos'.
+ * Does NOT swallow errors: throws exact error messages if storage or RLS fails.
+ */
+export async function uploadGalleryPhotoDirect(params: {
+  file?: File | Blob;
+  directUrl?: string;
+  albumId: number;
+  caption?: string;
+  batchYear?: number;
+  tags?: string[];
+  mediaType?: 'image' | 'video';
+  fileSize?: string;
+  albumInfo?: Partial<GalleryAlbum>;
+}): Promise<GalleryPhoto> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase client is not configured.');
+  }
+
+  // 1. Authenticate user & fetch real alumni profile from Supabase
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const authUser = authData?.user;
+  if (authError || !authUser) {
+    throw new Error('Authentication required: You must be signed in to upload photographs.');
+  }
+
+  const { data: profile, error: profileErr } = await supabase
+    .from('alumni_profiles')
+    .select('id, full_name, avatar_url, batch_year, role, verification_status')
+    .eq('auth_user_id', authUser.id)
+    .maybeSingle();
+
+  if (profileErr || !profile?.id) {
+    throw new Error('Your registered alumni profile could not be found in Supabase.');
+  }
+
+  // 2. Enforce database RLS rule client-side with clear explanation
+  const isVerified = profile.verification_status === 'verified';
+  const isAdminOrMod = profile.role === 'admin' || profile.role === 'moderator';
+  if (!isVerified && !isAdminOrMod) {
+    throw new Error(
+      `Permission denied (RLS): Your profile status is "${profile.verification_status || 'unverified'}". Only verified alumni or administrators can upload photographs to the public gallery.`
+    );
+  }
+
+  // 3. Ensure album exists in gallery_albums table so foreign key constraint passes
+  const targetAlbumId = await ensureGalleryAlbumExistsInDb(params.albumId, params.albumInfo);
+
+  // 4. Upload binary file to Supabase Storage 'gallery' bucket
+  let finalUrl = params.directUrl || '';
+  let storageObjectPath: string | null = null;
+
+  if (params.file) {
+    const uploadRes = await uploadGalleryPhotoToStorage(params.file, targetAlbumId);
+    finalUrl = uploadRes.publicUrl;
+    storageObjectPath = uploadRes.storagePath;
+  } else if (finalUrl.startsWith('data:') || finalUrl.startsWith('blob:')) {
+    // If a base64 or blob was passed as directUrl, convert to blob and upload to 'gallery' bucket
+    const blob = await convertDataUrlToBlobFast(finalUrl);
+    const uploadRes = await uploadGalleryPhotoToStorage(blob, targetAlbumId);
+    finalUrl = uploadRes.publicUrl;
+    storageObjectPath = uploadRes.storagePath;
+  }
+
+  if (!finalUrl) {
+    throw new Error('No valid image file or URL provided for gallery upload.');
+  }
+
+  // 5. Insert metadata row into `gallery_photos`
+  const { data: inserted, error: insertError } = await supabase
+    .from('gallery_photos')
+    .insert({
+      album_id: targetAlbumId,
+      url: finalUrl,
+      storage_object_path: storageObjectPath,
+      caption: params.caption?.trim() || null,
+      batch_year: params.batchYear || profile.batch_year || null,
+      tags: params.tags || [],
+      media_type: params.mediaType || 'image',
+      file_size: params.fileSize || null,
+      uploader_id: profile.id, // strictly matches public.current_profile_id()!
+      is_approved: true,
+    })
+    .select('id, album_id, url, storage_object_path, caption, batch_year, tags, media_type, file_size, likes_count, uploaded_at')
+    .single();
+
+  if (insertError || !inserted) {
+    const details = insertError?.details ? ` (${insertError.details})` : '';
+    const hint = insertError?.hint ? ` Hint: ${insertError.hint}` : '';
+    throw new Error(
+      `Database error inserting into 'gallery_photos': ${insertError?.message || 'Unknown error'}${details}${hint}`
+    );
+  }
+
+  return {
+    id: String(inserted.id),
+    url: inserted.url,
+    caption: inserted.caption || '',
+    uploaderId: Number(profile.id),
+    uploaderName: profile.full_name || 'Notre Dame Alumnus',
+    uploaderAvatar: profile.avatar_url || '/ndc-logo.png',
+    batchYear: inserted.batch_year || profile.batch_year,
+    uploadedAt: 'Just now',
+    likesCount: 0,
+    likedByMe: false,
+    tags: inserted.tags || [],
+    mediaType: (inserted.media_type as 'image' | 'video') || 'image',
+    fileSize: inserted.file_size || 'Original',
+  };
+}
+
+/**
+ * Adds a photo metadata entry to Supabase gallery_photos.
+ * Does NOT swallow errors: throws exact error details on failure.
+ */
 export async function addPhotoToGalleryAlbumInDb(params: {
   albumId: number;
   url: string;
@@ -2186,45 +2448,70 @@ export async function addPhotoToGalleryAlbumInDb(params: {
   mediaType?: string;
   fileSize?: string;
   uploaderId?: number;
-}): Promise<string | null> {
-  if (!isSupabaseConfigured) return null;
+}): Promise<string> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase client is not configured.');
+  }
 
-  try {
-    let publicPhotoUrl = params.url;
-    if (publicPhotoUrl && (publicPhotoUrl.startsWith('data:') || publicPhotoUrl.startsWith('blob:'))) {
-      try {
-        const isVideo = params.mediaType === 'video';
-        publicPhotoUrl = await resolveAndUploadMediaToStorage(publicPhotoUrl, params.uploaderId || 1, isVideo ? 'video' : 'image');
-      } catch (e) {
-        console.warn('Failed to resolve gallery photo to storage:', e);
+  const effectiveAlbumId = await ensureGalleryAlbumExistsInDb(params.albumId);
+
+  // Authenticate user & get profile to verify RLS requirements
+  const { data: authData } = await supabase.auth.getUser();
+  const authUser = authData?.user;
+  let resolvedUploaderId = params.uploaderId;
+
+  if (authUser) {
+    const { data: profile } = await supabase
+      .from('alumni_profiles')
+      .select('id, role, verification_status')
+      .eq('auth_user_id', authUser.id)
+      .maybeSingle();
+
+    if (profile?.id) {
+      resolvedUploaderId = Number(profile.id);
+      const isVerified = profile.verification_status === 'verified';
+      const isAdminOrMod = profile.role === 'admin' || profile.role === 'moderator';
+      if (!isVerified && !isAdminOrMod) {
+        throw new Error(
+          `Permission denied (RLS): Your profile verification status is "${profile.verification_status || 'unverified'}". Only verified alumni or administrators can upload photographs to the public gallery.`
+        );
       }
     }
-
-    const { data, error } = await supabase
-      .from('gallery_photos')
-      .insert({
-        album_id: params.albumId,
-        url: publicPhotoUrl,
-        caption: params.caption || null,
-        batch_year: params.batchYear || null,
-        tags: params.tags || [],
-        media_type: params.mediaType || 'image',
-        file_size: params.fileSize || null,
-        uploader_id: params.uploaderId || null,
-        is_approved: true,
-      })
-      .select('id')
-      .single();
-
-    if (error || !data) {
-      console.warn('addPhotoToGalleryAlbumInDb error:', error);
-      return null;
-    }
-    return String(data.id);
-  } catch (err) {
-    console.warn('addPhotoToGalleryAlbumInDb exception:', err);
-    return null;
   }
+
+  let publicPhotoUrl = params.url;
+  let storagePath: string | null = null;
+  if (publicPhotoUrl && (publicPhotoUrl.startsWith('data:') || publicPhotoUrl.startsWith('blob:'))) {
+    const blob = await convertDataUrlToBlobFast(publicPhotoUrl);
+    const uploaded = await uploadGalleryPhotoToStorage(blob, effectiveAlbumId);
+    publicPhotoUrl = uploaded.publicUrl;
+    storagePath = uploaded.storagePath;
+  }
+
+  const { data, error } = await supabase
+    .from('gallery_photos')
+    .insert({
+      album_id: effectiveAlbumId,
+      url: publicPhotoUrl,
+      storage_object_path: storagePath,
+      caption: params.caption || null,
+      batch_year: params.batchYear || null,
+      tags: params.tags || [],
+      media_type: params.mediaType || 'image',
+      file_size: params.fileSize || null,
+      uploader_id: resolvedUploaderId || null,
+      is_approved: true,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    const details = error?.details ? ` (${error.details})` : '';
+    const hint = error?.hint ? ` Hint: ${error.hint}` : '';
+    throw new Error(`Database error saving to 'gallery_photos': ${error?.message || 'Unknown error'}${details}${hint}`);
+  }
+
+  return String(data.id);
 }
 
 export async function updateGalleryPhotoInDb(
@@ -2238,47 +2525,49 @@ export async function updateGalleryPhotoInDb(
   }
 ): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
-  try {
-    const updatePayload: Record<string, any> = {};
-    if (params.caption !== undefined) updatePayload.caption = params.caption;
-    if (params.batchYear !== undefined) updatePayload.batch_year = params.batchYear;
-    if (params.tags !== undefined) updatePayload.tags = params.tags;
-    if (params.url !== undefined) updatePayload.url = params.url;
-    if (params.mediaType !== undefined) updatePayload.media_type = params.mediaType;
+  const updatePayload: Record<string, any> = {};
+  if (params.caption !== undefined) updatePayload.caption = params.caption;
+  if (params.batchYear !== undefined) updatePayload.batch_year = params.batchYear;
+  if (params.tags !== undefined) updatePayload.tags = params.tags;
+  if (params.url !== undefined) updatePayload.url = params.url;
+  if (params.mediaType !== undefined) updatePayload.media_type = params.mediaType;
 
-    const { error } = await supabase
-      .from('gallery_photos')
-      .update(updatePayload)
-      .eq('id', photoId);
+  const { error } = await supabase
+    .from('gallery_photos')
+    .update(updatePayload)
+    .eq('id', photoId);
 
-    if (error) {
-      console.warn('updateGalleryPhotoInDb error:', error);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn('updateGalleryPhotoInDb exception:', err);
-    return false;
+  if (error) {
+    throw new Error(`Database error updating photo in 'gallery_photos': ${error.message}`);
   }
+  return true;
 }
 
 export async function deleteGalleryPhotoInDb(photoId: string): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
-  try {
-    const { error } = await supabase
-      .from('gallery_photos')
-      .delete()
-      .eq('id', photoId);
 
-    if (error) {
-      console.warn('deleteGalleryPhotoInDb error:', error);
-      return false;
+  // Retrieve storage_object_path if present to clean up from storage
+  try {
+    const { data: photoData } = await supabase
+      .from('gallery_photos')
+      .select('storage_object_path')
+      .eq('id', photoId)
+      .maybeSingle();
+
+    if (photoData?.storage_object_path) {
+      await supabase.storage.from('gallery').remove([photoData.storage_object_path]).catch(() => {});
     }
-    return true;
-  } catch (err) {
-    console.warn('deleteGalleryPhotoInDb exception:', err);
-    return false;
+  } catch {}
+
+  const { error } = await supabase
+    .from('gallery_photos')
+    .delete()
+    .eq('id', photoId);
+
+  if (error) {
+    throw new Error(`Database error deleting photo from 'gallery_photos': ${error.message}`);
   }
+  return true;
 }
 
 export async function updateGalleryAlbumInDb(
@@ -2477,8 +2766,7 @@ export async function uploadMediaToSupabaseStorage(
       });
 
     if (uploadError) {
-      console.warn(`Supabase Storage upload to ${bucketName} error:`, uploadError.message);
-      return null;
+      throw new Error(`Supabase Storage upload to bucket '${bucketName}' failed: ${uploadError.message}`);
     }
 
     const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(fullPath);
@@ -2486,9 +2774,9 @@ export async function uploadMediaToSupabaseStorage(
       publicUrl: urlData.publicUrl,
       storagePath: fullPath,
     };
-  } catch (err) {
-    console.warn('Storage upload error:', err);
-    return null;
+  } catch (err: any) {
+    console.error('Storage upload error:', err);
+    throw err;
   }
 }
 

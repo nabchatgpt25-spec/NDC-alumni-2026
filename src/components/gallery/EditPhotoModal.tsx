@@ -20,7 +20,8 @@ import {
 import { GalleryPhoto } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { isMainAdmin } from '../../utils/galleryPermissions';
-import { saveMediaFile, isVideoFile, isVideoUrl } from '../../utils/mediaStorage';
+import { isVideoFile, isVideoUrl } from '../../utils/mediaStorage';
+import { uploadGalleryPhotoToStorage } from '../../services/supabaseService';
 
 interface EditPhotoModalProps {
   photo: GalleryPhoto | null;
@@ -69,9 +70,7 @@ export const EditPhotoModal: React.FC<EditPhotoModalProps> = ({
   if (!isOpen || !photo) return null;
 
   const isAdmin = isMainAdmin(currentUser);
-  const isOwner =
-    (photo.uploaderId && Number(photo.uploaderId) === Number(currentUser.id)) ||
-    (photo.uploaderName && currentUser.fullName && photo.uploaderName.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase());
+  const isOwner = Boolean(photo.uploaderId && Number(photo.uploaderId) === Number(currentUser.id));
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -80,11 +79,13 @@ export const EditPhotoModal: React.FC<EditPhotoModalProps> = ({
     try {
       setIsUploadingReplacement(true);
       setErrorMsg(null);
-      const saved = await saveMediaFile(file);
-      setImageUrl(saved.url);
+      const uploadRes = await uploadGalleryPhotoToStorage(file, albumId);
+      setImageUrl(uploadRes.publicUrl);
     } catch (err: any) {
-      console.warn('File replacement failed, using blob fallback', err);
-      setImageUrl(URL.createObjectURL(file));
+      console.error('File replacement upload failed:', err);
+      const msg = err?.message || 'Failed to upload replacement to Supabase Storage.';
+      setErrorMsg(msg);
+      alert(`Replacement Upload Failed:\n\n${msg}`);
     } finally {
       setIsUploadingReplacement(false);
     }

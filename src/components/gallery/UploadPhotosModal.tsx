@@ -12,11 +12,15 @@ import {
   Layers,
   ArrowRight,
   Film,
-  Play
+  Play,
+  AlertTriangle,
+  ShieldAlert,
 } from 'lucide-react';
 import { GalleryAlbum, GalleryPhoto } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { saveMediaFile, isVideoFile, isVideoUrl, formatFileSize } from '../../utils/mediaStorage';
+import { isVideoFile, isVideoUrl, formatFileSize } from '../../utils/mediaStorage';
+import { canUploadGalleryPhoto } from '../../utils/galleryPermissions';
+import { uploadGalleryPhotoDirect } from '../../services/supabaseService';
 
 interface UploadPhotosModalProps {
   isOpen: boolean;
@@ -29,7 +33,9 @@ interface UploadPhotosModalProps {
 
 interface PendingUpload {
   id: string;
-  url: string;
+  file?: File;
+  previewUrl: string;
+  directUrl?: string;
   caption: string;
   tags: string;
   isVideo: boolean;
@@ -53,6 +59,8 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [contributorName, setContributorName] = useState<string>(
     currentUser?.fullName || 'Notre Dame Alumnus'
   );
@@ -63,41 +71,30 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const uploadPermission = canUploadGalleryPhoto(currentUser);
 
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setErrorMessage(null);
+
+    const newPending: PendingUpload[] = [];
     for (const file of Array.from(files)) {
-      try {
-        const isVideo = isVideoFile(file);
-        const saved = await saveMediaFile(file);
-        setPendingPhotos((prev) => [
-          ...prev,
-          {
-            id: saved.id,
-            url: saved.url,
-            caption: file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
-            tags: isVideo ? 'Video, Memories, NDC' : 'Alumni, Campus, Photo',
-            isVideo,
-            formattedSize: saved.formattedSize,
-          },
-        ]);
-      } catch (err) {
-        console.warn('Failed to process file, fallback to blob URL', err);
-        const isVideo = isVideoFile(file);
-        const url = URL.createObjectURL(file);
-        setPendingPhotos((prev) => [
-          ...prev,
-          {
-            id: `media-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            url,
-            caption: file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
-            tags: isVideo ? 'Video, Campus' : 'Alumni, Photo',
-            isVideo,
-            formattedSize: formatFileSize(file.size),
-          },
-        ]);
-      }
+      const isVideo = isVideoFile(file);
+      const previewUrl = URL.createObjectURL(file);
+      const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+
+      newPending.push({
+        id: `pending-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        file,
+        previewUrl,
+        caption: cleanName,
+        tags: isVideo ? 'Video, Memories, NDC' : 'Alumni, Campus, Photo',
+        isVideo,
+        formattedSize: formatFileSize(file.size),
+      });
     }
+
+    setPendingPhotos((prev) => [...prev, ...newPending]);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -109,13 +106,16 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
   const handleAddUrl = (e: React.FormEvent) => {
     e.preventDefault();
     if (!urlInput.trim()) return;
+    setErrorMessage(null);
 
-    const isVideo = isVideoUrl(urlInput.trim());
+    const trimmed = urlInput.trim();
+    const isVideo = isVideoUrl(trimmed);
     setPendingPhotos((prev) => [
       ...prev,
       {
         id: `url-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        url: urlInput.trim(),
+        previewUrl: trimmed,
+        directUrl: trimmed,
         caption: isVideo ? 'Alumni Video Memory' : 'Alumni photograph contribution',
         tags: isVideo ? 'Video, Reunion' : 'Reunion, Batch',
         isVideo,
@@ -126,7 +126,13 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
   };
 
   const handleRemovePending = (id: string) => {
-    setPendingPhotos((prev) => prev.filter((p) => p.id !== id));
+    setPendingPhotos((prev) => {
+      const target = prev.find((p) => p.id === id);
+      if (target?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((p) => p.id !== id);
+    });
   };
 
   const handleUpdateCaption = (id: string, newCaption: string) => {
@@ -135,57 +141,85 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
     );
   };
 
-  const handleUploadSubmit = () => {
-    if (pendingPhotos.length === 0) return;
+  const handleUploadSubmit = async () => {
+    if (pendingPhotos.length === 0 || isUploading) return;
+    setErrorMessage(null);
+
+    // 1. Strict permission pre-check matching Supabase RLS
+    if (!uploadPermission.allowed) {
+      const msg = uploadPermission.reason || 'You do not have permission to upload photographs.';
+      setErrorMessage(msg);
+      alert(`Gallery Upload Permission Denied:\n${msg}`);
+      return;
+    }
 
     setIsUploading(true);
-    setUploadProgress(15);
+    setUploadProgress(10);
+    setUploadStatusText('Preparing files for Supabase upload...');
 
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(interval);
-          setTimeout(() => {
-            const formattedPhotos: GalleryPhoto[] = pendingPhotos.map((p) => ({
-              id: p.id,
-              url: p.url,
-              caption: p.caption.trim() || (p.isVideo ? 'Notre Dame Video Memory' : 'Notre Dame Alumni Memory'),
-              uploaderId: currentUser?.id || currentUser?.userId,
-              uploaderName: contributorName.trim() || currentUser?.fullName || 'Notre Dame Alumnus',
-              uploaderAvatar:
-                currentUser?.avatarUrl ||
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-              batchYear:
-                contributorBatch && contributorBatch >= 1949
-                  ? contributorBatch
-                  : (currentUser?.batchYear && currentUser.batchYear >= 1949 ? currentUser.batchYear : undefined),
-              uploadedAt: 'Just now',
-              likesCount: 1,
-              likedByMe: true,
-              mediaType: p.isVideo ? 'video' : 'image',
-              fileSize: p.formattedSize,
-              tags: p.tags
-                .split(',')
-                .map((t) => t.trim())
-                .filter(Boolean),
-            }));
+    const uploadedPhotos: GalleryPhoto[] = [];
+    const targetAlbum = albums.find((a) => a.id === targetAlbumId);
 
-            onUploadPhotos(targetAlbumId, formattedPhotos);
-            setIsUploading(false);
-            setPendingPhotos([]);
-            setUploadProgress(0);
-            onClose();
-          }, 300);
-          return 100;
+    try {
+      for (let i = 0; i < pendingPhotos.length; i++) {
+        const item = pendingPhotos[i];
+        const stepPercent = Math.round(((i + 0.2) / pendingPhotos.length) * 100);
+        setUploadProgress(stepPercent);
+        setUploadStatusText(
+          `Uploading item ${i + 1} of ${pendingPhotos.length} to Supabase Storage & Database...`
+        );
+
+        // Upload file to Supabase Storage bucket 'gallery' & insert row into 'gallery_photos'
+        const savedPhoto = await uploadGalleryPhotoDirect({
+          file: item.file,
+          directUrl: item.directUrl,
+          albumId: targetAlbumId,
+          caption: item.caption.trim() || (item.isVideo ? 'Notre Dame Video Memory' : 'Notre Dame Alumni Memory'),
+          batchYear:
+            contributorBatch && contributorBatch >= 1949
+              ? contributorBatch
+              : (currentUser?.batchYear && currentUser.batchYear >= 1949 ? currentUser.batchYear : undefined),
+          tags: item.tags
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean),
+          mediaType: item.isVideo ? 'video' : 'image',
+          fileSize: item.formattedSize,
+          albumInfo: targetAlbum,
+        });
+
+        uploadedPhotos.push(savedPhoto);
+        setUploadProgress(Math.round(((i + 1) / pendingPhotos.length) * 100));
+      }
+
+      setUploadStatusText('Complete! Finalizing album sync...');
+      // Clean up object URLs
+      for (const p of pendingPhotos) {
+        if (p.previewUrl?.startsWith('blob:')) {
+          URL.revokeObjectURL(p.previewUrl);
         }
-        return prev + 25;
-      });
-    }, 120);
+      }
+
+      onUploadPhotos(targetAlbumId, uploadedPhotos);
+      setIsUploading(false);
+      setPendingPhotos([]);
+      setUploadProgress(0);
+      setUploadStatusText('');
+      onClose();
+    } catch (err: any) {
+      console.error('Gallery upload to Supabase failed:', err);
+      const errMsg = err?.message || String(err);
+      setErrorMessage(errMsg);
+      setIsUploading(false);
+      setUploadStatusText('');
+      // Show exact error in alert for immediate debugging as required
+      alert(`Gallery Upload to Supabase Failed:\n\n${errMsg}`);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full border border-slate-200/80 dark:border-slate-800 shadow-2xl overflow-hidden my-8">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full border border-slate-200/80 dark:border-slate-800 shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -195,12 +229,12 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
             <div>
               <h2 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <span>Upload Photos & Videos</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-extrabold uppercase">
-                  Any Size
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-extrabold uppercase">
+                  Supabase Cloud
                 </span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Anyone can contribute high-resolution photos and video clips of any size to alumni albums.
+                Direct persistent cloud upload to the Notre Dame Alumni Gallery storage and database.
               </p>
             </div>
           </div>
@@ -215,6 +249,48 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
 
         {/* Modal Content */}
         <div className="p-5 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Permission Warning Notice if not verified/admin */}
+          {!uploadPermission.allowed && (
+            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl flex items-start gap-3">
+              <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <span className="font-bold text-amber-900 dark:text-amber-200">
+                  Verification Required for Gallery Uploads
+                </span>
+                <p className="text-amber-700 dark:text-amber-300">
+                  {uploadPermission.reason}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message Alert Banner */}
+          {errorMessage && (
+            <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-200 dark:border-rose-900/80 rounded-2xl flex items-start gap-3 text-rose-800 dark:text-rose-200 animate-in fade-in">
+              <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs uppercase tracking-wide">
+                    Supabase Upload Error
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setErrorMessage(null)}
+                    className="text-[11px] font-bold text-rose-600 hover:underline cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                <p className="text-xs break-words font-mono bg-rose-100/70 dark:bg-rose-900/40 p-2 rounded-xl text-rose-950 dark:text-rose-100">
+                  {errorMessage}
+                </p>
+                <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                  Your files are preserved above so you can retry once the issue is addressed.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Target Album Selection */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-blue-50/60 dark:bg-blue-950/30 rounded-2xl border border-blue-100 dark:border-blue-900/40">
             <div className="min-w-0 flex-1">
@@ -315,17 +391,17 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
               Drag & Drop your photos and videos here
             </p>
             <p className="text-xs text-slate-400 mt-1">
-              or <span className="text-blue-600 dark:text-blue-400 font-semibold underline">browse from your computer</span> (Photos, Videos — Any Size, No Limit)
+              or <span className="text-blue-600 dark:text-blue-400 font-semibold underline">browse from your computer</span> (Uploaded to Supabase Storage)
             </p>
             <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
               <span className="px-2.5 py-1 rounded-full bg-slate-200/70 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
-                JPG, PNG, WEBP, GIF, RAW
+                JPG, PNG, WEBP, GIF
               </span>
               <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
-                MP4, WEBM, MOV, MKV, AVI
+                MP4, WEBM, MOV
               </span>
               <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
-                Unlimited Size
+                Synced to Cloud Database
               </span>
             </div>
           </div>
@@ -382,7 +458,7 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
                       {item.isVideo ? (
                         <>
                           <video
-                            src={item.url}
+                            src={item.previewUrl}
                             className="w-full h-full object-cover"
                             muted
                             playsInline
@@ -393,7 +469,7 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
                         </>
                       ) : (
                         <img
-                          src={item.url}
+                          src={item.previewUrl}
                           alt="Preview"
                           className="w-full h-full object-cover"
                         />
@@ -433,14 +509,14 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
 
           {/* Upload Progress Bar */}
           {isUploading && (
-            <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-1.5">
+            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-2">
               <div className="flex justify-between text-xs font-bold text-blue-700 dark:text-blue-300">
-                <span>Saving & Optimizing Media to Persistent Storage...</span>
+                <span>{uploadStatusText || 'Uploading to Supabase Storage & Database...'}</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="w-full h-2 bg-blue-200 dark:bg-blue-900 rounded-full overflow-hidden">
+              <div className="w-full h-2.5 bg-blue-200 dark:bg-blue-900 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-blue-600 transition-all duration-200 rounded-full"
+                  className="h-full bg-blue-600 transition-all duration-300 rounded-full"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -466,7 +542,7 @@ export const UploadPhotosModal: React.FC<UploadPhotosModalProps> = ({
               <Upload className="w-4 h-4" />
               <span>
                 {isUploading
-                  ? 'Publishing...'
+                  ? 'Uploading to Supabase...'
                   : `Publish ${pendingPhotos.length > 0 ? `(${pendingPhotos.length})` : ''} to Album`}
               </span>
             </button>

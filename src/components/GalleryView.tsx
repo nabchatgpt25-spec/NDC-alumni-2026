@@ -57,83 +57,51 @@ export interface GalleryViewProps {
 export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavigate }) => {
   const { currentUser } = useAuth();
   const isAdmin = isMainAdmin(currentUser);
-  // Load albums from localStorage or fallback to INITIAL_ALBUMS
-  const [albums, setAlbums] = useState<GalleryAlbum[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return INITIAL_ALBUMS;
-  });
+  // Database is the primary source of truth; INITIAL_ALBUMS acts as fallback / seed
+  const [albums, setAlbums] = useState<GalleryAlbum[]>(INITIAL_ALBUMS);
 
-  // Save to localStorage on change and load from Supabase on mount
+  // Load albums from Supabase database on mount
   useEffect(() => {
     let isMounted = true;
+
+    // Purge legacy local storage cache that might contain local blob: or data: URLs
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+
     fetchGalleryAlbumsFromDb()
       .then((dbAlbums) => {
         if (isMounted && dbAlbums && dbAlbums.length > 0) {
-          setAlbums((prev) => {
-            const merged = dbAlbums.map((dbAlb) => {
-              const localAlb = prev.find((p) => p.id === dbAlb.id);
-              if (!localAlb) return dbAlb;
-              const photoMap = new Map<string, GalleryPhoto>();
-              // Add local photos first (preserving custom uploads and edits)
-              (localAlb.photos || []).forEach((p) => photoMap.set(p.id, p));
-              // Add db photos if not present
-              (dbAlb.photos || []).forEach((p) => {
-                if (!photoMap.has(p.id)) {
-                  photoMap.set(p.id, p);
-                }
-              });
-              const combinedPhotos = Array.from(photoMap.values());
-              return {
-                ...dbAlb,
-                photos: combinedPhotos,
-                photosCount: combinedPhotos.length,
-              };
-            });
+          setAlbums(() => {
             const dbIds = new Set(dbAlbums.map((a) => a.id));
-            const remainingLocal = prev.filter((a) => !dbIds.has(a.id));
-            return [...remainingLocal, ...merged];
+            const nonCollidingPresets = INITIAL_ALBUMS.filter((a) => !dbIds.has(a.id));
+            return [...dbAlbums, ...nonCollidingPresets];
           });
         }
       })
       .catch((err) => {
         console.warn('GalleryView: Supabase albums fetch fallback:', err);
       });
+
     return () => {
       isMounted = false;
     };
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(albums));
-      window.dispatchEvent(new CustomEvent('ndc_gallery_updated'));
-    } catch {
-      // ignore
-    }
-  }, [albums]);
-
-  // Listen to updates from other views (such as homepage GalleryPreviewSection)
+  // Listen to updates from other views (such as homepage GalleryPreviewSection or Upload modal)
   useEffect(() => {
     const handleUpdate = () => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setAlbums(parsed);
+      fetchGalleryAlbumsFromDb()
+        .then((dbAlbums) => {
+          if (dbAlbums && dbAlbums.length > 0) {
+            setAlbums(() => {
+              const dbIds = new Set(dbAlbums.map((a) => a.id));
+              const nonCollidingPresets = INITIAL_ALBUMS.filter((a) => !dbIds.has(a.id));
+              return [...dbAlbums, ...nonCollidingPresets];
+            });
           }
-        }
-      } catch {}
+        })
+        .catch(() => {});
     };
     window.addEventListener('ndc_gallery_updated', handleUpdate);
     return () => {
@@ -321,11 +289,13 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
   };
 
   const handleUploadPhotos = async (albumId: number, newPhotos: GalleryPhoto[]) => {
-    // Optimistically update local view
+    // 1. Update active view state with new photos
     setAlbums((prev) =>
       prev.map((alb) => {
         if (alb.id === albumId) {
-          const updatedPhotos = [...newPhotos, ...alb.photos];
+          const existingIds = new Set(alb.photos.map((p) => p.id));
+          const fresh = newPhotos.filter((p) => !existingIds.has(p.id));
+          const updatedPhotos = [...fresh, ...alb.photos];
           return {
             ...alb,
             photos: updatedPhotos,
@@ -336,9 +306,21 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
       })
     );
 
-    // Persist each photo to Supabase gallery_photos
+    // 2. Ensure each photo is persisted to Supabase if not already done by UploadPhotosModal
     const syncedPhotos: GalleryPhoto[] = [];
     for (const photo of newPhotos) {
+      // If photo is already persisted to Supabase Storage and DB (has real UUID and http URL), keep as-is
+      const isAlreadyPersisted =
+        photo.url.startsWith('http') &&
+        !photo.id.startsWith('pending-') &&
+        !photo.id.startsWith('media-') &&
+        !photo.id.startsWith('p-');
+
+      if (isAlreadyPersisted) {
+        syncedPhotos.push(photo);
+        continue;
+      }
+
       try {
         const photoId = await addPhotoToGalleryAlbumInDb({
           albumId,
@@ -354,11 +336,16 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
           ...photo,
           id: photoId || photo.id,
         });
-      } catch (err) {
-        console.warn('addPhotoToGalleryAlbumInDb error:', err);
-        syncedPhotos.push(photo);
+      } catch (err: any) {
+        console.error('addPhotoToGalleryAlbumInDb error:', err);
+        const errMsg = err?.message || String(err);
+        alert(`Failed to save photograph to Supabase:\n\n${errMsg}`);
+        throw err;
       }
     }
+
+    // 3. Broadcast update to other tabs/components
+    window.dispatchEvent(new CustomEvent('ndc_gallery_updated'));
 
     const targetAlbum = albums.find((a) => a.id === albumId);
 
@@ -508,8 +495,10 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
         url: updates.url,
         mediaType: updates.mediaType,
       });
-    } catch (err) {
-      console.warn('updateGalleryPhotoInDb fallback:', err);
+      window.dispatchEvent(new CustomEvent('ndc_gallery_updated'));
+    } catch (err: any) {
+      console.error('updateGalleryPhotoInDb error:', err);
+      alert(`Failed to update photo in Supabase:\n\n${err?.message || err}`);
     }
   };
 
@@ -542,8 +531,10 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
 
     try {
       await deleteGalleryPhotoInDb(photoId);
-    } catch (err) {
-      console.warn('deleteGalleryPhotoInDb fallback:', err);
+      window.dispatchEvent(new CustomEvent('ndc_gallery_updated'));
+    } catch (err: any) {
+      console.error('deleteGalleryPhotoInDb error:', err);
+      alert(`Failed to delete photo from Supabase:\n\n${err?.message || err}`);
     }
   };
 

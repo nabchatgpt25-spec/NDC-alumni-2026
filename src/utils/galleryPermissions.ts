@@ -11,6 +11,9 @@ export interface GalleryUserContext {
   role?: UserRole | string;
   email?: string;
   fullName?: string;
+  verificationStatus?: string;
+  verification_status?: string;
+  verified?: boolean;
 }
 
 export const ADMIN_EMAILS_SET = new Set([
@@ -23,7 +26,7 @@ export const ADMIN_EMAILS_SET = new Set([
 
 /**
  * Checks if the current user has Main Admin or Moderator privileges.
- * Executive council and admin emails are granted full administrative access.
+ * Matches database RLS helper `public.is_admin_or_mod()`.
  */
 export const isMainAdmin = (user?: GalleryUserContext | null): boolean => {
   if (!user) return false;
@@ -37,9 +40,42 @@ export const isMainAdmin = (user?: GalleryUserContext | null): boolean => {
 };
 
 /**
+ * Determines whether a user is permitted to upload photographs to the public gallery.
+ * Strictly aligned with Supabase RLS policy `gallery_photos_insert_own`:
+ * User must be authenticated, and either `verification_status = 'verified'` OR `role IN ('admin', 'moderator')`.
+ */
+export const canUploadGalleryPhoto = (
+  user?: GalleryUserContext | null
+): { allowed: boolean; reason?: string } => {
+  if (!user || (!user.id && !user.userId)) {
+    return {
+      allowed: false,
+      reason: 'Please log in to your alumni account to upload photographs to the gallery.',
+    };
+  }
+
+  const role = user.role;
+  const isAdminOrMod = role === 'admin' || role === 'moderator';
+  const isVerified =
+    user.verificationStatus === 'verified' ||
+    user.verification_status === 'verified' ||
+    user.verified === true;
+
+  if (isAdminOrMod || isVerified) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    reason:
+      'Only verified alumni or administrators can upload photographs to the public gallery. Please verify your alumni profile in the Verification Center.',
+  };
+};
+
+/**
  * Determines if the current user can edit a specific gallery photograph.
- * - Main Admin has FULL access to edit any photograph (including archive and default pictures).
- * - Alumni can ONLY edit their own uploaded photographs.
+ * - Admin or Moderator has FULL access to edit any photograph (matching DB RLS).
+ * - Alumni can ONLY edit their own uploaded photographs (`uploader_id = current_profile_id`).
  */
 export const canEditGalleryPhoto = (
   photo: GalleryPhoto,
@@ -53,20 +89,12 @@ export const canEditGalleryPhoto = (
     return true;
   }
 
-  if (
-    photo.uploaderName &&
-    user.fullName &&
-    photo.uploaderName.trim().toLowerCase() === user.fullName.trim().toLowerCase()
-  ) {
-    return true;
-  }
-
   return false;
 };
 
 /**
  * Determines if the current user can delete a specific gallery photograph.
- * - Main Admin can delete any photograph.
+ * - Admin or Moderator can delete any photograph.
  * - Alumni can ONLY delete their own uploaded photographs.
  */
 export const canDeleteGalleryPhoto = (
@@ -78,7 +106,7 @@ export const canDeleteGalleryPhoto = (
 
 /**
  * Determines if the current user can edit a gallery album.
- * - Main Admin has full access to edit any album.
+ * - Admin or Moderator has full access.
  * - Original album creator can edit their album.
  */
 export const canEditGalleryAlbum = (
@@ -88,20 +116,12 @@ export const canEditGalleryAlbum = (
   if (!user || (!user.id && !user.userId)) return false;
   if (isMainAdmin(user)) return true;
 
-  if (
-    album.createdBy &&
-    user.fullName &&
-    album.createdBy.trim().toLowerCase() === user.fullName.trim().toLowerCase()
-  ) {
-    return true;
-  }
-
   return false;
 };
 
 /**
  * Determines if the current user can delete a gallery album.
- * Restricted strictly to Main Admins.
+ * Restricted strictly to Main Admins and Moderators (matching `gallery_albums_delete_mod` RLS).
  */
 export const canDeleteGalleryAlbum = (
   album: GalleryAlbum,
