@@ -80,12 +80,28 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
       .then((dbAlbums) => {
         if (isMounted && dbAlbums && dbAlbums.length > 0) {
           setAlbums((prev) => {
-            const map = new Map<string | number, GalleryAlbum>();
-            dbAlbums.forEach((a) => map.set(a.id, a));
-            prev.forEach((a) => {
-              if (!map.has(a.id)) map.set(a.id, a);
+            const merged = dbAlbums.map((dbAlb) => {
+              const localAlb = prev.find((p) => p.id === dbAlb.id);
+              if (!localAlb) return dbAlb;
+              const photoMap = new Map<string, GalleryPhoto>();
+              // Add local photos first (preserving custom uploads and edits)
+              (localAlb.photos || []).forEach((p) => photoMap.set(p.id, p));
+              // Add db photos if not present
+              (dbAlb.photos || []).forEach((p) => {
+                if (!photoMap.has(p.id)) {
+                  photoMap.set(p.id, p);
+                }
+              });
+              const combinedPhotos = Array.from(photoMap.values());
+              return {
+                ...dbAlb,
+                photos: combinedPhotos,
+                photosCount: combinedPhotos.length,
+              };
             });
-            return Array.from(map.values());
+            const dbIds = new Set(dbAlbums.map((a) => a.id));
+            const remainingLocal = prev.filter((a) => !dbIds.has(a.id));
+            return [...remainingLocal, ...merged];
           });
         }
       })
@@ -100,10 +116,30 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ initialAlbumId, onNavi
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(albums));
+      window.dispatchEvent(new CustomEvent('ndc_gallery_updated'));
     } catch {
       // ignore
     }
   }, [albums]);
+
+  // Listen to updates from other views (such as homepage GalleryPreviewSection)
+  useEffect(() => {
+    const handleUpdate = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAlbums(parsed);
+          }
+        }
+      } catch {}
+    };
+    window.addEventListener('ndc_gallery_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('ndc_gallery_updated', handleUpdate);
+    };
+  }, []);
 
   // Selected Album for Showcase View
   const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(() => {

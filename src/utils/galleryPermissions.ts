@@ -13,9 +13,17 @@ export interface GalleryUserContext {
   fullName?: string;
 }
 
+export const ADMIN_EMAILS_SET = new Set([
+  'firstaidnetworkbd@gmail.com',
+  'bdocouncil.official@gmail.com',
+  'admin@notredamecollege.edu',
+  'principal@ndc.edu.bd',
+  'ndc.executive.council@gmail.com',
+]);
+
 /**
  * Checks if the current user has Main Admin or Moderator privileges.
- * Executive council and admin email bdocouncil.official@gmail.com are granted full administrative access.
+ * Executive council and admin emails are granted full administrative access.
  */
 export const isMainAdmin = (user?: GalleryUserContext | null): boolean => {
   if (!user) return false;
@@ -24,7 +32,7 @@ export const isMainAdmin = (user?: GalleryUserContext | null): boolean => {
   return (
     role === 'admin' ||
     role === 'moderator' ||
-    email === 'bdocouncil.official@gmail.com'
+    ADMIN_EMAILS_SET.has(email)
   );
 };
 
