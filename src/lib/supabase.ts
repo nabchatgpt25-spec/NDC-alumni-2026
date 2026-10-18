@@ -5,9 +5,9 @@ const DEFAULT_SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxYmliZWZmcGJ2cG9wZ21tcXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMDQxMzQsImV4cCI6MjEwNjg4MDEzNH0.9G5VKEBVp-yGfx_uAhmt4uARKQPUH9-6qYVT2WJmOzE';
 
 const rawUrlInput =
-  (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || DEFAULT_SUPABASE_URL;
+  (typeof import.meta !== 'undefined' && import.meta?.env ? (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() : undefined) || DEFAULT_SUPABASE_URL;
 const rawAnonKeyInput =
-  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() || DEFAULT_SUPABASE_ANON_KEY;
+  (typeof import.meta !== 'undefined' && import.meta?.env ? (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() : undefined) || DEFAULT_SUPABASE_ANON_KEY;
 
 // Sanitize URL: ensure it is strictly the root host (e.g. https://xyz.supabase.co), without /rest/v1 or /auth/v1 suffixes
 const sanitizeSupabaseUrl = (url: string): string => {

@@ -29,9 +29,11 @@ import {
 import {
   MENTORSHIP_CATEGORIES,
   loadMentorshipRequests,
+  fetchMentorshipRequestsFromDb,
   createMentorshipRequest,
   addMentorshipAnswer,
   loadMentorOffers,
+  fetchMentorOffersFromDb,
   registerMentorOffer,
 } from '../utils/mentorshipService';
 import { triggerMentorshipConfetti } from '../utils/confettiHelper';
